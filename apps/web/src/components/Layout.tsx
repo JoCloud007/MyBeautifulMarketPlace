@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { path: '/', label: 'Accueil', icon: Cloud },
+  { path: '/', label: 'Home', icon: Cloud },
   { path: '/marketplace', label: 'Marketplace', icon: LayoutGrid },
   { path: '/forecasts', label: 'Forecasts', icon: BarChart3 },
   { path: '/admin', label: 'Admin', icon: Shield },
@@ -70,7 +70,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <button
             className="md:hidden rounded-md p-2.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             onClick={() => setMobileOpen(!mobileOpen)}
-            aria-label={mobileOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
+            aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={mobileOpen}
           >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -117,7 +117,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Footer */}
       <footer className="border-t border-slate-800 bg-slate-950 py-6 mt-auto">
         <div className="mx-auto max-w-7xl px-4 text-center text-sm text-slate-500 sm:px-6 lg:px-8">
-          <p>CloudMarket IaaS — Marketplace d'infrastructure cloud</p>
+          <p>CloudMarket IaaS — Cloud infrastructure marketplace</p>
           <p className="mt-1 text-xs text-slate-600">
             React 18 + TypeScript + Tailwind CSS + shadcn/ui
           </p>

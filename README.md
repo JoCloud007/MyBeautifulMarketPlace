@@ -6,51 +6,51 @@
 [![Prisma](https://img.shields.io/badge/Prisma-5.13-2D3748?logo=prisma)](https://prisma.io)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](https://docker.com)
 
-> Marketplace d'infrastructure cloud complète avec interface client moderne, dashboard de forecast et panneau d'administration.
+> Full-featured cloud infrastructure marketplace with a modern client interface, forecast dashboard, and administration panel.
 
-## ✨ Fonctionnalités
+## ✨ Features
 
 ### 🛒 Marketplace
-- Catalogue de produits IaaS avec grille responsive et animations
-- Filtres dynamiques par catégorie, OS, flavor et recherche textuelle
-- Fiches produits détaillées : description, documentation, roadmap, dépendances
-- Graphique de dépendances SVG interactif
+- IaaS product catalog with responsive grid and animations
+- Dynamic filters by category, OS, flavor, and text search
+- Detailed product pages: description, documentation, roadmap, dependencies
+- Interactive SVG dependency graph
 
 ### 📊 Forecast Dashboard
-- Statistiques en temps réel avec compteurs animés
-- Tableau des demandes avec statuts colorés (Pending / Approved / Rejected)
-- Filtres par statut et recherche
-- Création de demandes avec sélection cascade produit → flavor
-- Actions rapides : approuver, rejeter, supprimer
+- Real-time statistics with animated counters
+- Request table with color-coded statuses (Pending / Approved / Rejected)
+- Filter by status and search
+- Create requests with cascading product → flavor selection
+- Quick actions: approve, reject, delete
 
 ### 🛠️ Administration
-- Dashboard avec compteurs et activité récente
-- CRUD complet pour Produits, Catégories, Flavors, Dépendances, Forecasts, Utilisateurs
-- Tableaux responsive (cartes sur mobile, tables sur desktop)
-- Modales d'édition avec validation
+- Dashboard with counters and recent activity
+- Full CRUD for Products, Categories, Flavors, Dependencies, Forecasts, Users
+- Responsive tables (cards on mobile, tables on desktop)
+- Edit modals with validation
 
 ### 🎨 Design & UX
-- Thème sombre cohérent (`slate-950`, accent `blue-500`)
-- Animations d'entrée par scroll (IntersectionObserver)
-- Transitions de page fluides
-- Système de notifications toast
-- Gestion des erreurs avec Error Boundary et états de retry
-- Support `prefers-reduced-motion`
-- Scrollbar personnalisée
+- Consistent dark theme (`slate-950`, accent `blue-500`)
+- Scroll-triggered entry animations (IntersectionObserver)
+- Smooth page transitions
+- Toast notification system
+- Error handling with Error Boundary and retry states
+- `prefers-reduced-motion` support
+- Custom scrollbar
 
 ## 🏗️ Architecture
 
 ```
 cloudmarket/
-├── docker-compose.yml           # Stack complète (web + api + db)
-├── package.json                 # Workspaces monorepo
+├── docker-compose.yml           # Full stack (web + api + db)
+├── package.json                 # Monorepo workspaces
 ├── README.md
 ├── apps/
 │   ├── web/                     # Frontend React 18 + Vite
 │   │   ├── src/
 │   │   │   ├── components/
 │   │   │   │   ├── ui/          # shadcn/ui (Button, Card, Badge, Input, Select, Tabs, Dialog, Skeleton, Textarea)
-│   │   │   │   ├── Layout.tsx   # Navbar sticky + footer + menu mobile
+│   │   │   │   ├── Layout.tsx   # Sticky navbar + footer + mobile menu
 │   │   │   │   ├── ErrorBoundary.tsx
 │   │   │   │   ├── QueryError.tsx
 │   │   │   │   ├── Toast.tsx
@@ -67,13 +67,13 @@ cloudmarket/
 │   │   │   │   ├── useScrollReveal.ts
 │   │   │   │   └── useReducedMotion.ts
 │   │   │   ├── stores/
-│   │   │   │   ├── useAppStore.ts   # Zustand (filtres marketplace)
+│   │   │   │   ├── useAppStore.ts   # Zustand (marketplace filters)
 │   │   │   │   └── useToastStore.ts # Notifications
 │   │   │   ├── lib/
 │   │   │   │   └── utils.ts     # cn() helper
 │   │   │   ├── App.tsx
 │   │   │   ├── main.tsx
-│   │   │   └── index.css        # Tailwind + animations custom
+│   │   │   └── index.css        # Tailwind + custom animations
 │   │   ├── package.json
 │   │   ├── vite.config.ts
 │   │   └── tailwind.config.js
@@ -95,42 +95,42 @@ cloudmarket/
 └── packages/
     └── shared-types/
         └── src/
-            └── index.ts         # Types + enums partagés
+            └── index.ts         # Shared types + enums
 ```
 
-## 🚀 Démarrage Rapide
+## 🚀 Quick Start
 
-### Prérequis
+### Prerequisites
 - Docker Desktop / Docker Engine + Docker Compose v2
-- Node.js 20+ (optionnel, pour développement local)
+- Node.js 20+ (optional, for local development)
 
-### Avec Docker Compose (recommandé)
+### With Docker Compose (recommended)
 
 ```bash
-# Cloner et entrer dans le projet
+# Clone and enter the project
 cd cloudmarket
 
-# Lancer l'ensemble de la stack
+# Launch the full stack
 docker compose up --build
 
-# Dans un autre terminal, seed la base de données
+# In another terminal, seed the database
 docker compose exec api npx tsx prisma/seed.ts
 ```
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| Frontend | http://localhost:5192 | Application React |
-| API | http://localhost:3001 | Serveur Express |
+| Frontend | http://localhost:5192 | React application |
+| API | http://localhost:3001 | Express server |
 | Health | http://localhost:3001/health | Health check |
 | DB | localhost:5432 | PostgreSQL 16 |
 
-### Développement local (sans Docker)
+### Local development (without Docker)
 
 ```bash
-# 1. Installer les dépendances
+# 1. Install dependencies
 npm install
 
-# 2. Démarrer PostgreSQL
+# 2. Start PostgreSQL
 docker run -d \
   --name cloudmarket-db \
   -e POSTGRES_USER=cloudmarket \
@@ -139,19 +139,19 @@ docker run -d \
   -p 5432:5432 \
   postgres:16-alpine
 
-# 3. Configurer la base de données
+# 3. Set up the database
 cd apps/api
 npx prisma db push
 npx tsx prisma/seed.ts
 
-# 4. Démarrer l'API (terminal 1)
+# 4. Start the API (terminal 1)
 npm run dev -w apps/api
 
-# 5. Démarrer le frontend (terminal 2)
+# 5. Start the frontend (terminal 2)
 npm run dev -w apps/web
 ```
 
-## 🗄️ Schéma de Base de Données
+## 🗄️ Database Schema
 
 ```prisma
 Category          ──< Product
@@ -162,10 +162,10 @@ Flavor            ──< Forecast
 User              (standalone)
 ```
 
-### Modèles
+### Models
 
-| Entité | Champs clés | Relations |
-|--------|------------|-----------|
+| Entity | Key Fields | Relations |
+|--------|-----------|-----------|
 | **Category** | name, slug, icon, description | → products |
 | **Product** | name, slug, description, os, documentation, roadmap, isActive | → category, flavors, dependencies, forecasts |
 | **Flavor** | name, vcpu, ramGb, description | → product, forecasts |
@@ -181,95 +181,95 @@ User              (standalone)
 ## 🔌 API Reference
 
 ### Health
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
+| Method | Endpoint | Description |
+|--------|----------|-------------|
 | GET | `/health` | Health check + timestamp |
 
-### Produits
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
-| GET | `/api/products` | Liste avec filtres (`category`, `os`, `search`) |
-| GET | `/api/products/:slug` | Détail d'un produit |
-| POST | `/api/products` | Créer un produit |
-| PATCH | `/api/products/:id` | Modifier un produit |
-| DELETE | `/api/products/:id` | Supprimer un produit |
+### Products
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/products` | List with filters (`category`, `os`, `search`) |
+| GET | `/api/products/:slug` | Product detail |
+| POST | `/api/products` | Create a product |
+| PATCH | `/api/products/:id` | Update a product |
+| DELETE | `/api/products/:id` | Delete a product |
 
-### Catégories
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
-| GET | `/api/categories` | Liste des catégories |
-| POST | `/api/categories` | Créer |
-| PATCH | `/api/categories/:id` | Modifier |
-| DELETE | `/api/categories/:id` | Supprimer |
+### Categories
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/categories` | List categories |
+| POST | `/api/categories` | Create |
+| PATCH | `/api/categories/:id` | Update |
+| DELETE | `/api/categories/:id` | Delete |
 
 ### Flavors
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
-| GET | `/api/flavors` | Liste (filtre `productId`) |
-| POST | `/api/flavors` | Créer |
-| PATCH | `/api/flavors/:id` | Modifier |
-| DELETE | `/api/flavors/:id` | Supprimer |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/flavors` | List (filter `productId`) |
+| POST | `/api/flavors` | Create |
+| PATCH | `/api/flavors/:id` | Update |
+| DELETE | `/api/flavors/:id` | Delete |
 
-### Dépendances
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
-| GET | `/api/dependencies` | Liste |
-| POST | `/api/dependencies` | Créer |
-| PATCH | `/api/dependencies/:id` | Modifier |
-| DELETE | `/api/dependencies/:id` | Supprimer |
+### Dependencies
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/dependencies` | List |
+| POST | `/api/dependencies` | Create |
+| PATCH | `/api/dependencies/:id` | Update |
+| DELETE | `/api/dependencies/:id` | Delete |
 
 ### Forecasts
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
-| GET | `/api/forecasts` | Liste des demandes |
-| GET | `/api/forecasts/stats` | Statistiques agrégées |
-| POST | `/api/forecasts` | Créer une demande |
-| PATCH | `/api/forecasts/:id` | Approuver/Rejeter/Modifier |
-| DELETE | `/api/forecasts/:id` | Supprimer |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/forecasts` | List requests |
+| GET | `/api/forecasts/stats` | Aggregated statistics |
+| POST | `/api/forecasts` | Create a request |
+| PATCH | `/api/forecasts/:id` | Approve/Reject/Update |
+| DELETE | `/api/forecasts/:id` | Delete |
 
-### Utilisateurs
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
-| GET | `/api/users` | Liste |
-| POST | `/api/users` | Créer |
-| PATCH | `/api/users/:id` | Modifier |
-| DELETE | `/api/users/:id` | Supprimer |
+### Users
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/users` | List |
+| POST | `/api/users` | Create |
+| PATCH | `/api/users/:id` | Update |
+| DELETE | `/api/users/:id` | Delete |
 
 ### Admin
-| Méthode | Endpoint | Description |
-|---------|----------|-------------|
-| GET | `/api/admin/dashboard` | Compteurs + forecasts récents |
-| GET | `/api/admin/products` | Tous les produits (admin) |
-| GET | `/api/admin/forecasts` | Tous les forecasts (admin) |
-| GET | `/api/admin/categories` | Toutes les catégories |
-| GET | `/api/admin/flavors` | Tous les flavors |
-| GET | `/api/admin/dependencies` | Toutes les dépendances |
-| GET | `/api/admin/users` | Tous les utilisateurs |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/dashboard` | Counters + recent forecasts |
+| GET | `/api/admin/products` | All products (admin) |
+| GET | `/api/admin/forecasts` | All forecasts (admin) |
+| GET | `/api/admin/categories` | All categories |
+| GET | `/api/admin/flavors` | All flavors |
+| GET | `/api/admin/dependencies` | All dependencies |
+| GET | `/api/admin/users` | All users |
 
-### Codes d'erreur
-| Code | Signification |
-|------|--------------|
-| 400 | Validation Zod échouée |
-| 404 | Ressource non trouvée |
-| 409 | Conflit (contrainte unique/foreign key) |
-| 500 | Erreur interne |
+### Error Codes
+| Code | Meaning |
+|------|---------|
+| 400 | Zod validation failed |
+| 404 | Resource not found |
+| 409 | Conflict (unique/foreign key constraint) |
+| 500 | Internal error |
 
-## 🧪 Scripts NPM
+## 🧪 NPM Scripts
 
 ```bash
-# Docker Compose (recommandé)
+# Docker Compose (recommended)
 npm run dev
 
-# Développement local (concurrently)
+# Local development (concurrently)
 npm run dev:local
 
-# Build production
+# Production build
 npm run build
 
-# Base de données
-npm run db:push     # Pousser le schéma Prisma
-npm run db:seed     # Seeder les données
-npm run db:migrate  # Créer/appliquer une migration
+# Database
+npm run db:push     # Push Prisma schema
+npm run db:seed     # Seed data
+npm run db:migrate  # Create/apply migration
 
 # Lint
 npm run lint
@@ -277,13 +277,13 @@ npm run lint
 
 ## 🌱 Seed Data
 
-Le seed crée automatiquement :
+The seed automatically creates:
 
-**Catégories :** Compute, Data, Hypervisor, Citrix
+**Categories:** Compute, Data, Hypervisor, Citrix
 
-**Produits :**
-| Produit | Catégorie | OS |
-|---------|-----------|-----|
+**Products:**
+| Product | Category | OS |
+|---------|----------|-----|
 | VM Debian 12 | Compute | Linux |
 | VM Windows Server 2022 | Compute | Windows |
 | VM RedHat Enterprise | Compute | Linux |
@@ -293,95 +293,95 @@ Le seed crée automatiquement :
 | VMware vSphere | Hypervisor | ESXi |
 | Citrix VDI | Citrix | Windows |
 
-**Flavors :** Small (2vCPU/4GB), Medium (4/8), Large (8/16), XL (16/32)
+**Flavors:** Small (2vCPU/4GB), Medium (4/8), Large (8/16), XL (16/32)
 
-**Dépendances :**
-- VM → Réseau VPC (REQUIRED)
-- VM → Stockage (RECOMMENDED)
+**Dependencies:**
+- VM → VPC Network (REQUIRED)
+- VM → Storage (RECOMMENDED)
 - HPC → Object Storage (RECOMMENDED)
 
 ## 🎨 Design System
 
 ### Palette
-| Token | Valeur | Usage |
+| Token | Value | Usage |
 |-------|--------|-------|
-| Background | `slate-950` (#020617) | Fond principal |
-| Surface | `slate-900` (#0f172a) | Cartes, panels |
-| Border | `slate-800` (#1e293b) | Bordures |
-| Primary | `blue-500` (#3b82f6) | Accent, liens |
-| Text Primary | `white` | Titres |
-| Text Secondary | `slate-400` | Corps |
+| Background | `slate-950` (#020617) | Main background |
+| Surface | `slate-900` (#0f172a) | Cards, panels |
+| Border | `slate-800` (#1e293b) | Borders |
+| Primary | `blue-500` (#3b82f6) | Accent, links |
+| Text Primary | `white` | Titles |
+| Text Secondary | `slate-400` | Body |
 | Text Muted | `slate-500` | Labels |
 
-### Composants shadcn/ui
+### shadcn/ui Components
 - Button, Card, Badge, Input, Select, Tabs, Dialog, Skeleton, Textarea
-- Tous personnalisés pour le thème sombre
+- All customized for the dark theme
 
 ### Animations
-| Nom | Description |
-|-----|-------------|
-| `fadeInUp` | Opacité 0→1 + translateY 24px→0 |
-| `scaleIn` | Opacité 0→1 + scale 0.96→1 |
-| `slideInRight` | Pour les toasts |
-| `countUp` | Animation de compteur numérique |
+| Name | Description |
+|------|-------------|
+| `fadeInUp` | Opacity 0→1 + translateY 24px→0 |
+| `scaleIn` | Opacity 0→1 + scale 0.96→1 |
+| `slideInRight` | For toasts |
+| `countUp` | Numeric counter animation |
 | Scroll Reveal | IntersectionObserver-based |
 
 ## 📱 Responsive
 
 | Breakpoint | Layout |
 |------------|--------|
-| < 640px | Single column, cards au lieu de tables, menu hamburger |
-| 640px+ | 2 colonnes, tables visibles |
-| 1024px+ | 3-4 colonnes, layout complet |
+| < 640px | Single column, cards instead of tables, hamburger menu |
+| 640px+ | 2 columns, tables visible |
+| 1024px+ | 3-4 columns, full layout |
 
-## 🛡️ Gestion des Erreurs
+## 🛡️ Error Handling
 
-- **ErrorBoundary** : Capture les erreurs React, affiche fallback UI avec retry
-- **QueryError** : Composant réutilisable pour les erreurs API avec bouton retry
-- **Toast notifications** : Feedback visuel sur succès/erreur des mutations
-- **API interceptor** : Logging centralisé des erreurs HTTP
-- **Error handler Express** : Gestion des erreurs Prisma (P2002, P2003, P2025)
+- **ErrorBoundary**: Catches React errors, displays fallback UI with retry
+- **QueryError**: Reusable component for API errors with retry button
+- **Toast notifications**: Visual feedback on mutation success/error
+- **API interceptor**: Centralized HTTP error logging
+- **Express error handler**: Prisma error handling (P2002, P2003, P2025)
 
-## 🔧 Développement
+## 🔧 Development
 
-### Ajouter une page
-1. Créer le composant dans `apps/web/src/pages/`
-2. Ajouter la route dans `App.tsx`
-3. Ajouter le lien dans `Layout.tsx` si nécessaire
+### Adding a Page
+1. Create the component in `apps/web/src/pages/`
+2. Add the route in `App.tsx`
+3. Add the link in `Layout.tsx` if necessary
 
-### Ajouter une entité API
-1. Mettre à jour `schema.prisma`
-2. Générer : `npm run db:generate -w apps/api`
-3. Créer les routes dans `apps/api/src/routes/`
-4. Ajouter les hooks dans `apps/web/src/hooks/useApi.ts`
+### Adding an API Entity
+1. Update `schema.prisma`
+2. Generate: `npm run db:generate -w apps/api`
+3. Create routes in `apps/api/src/routes/`
+4. Add hooks in `apps/web/src/hooks/useApi.ts`
 
 ### Conventions
-- TypeScript strict activé
-- Imports avec alias `@/` (configuré dans vite.config.ts)
-- Composants fonctionnels avec hooks
-- TanStack Query pour le server state
-- Zustand pour le client state
+- Strict TypeScript enabled
+- Imports with `@/` alias (configured in vite.config.ts)
+- Functional components with hooks
+- TanStack Query for server state
+- Zustand for client state
 
-## 🐛 Dépannage
+## 🐛 Troubleshooting
 
-**Le frontend ne se connecte pas à l'API**
-- Vérifiez `VITE_API_URL` dans `apps/web/.env` (défaut: `http://localhost:3001`)
-- Assurez-vous que les CORS sont activés sur l'API
+**The frontend cannot connect to the API**
+- Check `VITE_API_URL` in `apps/web/.env` (default: `http://localhost:3001`)
+- Make sure CORS is enabled on the API
 
-**Prisma Client non généré**
+**Prisma Client not generated**
 ```bash
 cd apps/api && npx prisma generate
 ```
 
-**La base de données ne démarre pas**
-- Vérifiez que le port 5432 n'est pas déjà utilisé
-- Supprimez le volume Docker : `docker compose down -v`
+**The database does not start**
+- Check that port 5432 is not already in use
+- Remove the Docker volume: `docker compose down -v`
 
-**Erreur "Cannot find module '@cloudmarket/shared-types'"**
+**Error "Cannot find module '@cloudmarket/shared-types'"**
 ```bash
 npm run build -w packages/shared-types
 ```
 
 ## 📄 License
 
-MIT — Projet éducatif / démonstration.
+MIT — Educational / demonstration project.

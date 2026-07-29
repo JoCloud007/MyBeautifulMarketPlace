@@ -35,7 +35,7 @@ const iconMap: Record<string, React.ElementType> = {
 };
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('fr-FR', {
+  return new Date(dateStr).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -182,7 +182,7 @@ function DependencyGraph({
           {productName.length > 18 ? productName.slice(0, 18) + '…' : productName}
         </text>
         <text x={centerX} y={height / 2 + 14} textAnchor="middle" fill="#64748b" fontSize={10}>
-          Produit actuel
+          Current product
         </text>
 
         {/* Dependency nodes */}
@@ -193,10 +193,10 @@ function DependencyGraph({
             <g key={`node-${dep.id}`}>
               <rect x={380} y={y} width={180} height={40} rx={6} fill="#0f172a" stroke={isRequired ? '#f59e0b' : '#10b981'} strokeWidth={1.5} />
               <text x={390} y={y + 16} fill="#e2e8f0" fontSize={11} fontWeight={500}>
-                {dep.dependsOn?.name || 'Produit'}
+                {dep.dependsOn?.name || 'Product'}
               </text>
               <text x={390} y={y + 30} fill={isRequired ? '#fbbf24' : '#34d399'} fontSize={9} fontWeight={600}>
-                {isRequired ? 'REQUIS' : 'RECOMMANDÉ'}
+                {isRequired ? 'REQUIRED' : 'RECOMMENDED'}
               </text>
             </g>
           );
@@ -247,10 +247,10 @@ export default function ProductDetail() {
       <div className="space-y-6">
         <Link to="/marketplace" className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-blue-400 transition-colors">
           <ArrowLeft className="h-4 w-4" />
-          Retour à la marketplace
+          Back to marketplace
         </Link>
         <QueryError
-          message="Impossible de charger ce produit. Il a peut-être été retiré du catalogue."
+          message="Unable to load this product. It may have been removed from the catalog."
           onRetry={() => refetch()}
         />
       </div>
@@ -261,12 +261,12 @@ export default function ProductDetail() {
     return (
       <div className="rounded-lg border border-slate-800 bg-slate-900 p-12 text-center animate-fade-in">
         <Box className="mx-auto h-12 w-12 text-slate-600" />
-        <p className="mt-4 text-lg font-medium text-slate-300">Produit non trouvé</p>
-        <p className="mt-1 text-slate-500">Ce produit n'existe pas ou a été retiré du catalogue.</p>
+        <p className="mt-4 text-lg font-medium text-slate-300">Product not found</p>
+        <p className="mt-1 text-slate-500">This product does not exist or has been removed from the catalog.</p>
         <Link to="/marketplace">
           <Button variant="outline" className="mt-6 border-slate-700 text-slate-300 hover:bg-slate-800 min-h-[44px]">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Retour à la marketplace
+            Back to marketplace
           </Button>
         </Link>
       </div>
@@ -289,7 +289,7 @@ export default function ProductDetail() {
             className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-blue-400 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
-            Retour à la marketplace
+            Back to marketplace
           </Link>
           <div className="mt-4 flex flex-col sm:flex-row sm:items-start gap-4">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-blue-500/10">
@@ -313,7 +313,7 @@ export default function ProductDetail() {
                     product.isActive ? 'text-emerald-400' : 'text-slate-500'
                   )}
                 >
-                  {product.isActive ? 'Disponible' : 'Indisponible'}
+                  {product.isActive ? 'Available' : 'Unavailable'}
                 </Badge>
               </div>
             </div>
@@ -321,7 +321,7 @@ export default function ProductDetail() {
               <Link to="/forecasts">
                 <Button size="sm" className="gap-2 bg-blue-500 hover:bg-blue-600 min-h-[44px]">
                   <Send className="h-4 w-4" />
-                  Demander ce produit
+                  Request this product
                 </Button>
               </Link>
             </div>
@@ -337,7 +337,7 @@ export default function ProductDetail() {
             <CardContent className="flex items-center gap-3 py-4">
               <Layers className="h-5 w-5 text-blue-500" />
               <div>
-                <p className="text-xs text-slate-500">Catégorie</p>
+                <p className="text-xs text-slate-500">Category</p>
                 <p className="text-sm font-medium text-white">{product.category?.name}</p>
               </div>
             </CardContent>
@@ -346,7 +346,7 @@ export default function ProductDetail() {
             <CardContent className="flex items-center gap-3 py-4">
               <Monitor className="h-5 w-5 text-blue-500" />
               <div>
-                <p className="text-xs text-slate-500">Système d'exploitation</p>
+                <p className="text-xs text-slate-500">Operating system</p>
                 <p className="text-sm font-medium text-white">{product.os || 'N/A'}</p>
               </div>
             </CardContent>
@@ -364,7 +364,7 @@ export default function ProductDetail() {
             <CardContent className="flex items-center gap-3 py-4">
               <Calendar className="h-5 w-5 text-blue-500" />
               <div>
-                <p className="text-xs text-slate-500">Ajouté le</p>
+                <p className="text-xs text-slate-500">Added on</p>
                 <p className="text-sm font-medium text-white">{formatDate(product.createdAt)}</p>
               </div>
             </CardContent>
@@ -376,10 +376,10 @@ export default function ProductDetail() {
       <AnimatedSection delay={150}>
         <Tabs defaultValue="overview" className="w-full">
           <TabsList className="bg-slate-900 border border-slate-800 flex-wrap h-auto gap-1 p-1">
-            <TabsTrigger value="overview" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Vue d'ensemble</TabsTrigger>
+            <TabsTrigger value="overview" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Overview</TabsTrigger>
             <TabsTrigger value="documentation" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Documentation</TabsTrigger>
             <TabsTrigger value="roadmap" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Roadmap</TabsTrigger>
-            <TabsTrigger value="dependencies" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Dépendances</TabsTrigger>
+            <TabsTrigger value="dependencies" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Dependencies</TabsTrigger>
           </TabsList>
 
           {/* Overview */}
@@ -401,7 +401,7 @@ export default function ProductDetail() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-white">
                     <Cpu className="h-5 w-5 text-blue-500" />
-                    Flavors disponibles
+                    Available flavors
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -416,7 +416,7 @@ export default function ProductDetail() {
                           <span className="text-xs text-slate-500">{flavor.description}</span>
                         </div>
                         {flavor.vcpu > 0 && (
-                          <SpecBar label="vCPU" value={flavor.vcpu} max={maxVcpu} unit="cœurs" color="bg-blue-500" />
+                          <SpecBar label="vCPU" value={flavor.vcpu} max={maxVcpu} unit="cores" color="bg-blue-500" />
                         )}
                         {flavor.ramGb > 0 && (
                           <SpecBar label="RAM" value={flavor.ramGb} max={maxRam} unit="GB" color="bg-emerald-500" />
@@ -449,7 +449,7 @@ export default function ProductDetail() {
                 ) : (
                   <div className="text-center py-12">
                     <FileText className="mx-auto h-10 w-10 text-slate-700" />
-                    <p className="mt-3 text-slate-500">Aucune documentation disponible pour ce produit.</p>
+                    <p className="mt-3 text-slate-500">No documentation available for this product.</p>
                   </div>
                 )}
               </CardContent>
@@ -473,7 +473,7 @@ export default function ProductDetail() {
                 ) : (
                   <div className="text-center py-12">
                     <Map className="mx-auto h-10 w-10 text-slate-700" />
-                    <p className="mt-3 text-slate-500">Aucune roadmap disponible pour ce produit.</p>
+                    <p className="mt-3 text-slate-500">No roadmap available for this product.</p>
                   </div>
                 )}
               </CardContent>
@@ -486,10 +486,10 @@ export default function ProductDetail() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-white">
                   <GitBranch className="h-5 w-5 text-blue-500" />
-                  Dépendances
+                  Dependencies
                 </CardTitle>
                 <CardDescription className="text-slate-400">
-                  Produits requis ou recommandés pour utiliser {product.name}.
+                  Products required or recommended to use {product.name}.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -514,7 +514,7 @@ export default function ProductDetail() {
                                 variant={dep.type === 'REQUIRED' ? 'destructive' : 'secondary'}
                                 className="text-xs"
                               >
-                                {dep.type === 'REQUIRED' ? 'Requis' : 'Recommandé'}
+                                {dep.type === 'REQUIRED' ? 'Required' : 'Recommended'}
                               </Badge>
                             </div>
                             {dep.description && (
@@ -524,7 +524,7 @@ export default function ProductDetail() {
                           {dep.dependsOn?.slug && (
                             <Link to={`/products/${dep.dependsOn.slug}`}>
                               <Button variant="ghost" size="sm" className="shrink-0 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 min-h-[44px]">
-                                Voir
+                                View
                                 <ArrowUpRight className="ml-1 h-3 w-3" />
                               </Button>
                             </Link>
@@ -536,7 +536,7 @@ export default function ProductDetail() {
                 ) : (
                   <div className="text-center py-12">
                     <GitBranch className="mx-auto h-10 w-10 text-slate-700" />
-                    <p className="mt-3 text-slate-500">Aucune dépendance déclarée pour ce produit.</p>
+                    <p className="mt-3 text-slate-500">No dependencies declared for this product.</p>
                   </div>
                 )}
               </CardContent>
@@ -549,7 +549,7 @@ export default function ProductDetail() {
       {related.length > 0 && (
         <AnimatedSection delay={200}>
           <div className="space-y-4">
-            <h2 className="text-xl font-bold text-white">Produits similaires</h2>
+            <h2 className="text-xl font-bold text-white">Similar products</h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {related.map((rel) => {
                 const RelIcon = iconMap[rel.category?.icon || ''] || Server;

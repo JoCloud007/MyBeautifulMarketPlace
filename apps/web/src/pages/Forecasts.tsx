@@ -30,9 +30,9 @@ import {
 import type { ApprovalStatus, Forecast } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ApprovalStatus, { label: string; color: string; icon: typeof Clock }> = {
-  PENDING: { label: 'En attente', color: 'bg-amber-500/10 text-amber-500 border-amber-500/20', icon: Clock },
-  APPROVED: { label: 'Approuvé', color: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20', icon: CheckCircle },
-  REJECTED: { label: 'Rejeté', color: 'bg-red-500/10 text-red-500 border-red-500/20', icon: XCircle },
+  PENDING: { label: 'Pending', color: 'bg-amber-500/10 text-amber-500 border-amber-500/20', icon: Clock },
+  APPROVED: { label: 'Approved', color: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20', icon: CheckCircle },
+  REJECTED: { label: 'Rejected', color: 'bg-red-500/10 text-red-500 border-red-500/20', icon: XCircle },
 };
 
 /* Animated counter for stat cards */
@@ -185,21 +185,21 @@ export default function Forecasts() {
       id,
       status: 'REJECTED' as ApprovalStatus,
       reviewedBy: 'Admin',
-      rejectionReason: 'Rejeté via dashboard',
+      rejectionReason: 'Rejected via dashboard',
     });
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Supprimer cette demande ?')) {
+    if (confirm('Delete this request?')) {
       await deleteForecast.mutateAsync(id);
     }
   };
 
   const statCards = [
     { label: 'Total', value: stats?.total ?? 0, icon: BarChart3, color: 'text-blue-400' },
-    { label: 'En attente', value: stats?.pending ?? 0, icon: Clock, color: 'text-amber-400' },
-    { label: 'Approuvés', value: stats?.approved ?? 0, icon: CheckCircle, color: 'text-emerald-400' },
-    { label: 'Rejetés', value: stats?.rejected ?? 0, icon: XCircle, color: 'text-red-400' },
+    { label: 'Pending', value: stats?.pending ?? 0, icon: Clock, color: 'text-amber-400' },
+    { label: 'Approved', value: stats?.approved ?? 0, icon: CheckCircle, color: 'text-emerald-400' },
+    { label: 'Rejected', value: stats?.rejected ?? 0, icon: XCircle, color: 'text-red-400' },
   ];
 
   const hasError = forecastsError || statsError;
@@ -212,7 +212,7 @@ export default function Forecasts() {
           <div>
             <h1 className="text-3xl font-bold text-white">Forecast Dashboard</h1>
             <p className="mt-2 text-slate-400">
-              Suivez l'état de vos demandes de provisionnement.
+              Track the status of your provisioning requests.
             </p>
           </div>
           <Button
@@ -220,14 +220,14 @@ export default function Forecasts() {
             className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"
           >
             <Plus className="mr-2 h-4 w-4" />
-            Nouvelle demande
+            New request
           </Button>
         </div>
       </AnimatedSection>
 
       {hasError ? (
         <QueryError
-          message="Impossible de charger les données du dashboard."
+          message="Unable to load dashboard data."
           onRetry={() => {
             if (forecastsError) refetchForecasts();
             if (statsError) refetchStats();
@@ -273,7 +273,7 @@ export default function Forecasts() {
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                 <Input
-                  placeholder="Rechercher..."
+                  placeholder="Search..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]"
@@ -286,10 +286,10 @@ export default function Forecasts() {
                   onChange={(e) => setStatusFilter(e.target.value as ApprovalStatus | 'ALL')}
                   className="w-40 bg-slate-900 border-slate-700 text-white min-h-[44px]"
                 >
-                  <option value="ALL">Tous les statuts</option>
-                  <option value="PENDING">En attente</option>
-                  <option value="APPROVED">Approuvé</option>
-                  <option value="REJECTED">Rejeté</option>
+                  <option value="ALL">All statuses</option>
+                  <option value="PENDING">Pending</option>
+                  <option value="APPROVED">Approved</option>
+                  <option value="REJECTED">Rejected</option>
                 </Select>
               </div>
             </div>
@@ -300,9 +300,9 @@ export default function Forecasts() {
             <Card className="bg-slate-900 border-slate-800">
               <CardHeader>
                 <CardTitle className="text-white flex items-center justify-between">
-                  <span>Demandes</span>
+                  <span>Requests</span>
                   <span className="text-sm font-normal text-slate-500">
-                    {filteredForecasts?.length ?? 0} résultat(s)
+                    {filteredForecasts?.length ?? 0} result(s)
                   </span>
                 </CardTitle>
               </CardHeader>
@@ -316,11 +316,11 @@ export default function Forecasts() {
                 ) : filteredForecasts?.length === 0 ? (
                   <div className="text-center py-12 animate-fade-in">
                     <BarChart3 className="mx-auto h-12 w-12 text-slate-700" />
-                    <p className="mt-4 text-lg font-medium text-slate-400">Aucune demande</p>
+                    <p className="mt-4 text-lg font-medium text-slate-400">No requests</p>
                     <p className="text-slate-500">
                       {searchQuery || statusFilter !== 'ALL'
-                        ? 'Essayez de modifier vos filtres.'
-                        : 'Créez votre première demande de provisionnement.'}
+                        ? 'Try adjusting your filters.'
+                        : 'Create your first provisioning request.'}
                     </p>
                   </div>
                 ) : (
@@ -342,11 +342,11 @@ export default function Forecasts() {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b border-slate-800">
-                            <th className="pb-3 text-left font-medium text-slate-400">Produit</th>
+                            <th className="pb-3 text-left font-medium text-slate-400">Product</th>
                             <th className="pb-3 text-left font-medium text-slate-400">Flavor</th>
-                            <th className="pb-3 text-left font-medium text-slate-400">Qté</th>
-                            <th className="pb-3 text-left font-medium text-slate-400">Demandeur</th>
-                            <th className="pb-3 text-left font-medium text-slate-400">Statut</th>
+                            <th className="pb-3 text-left font-medium text-slate-400">Qty</th>
+                            <th className="pb-3 text-left font-medium text-slate-400">Requester</th>
+                            <th className="pb-3 text-left font-medium text-slate-400">Status</th>
                             <th className="pb-3 text-left font-medium text-slate-400">Justification</th>
                             <th className="pb-3 text-right font-medium text-slate-400">Actions</th>
                           </tr>
@@ -423,14 +423,14 @@ export default function Forecasts() {
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-white">Nouvelle demande</DialogTitle>
+            <DialogTitle className="text-white">New request</DialogTitle>
             <DialogDescription className="text-slate-400">
-              Créez une demande de provisionnement pour un produit.
+              Create a provisioning request for a product.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Produit</label>
+              <label className="text-sm font-medium text-slate-300">Product</label>
               <Select
                 value={formData.productId}
                 onChange={(e) =>
@@ -439,7 +439,7 @@ export default function Forecasts() {
                 required
                 className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
               >
-                <option value="">Choisir un produit...</option>
+                <option value="">Choose a product...</option>
                 {products?.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -457,7 +457,7 @@ export default function Forecasts() {
                   required
                   className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
                 >
-                  <option value="">Choisir un flavor...</option>
+                  <option value="">Choose a flavor...</option>
                   {selectedProduct.flavors.map((f) => (
                     <option key={f.id} value={f.id}>
                       {f.name} ({f.vcpu} vCPU, {f.ramGb} GB)
@@ -469,11 +469,11 @@ export default function Forecasts() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Demandeur</label>
+                <label className="text-sm font-medium text-slate-300">Requester</label>
                 <Input
                   value={formData.requestedBy}
                   onChange={(e) => setFormData({ ...formData, requestedBy: e.target.value })}
-                  placeholder="Nom"
+                  placeholder="Name"
                   required
                   className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 min-h-[44px]"
                 />
@@ -484,7 +484,7 @@ export default function Forecasts() {
                   type="email"
                   value={formData.requesterEmail}
                   onChange={(e) => setFormData({ ...formData, requesterEmail: e.target.value })}
-                  placeholder="email@exemple.com"
+                  placeholder="email@example.com"
                   required
                   className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 min-h-[44px]"
                 />
@@ -492,7 +492,7 @@ export default function Forecasts() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Quantité</label>
+              <label className="text-sm font-medium text-slate-300">Quantity</label>
               <Input
                 type="number"
                 min={1}
@@ -508,7 +508,7 @@ export default function Forecasts() {
               <Textarea
                 value={formData.justification}
                 onChange={(e) => setFormData({ ...formData, justification: e.target.value })}
-                placeholder="Pourquoi avez-vous besoin de ce produit ?"
+                placeholder="Why do you need this product?"
                 rows={3}
                 className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600"
               />
@@ -521,14 +521,14 @@ export default function Forecasts() {
                 onClick={() => setIsCreateOpen(false)}
                 className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white w-full sm:w-auto min-h-[44px]"
               >
-                Annuler
+                Cancel
               </Button>
               <Button
                 type="submit"
                 disabled={createForecast.isPending}
                 className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]"
               >
-                {createForecast.isPending ? 'Création...' : 'Créer la demande'}
+                {createForecast.isPending ? 'Creating...' : 'Create request'}
               </Button>
             </DialogFooter>
           </form>
@@ -537,5 +537,3 @@ export default function Forecasts() {
     </div>
   );
 }
-
-

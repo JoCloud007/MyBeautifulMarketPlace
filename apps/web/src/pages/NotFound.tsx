@@ -9,21 +9,21 @@ export default function NotFound() {
         <AlertCircle className="h-10 w-10 text-slate-500" />
       </div>
       <h1 className="mt-6 text-5xl sm:text-6xl font-bold text-white">404</h1>
-      <p className="mt-2 text-lg sm:text-xl text-slate-400">Page introuvable</p>
+      <p className="mt-2 text-lg sm:text-xl text-slate-400">Page not found</p>
       <p className="mt-1 max-w-md text-sm text-slate-500">
-        La page que vous recherchez n'existe pas ou a été déplacée.
+        The page you are looking for does not exist or has been moved.
       </p>
       <div className="mt-8 flex flex-col sm:flex-row gap-3">
         <Link to="/">
           <Button className="gap-2 min-h-[44px] w-full sm:w-auto">
             <Home className="h-4 w-4" />
-            Retour à l'accueil
+            Back to home
           </Button>
         </Link>
         <Link to="/marketplace">
           <Button variant="outline" className="gap-2 border-slate-700 text-slate-300 hover:bg-slate-800 min-h-[44px] w-full sm:w-auto">
             <Search className="h-4 w-4" />
-            Explorer le catalogue
+            Explore catalog
           </Button>
         </Link>
       </div>

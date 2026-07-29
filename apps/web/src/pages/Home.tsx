@@ -8,31 +8,31 @@ import { cn } from '@/lib/utils';
 const features = [
   {
     icon: Server,
-    title: 'Infrastructure Complète',
-    description: 'VMs, bare metal, stockage et virtualisation — tout en un seul catalogue.',
+    title: 'Complete Infrastructure',
+    description: 'VMs, bare metal, storage and virtualization — all in one catalog.',
   },
   {
     icon: Zap,
-    title: 'Provisionnement Rapide',
-    description: 'Déployez vos ressources en quelques clics avec des templates pré-configurés.',
+    title: 'Fast Provisioning',
+    description: 'Deploy your resources in a few clicks with pre-configured templates.',
   },
   {
     icon: Shield,
-    title: 'Gouvernance Intégrée',
-    description: "Workflows d'approbation et traçabilité complète des demandes.",
+    title: 'Integrated Governance',
+    description: 'Approval workflows and full request traceability.',
   },
   {
     icon: Cloud,
     title: 'Multi-Cloud Ready',
-    description: 'Compatible avec les principaux hyperviseurs et plateformes cloud.',
+    description: 'Compatible with major hypervisors and cloud platforms.',
   },
 ];
 
 const stats = [
-  { value: '8+', label: 'Produits disponibles', icon: TrendingUp },
-  { value: '4', label: 'Catégories', icon: Cloud },
-  { value: '4', label: 'Flavors par produit', icon: Zap },
-  { value: '24/7', label: 'Disponibilité', icon: Clock },
+  { value: '8+', label: 'Available products', icon: TrendingUp },
+  { value: '4', label: 'Categories', icon: Cloud },
+  { value: '4', label: 'Flavors per product', icon: Zap },
+  { value: '24/7', label: 'Availability', icon: Clock },
 ];
 
 function AnimatedSection({ children, className, delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
@@ -59,26 +59,26 @@ export default function Home() {
       <section className="text-center pt-4 sm:pt-8">
         <div className="animate-fade-in-up">
           <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl">
-            Votre Marketplace{' '}
+            Your Marketplace{' '}
             <span className="text-blue-500">IaaS</span>
           </h1>
         </div>
         <div className="animate-fade-in-up stagger-2">
           <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-400 sm:text-xl">
-            Découvrez, provisionnez et gérez vos ressources d'infrastructure cloud
-            depuis une interface unique et moderne.
+            Discover, provision and manage your cloud infrastructure resources
+            from a single modern interface.
           </p>
         </div>
         <div className="animate-fade-in-up stagger-3 mt-8 flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
           <Link to="/marketplace">
             <Button size="lg" className="gap-2 w-full sm:w-auto min-h-[44px]">
-              Explorer le catalogue
+              Explore catalog
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
           <Link to="/forecasts">
             <Button variant="outline" size="lg" className="w-full sm:w-auto min-h-[44px]">
-              Voir les forecasts
+              View forecasts
             </Button>
           </Link>
         </div>
@@ -88,7 +88,7 @@ export default function Home() {
       <AnimatedSection>
         <section>
           <h2 className="mb-8 text-center text-2xl font-bold text-white sm:text-3xl">
-            Pourquoi CloudMarket ?
+            Why CloudMarket?
           </h2>
           <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {features.map((feature, i) => {
@@ -139,16 +139,16 @@ export default function Home() {
       <AnimatedSection delay={100}>
         <section className="rounded-2xl bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-blue-500/20 p-8 sm:p-12 text-center">
           <h2 className="text-2xl sm:text-3xl font-bold text-white">
-            Prêt à déployer votre infrastructure ?
+            Ready to deploy your infrastructure?
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-slate-400">
-            Parcourez notre catalogue de produits cloud et soumettez vos demandes de provisionnement en quelques clics.
+            Browse our cloud product catalog and submit your provisioning requests in a few clicks.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row justify-center gap-3">
             <Link to="/marketplace">
               <Button size="lg" className="gap-2 w-full sm:w-auto min-h-[44px]">
                 <Cloud className="h-4 w-4" />
-                Voir le catalogue
+                View catalog
               </Button>
             </Link>
             <Link to="/admin">

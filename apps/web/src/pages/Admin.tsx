@@ -61,9 +61,9 @@ import {
 import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ApprovalStatus, { label: string; color: string }> = {
-  PENDING: { label: 'En attente', color: 'border-amber-500/20 text-amber-500' },
-  APPROVED: { label: 'Approuvé', color: 'border-emerald-500/20 text-emerald-500' },
-  REJECTED: { label: 'Rejeté', color: 'border-red-500/20 text-red-500' },
+  PENDING: { label: 'Pending', color: 'border-amber-500/20 text-amber-500' },
+  APPROVED: { label: 'Approved', color: 'border-emerald-500/20 text-emerald-500' },
+  REJECTED: { label: 'Rejected', color: 'border-red-500/20 text-red-500' },
 };
 
 function cn(...inputs: (string | undefined | false | null)[]) {
@@ -157,14 +157,14 @@ function DashboardSection() {
   const { data: dashboard, isLoading, isError, refetch } = useAdminDashboard();
 
   const countCards = [
-    { label: 'Produits', value: dashboard?.counts.products ?? 0, icon: Package, color: 'text-blue-400' },
-    { label: 'Catégories', value: dashboard?.counts.categories ?? 0, icon: Layers, color: 'text-purple-400' },
+    { label: 'Products', value: dashboard?.counts.products ?? 0, icon: Package, color: 'text-blue-400' },
+    { label: 'Categories', value: dashboard?.counts.categories ?? 0, icon: Layers, color: 'text-purple-400' },
     { label: 'Forecasts', value: dashboard?.counts.forecasts ?? 0, icon: BarChart3, color: 'text-amber-400' },
-    { label: 'Utilisateurs', value: dashboard?.counts.users ?? 0, icon: Users, color: 'text-emerald-400' },
+    { label: 'Users', value: dashboard?.counts.users ?? 0, icon: Users, color: 'text-emerald-400' },
   ];
 
   if (isError) {
-    return <QueryError message="Impossible de charger le dashboard." onRetry={refetch} />;
+    return <QueryError message="Unable to load dashboard." onRetry={refetch} />;
   }
 
   return (
@@ -200,7 +200,7 @@ function DashboardSection() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-white">
             <Activity className="h-5 w-5 text-blue-500" />
-            Forecasts récents
+            Recent forecasts
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -211,16 +211,16 @@ function DashboardSection() {
               ))}
             </div>
           ) : dashboard?.recentForecasts?.length === 0 ? (
-            <p className="text-center text-slate-500 py-8">Aucune activité récente.</p>
+            <p className="text-center text-slate-500 py-8">No recent activity.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-800">
-                    <th className="pb-3 text-left font-medium text-slate-400">Produit</th>
+                    <th className="pb-3 text-left font-medium text-slate-400">Product</th>
                     <th className="pb-3 text-left font-medium text-slate-400">Flavor</th>
-                    <th className="pb-3 text-left font-medium text-slate-400">Qté</th>
-                    <th className="pb-3 text-left font-medium text-slate-400">Statut</th>
+                    <th className="pb-3 text-left font-medium text-slate-400">Qty</th>
+                    <th className="pb-3 text-left font-medium text-slate-400">Status</th>
                     <th className="pb-3 text-left font-medium text-slate-400">Date</th>
                   </tr>
                 </thead>
@@ -236,7 +236,7 @@ function DashboardSection() {
                         </Badge>
                       </td>
                       <td className="py-3 text-slate-500">
-                        {new Date(forecast.createdAt).toLocaleDateString('fr-FR')}
+                        {new Date(forecast.createdAt).toLocaleDateString('en-US')}
                       </td>
                     </tr>
                   ))}
@@ -289,10 +289,10 @@ function ProductsSection() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Supprimer ce produit ?')) await deleteProduct.mutateAsync(id);
+    if (confirm('Delete this product?')) await deleteProduct.mutateAsync(id);
   };
 
-  if (isError) return <QueryError message="Impossible de charger les produits." onRetry={refetch} />;
+  if (isError) return <QueryError message="Unable to load products." onRetry={refetch} />;
 
   const mobileCards = products?.map((product) => (
     <MobileCard key={product.id}>
@@ -302,7 +302,7 @@ function ProductsSection() {
           <p className="text-sm text-slate-400">{product.category?.name}</p>
         </div>
         <Badge variant="outline" className={product.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
-          {product.isActive ? 'Actif' : 'Inactif'}
+          {product.isActive ? 'Active' : 'Inactive'}
         </Badge>
       </div>
       <div className="mt-2 text-sm text-slate-500">
@@ -324,15 +324,15 @@ function ProductsSection() {
     <div className="space-y-4">
       <div className="flex justify-end">
         <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]">
-          <Plus className="mr-2 h-4 w-4" /> Ajouter
+          <Plus className="mr-2 h-4 w-4" /> Add
         </Button>
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable
-            headers={['Nom', 'Catégorie', 'OS', 'Flavors', 'Actif']}
+            headers={['Name', 'Category', 'OS', 'Flavors', 'Active']}
             isLoading={isLoading}
-            emptyMessage="Aucun produit"
+            emptyMessage="No products"
             mobileCards={mobileCards}
           >
             {products?.map((product) => (
@@ -343,7 +343,7 @@ function ProductsSection() {
                 <td className="py-3 text-slate-400">{product.flavors?.length ?? 0}</td>
                 <td className="py-3">
                   <Badge variant="outline" className={product.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
-                    {product.isActive ? 'Actif' : 'Inactif'}
+                    {product.isActive ? 'Active' : 'Inactive'}
                   </Badge>
                 </td>
                 <td className="py-3 text-right">
@@ -365,21 +365,21 @@ function ProductsSection() {
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-white">{editing ? 'Modifier le produit' : 'Nouveau produit'}</DialogTitle>
+            <DialogTitle className="text-white">{editing ? 'Edit product' : 'New product'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Nom</label>
+              <label className="text-sm font-medium text-slate-300">Name</label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-300">Slug</label>
-              <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="auto-généré si vide" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+              <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="auto-generated if empty" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Catégorie</label>
+              <label className="text-sm font-medium text-slate-300">Category</label>
               <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
-                <option value="">Choisir...</option>
+                <option value="">Choose...</option>
                 {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
             </div>
@@ -401,12 +401,12 @@ function ProductsSection() {
             </div>
             <div className="flex items-center gap-2">
               <input type="checkbox" id="isActive" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
-              <label htmlFor="isActive" className="text-sm text-slate-300">Actif</label>
+              <label htmlFor="isActive" className="text-sm text-slate-300">Active</label>
             </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Annuler</Button>
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
               <Button type="submit" disabled={createProduct.isPending || updateProduct.isPending} className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">
-                {editing ? 'Modifier' : 'Créer'}
+                {editing ? 'Save' : 'Create'}
               </Button>
             </DialogFooter>
           </form>
@@ -440,10 +440,10 @@ function CategoriesSection() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Supprimer cette catégorie ?')) await deleteCategory.mutateAsync(id);
+    if (confirm('Delete this category?')) await deleteCategory.mutateAsync(id);
   };
 
-  if (isError) return <QueryError message="Impossible de charger les catégories." onRetry={refetch} />;
+  if (isError) return <QueryError message="Unable to load categories." onRetry={refetch} />;
 
   const mobileCards = categories?.map((cat) => (
     <MobileCard key={cat.id}>
@@ -452,7 +452,7 @@ function CategoriesSection() {
           <p className="font-medium text-white">{cat.name}</p>
           <p className="text-sm text-slate-400">{cat.slug}</p>
         </div>
-        <span className="text-sm text-slate-500">{(cat as any)._count?.products ?? 0} produits</span>
+        <span className="text-sm text-slate-500">{(cat as any)._count?.products ?? 0} products</span>
       </div>
       <div className="mt-3 flex justify-end gap-1">
         <Button size="sm" variant="ghost" onClick={() => openEdit(cat)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
@@ -464,11 +464,11 @@ function CategoriesSection() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Ajouter</Button>
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add</Button>
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Nom', 'Slug', 'Description', 'Produits']} isLoading={isLoading} emptyMessage="Aucune catégorie" mobileCards={mobileCards}>
+          <ResponsiveTable headers={['Name', 'Slug', 'Description', 'Products']} isLoading={isLoading} emptyMessage="No categories" mobileCards={mobileCards}>
             {categories?.map((cat) => (
               <tr key={cat.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{cat.name}</td>
@@ -489,15 +489,15 @@ function CategoriesSection() {
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
-          <DialogHeader><DialogTitle className="text-white">{editing ? 'Modifier la catégorie' : 'Nouvelle catégorie'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit category' : 'New category'}</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Nom</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Slug</label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="auto-généré si vide" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Slug</label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="auto-generated if empty" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white" /></div>
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Icône (Cpu, Database, Server, Monitor)</label><Input value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Icon (Cpu, Database, Server, Monitor)</label><Input value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Annuler</Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Modifier' : 'Créer'}</Button>
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -530,10 +530,10 @@ function FlavorsSection() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Supprimer ce flavor ?')) await deleteFlavor.mutateAsync(id);
+    if (confirm('Delete this flavor?')) await deleteFlavor.mutateAsync(id);
   };
 
-  if (isError) return <QueryError message="Impossible de charger les flavors." onRetry={refetch} />;
+  if (isError) return <QueryError message="Unable to load flavors." onRetry={refetch} />;
 
   const mobileCards = flavors?.map((flavor) => (
     <MobileCard key={flavor.id}>
@@ -556,11 +556,11 @@ function FlavorsSection() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Ajouter</Button>
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add</Button>
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Nom', 'Produit', 'vCPU', 'RAM', 'Description']} isLoading={isLoading} emptyMessage="Aucun flavor" mobileCards={mobileCards}>
+          <ResponsiveTable headers={['Name', 'Product', 'vCPU', 'RAM', 'Description']} isLoading={isLoading} emptyMessage="No flavors" mobileCards={mobileCards}>
             {flavors?.map((flavor) => (
               <tr key={flavor.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{flavor.name}</td>
@@ -582,12 +582,12 @@ function FlavorsSection() {
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
-          <DialogHeader><DialogTitle className="text-white">{editing ? 'Modifier le flavor' : 'Nouveau flavor'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit flavor' : 'New flavor'}</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Nom</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Produit</label>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Product</label>
               <Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
-                <option value="">Choisir...</option>
+                <option value="">Choose...</option>
                 {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
             </div>
@@ -597,8 +597,8 @@ function FlavorsSection() {
             </div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white" /></div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Annuler</Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Modifier' : 'Créer'}</Button>
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -631,10 +631,10 @@ function DependenciesSection() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Supprimer cette dépendance ?')) await deleteDependency.mutateAsync(id);
+    if (confirm('Delete this dependency?')) await deleteDependency.mutateAsync(id);
   };
 
-  if (isError) return <QueryError message="Impossible de charger les dépendances." onRetry={refetch} />;
+  if (isError) return <QueryError message="Unable to load dependencies." onRetry={refetch} />;
 
   const mobileCards = dependencies?.map((dep) => (
     <MobileCard key={dep.id}>
@@ -644,7 +644,7 @@ function DependenciesSection() {
           <p className="text-sm text-slate-400">→ {dep.dependsOn?.name}</p>
         </div>
         <Badge variant="outline" className={dep.type === 'REQUIRED' ? 'border-amber-500/20 text-amber-500' : 'border-emerald-500/20 text-emerald-500'}>
-          {dep.type === 'REQUIRED' ? 'Requis' : 'Recommandé'}
+          {dep.type === 'REQUIRED' ? 'Required' : 'Recommended'}
         </Badge>
       </div>
       <div className="mt-3 flex justify-end gap-1">
@@ -657,18 +657,18 @@ function DependenciesSection() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Ajouter</Button>
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add</Button>
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Produit', 'Dépend de', 'Type', 'Description']} isLoading={isLoading} emptyMessage="Aucune dépendance" mobileCards={mobileCards}>
+          <ResponsiveTable headers={['Product', 'Depends on', 'Type', 'Description']} isLoading={isLoading} emptyMessage="No dependencies" mobileCards={mobileCards}>
             {dependencies?.map((dep) => (
               <tr key={dep.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{dep.product?.name}</td>
                 <td className="py-3 text-slate-400">{dep.dependsOn?.name}</td>
                 <td className="py-3">
                   <Badge variant="outline" className={dep.type === 'REQUIRED' ? 'border-amber-500/20 text-amber-500' : 'border-emerald-500/20 text-emerald-500'}>
-                    {dep.type === 'REQUIRED' ? 'Requis' : 'Recommandé'}
+                    {dep.type === 'REQUIRED' ? 'Required' : 'Recommended'}
                   </Badge>
                 </td>
                 <td className="py-3 text-slate-400 max-w-xs truncate">{dep.description || '—'}</td>
@@ -686,30 +686,30 @@ function DependenciesSection() {
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-white">{editing ? 'Modifier' : 'Nouvelle dépendance'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit' : 'New dependency'}</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Produit</label>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Product</label>
               <Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
-                <option value="">Choisir...</option>
+                <option value="">Choose...</option>
                 {products?.map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
               </Select>
             </div>
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Dépend de</label>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Depends on</label>
               <Select value={form.dependsOnId} onChange={(e) => setForm({ ...form, dependsOnId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
-                <option value="">Choisir...</option>
+                <option value="">Choose...</option>
                 {products?.filter(p => p.id !== form.productId).map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
               </Select>
             </div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Type</label>
               <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as 'REQUIRED' | 'RECOMMENDED' })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
-                <option value="REQUIRED">Requis</option>
-                <option value="RECOMMENDED">Recommandé</option>
+                <option value="REQUIRED">Required</option>
+                <option value="RECOMMENDED">Recommended</option>
               </Select>
             </div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white" /></div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Annuler</Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Modifier' : 'Créer'}</Button>
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -737,14 +737,14 @@ function ForecastsAdminSection() {
   };
 
   const handleReject = async (id: string) => {
-    await updateForecast.mutateAsync({ id, status: 'REJECTED' as Forecast['status'], reviewedBy: 'Admin', rejectionReason: 'Rejeté via admin' });
+    await updateForecast.mutateAsync({ id, status: 'REJECTED' as Forecast['status'], reviewedBy: 'Admin', rejectionReason: 'Rejected via admin' });
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Supprimer cette demande ?')) await deleteForecast.mutateAsync(id);
+    if (confirm('Delete this request?')) await deleteForecast.mutateAsync(id);
   };
 
-  if (isError) return <QueryError message="Impossible de charger les forecasts." onRetry={refetch} />;
+  if (isError) return <QueryError message="Unable to load forecasts." onRetry={refetch} />;
 
   const mobileCards = filtered?.map((forecast) => (
     <MobileCard key={forecast.id}>
@@ -759,7 +759,7 @@ function ForecastsAdminSection() {
       </div>
       <div className="mt-2 text-sm text-slate-400">
         <p>{forecast.requestedBy}</p>
-        <p className="text-xs text-slate-600">{new Date(forecast.createdAt).toLocaleDateString('fr-FR')}</p>
+        <p className="text-xs text-slate-600">{new Date(forecast.createdAt).toLocaleDateString('en-US')}</p>
       </div>
       <div className="mt-3 flex justify-end gap-1">
         {forecast.status === 'PENDING' && (
@@ -778,13 +778,13 @@ function ForecastsAdminSection() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-          <Input placeholder="Rechercher..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]" />
+          <Input placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]" />
         </div>
         <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as ApprovalStatus | 'ALL')} className="w-40 bg-slate-900 border-slate-700 text-white min-h-[44px]">
-          <option value="ALL">Tous les statuts</option>
-          <option value="PENDING">En attente</option>
-          <option value="APPROVED">Approuvé</option>
-          <option value="REJECTED">Rejeté</option>
+          <option value="ALL">All statuses</option>
+          <option value="PENDING">Pending</option>
+          <option value="APPROVED">Approved</option>
+          <option value="REJECTED">Rejected</option>
         </Select>
       </div>
       <Card className="bg-slate-900 border-slate-800">
@@ -796,7 +796,7 @@ function ForecastsAdminSection() {
           ) : filtered?.length === 0 ? (
             <div className="text-center py-12">
               <BarChart3 className="mx-auto h-12 w-12 text-slate-700" />
-              <p className="mt-4 text-lg font-medium text-slate-400">Aucune demande</p>
+              <p className="mt-4 text-lg font-medium text-slate-400">No requests</p>
             </div>
           ) : (
             <>
@@ -805,11 +805,11 @@ function ForecastsAdminSection() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-800">
-                      <th className="pb-3 text-left font-medium text-slate-400">Produit</th>
+                      <th className="pb-3 text-left font-medium text-slate-400">Product</th>
                       <th className="pb-3 text-left font-medium text-slate-400">Flavor</th>
-                      <th className="pb-3 text-left font-medium text-slate-400">Qté</th>
-                      <th className="pb-3 text-left font-medium text-slate-400">Demandeur</th>
-                      <th className="pb-3 text-left font-medium text-slate-400">Statut</th>
+                      <th className="pb-3 text-left font-medium text-slate-400">Qty</th>
+                      <th className="pb-3 text-left font-medium text-slate-400">Requester</th>
+                      <th className="pb-3 text-left font-medium text-slate-400">Status</th>
                       <th className="pb-3 text-left font-medium text-slate-400">Date</th>
                       <th className="pb-3 text-right font-medium text-slate-400">Actions</th>
                     </tr>
@@ -826,7 +826,7 @@ function ForecastsAdminSection() {
                             {statusConfig[forecast.status].label}
                           </Badge>
                         </td>
-                        <td className="py-3 text-slate-500">{new Date(forecast.createdAt).toLocaleDateString('fr-FR')}</td>
+                        <td className="py-3 text-slate-500">{new Date(forecast.createdAt).toLocaleDateString('en-US')}</td>
                         <td className="py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
                             {forecast.status === 'PENDING' && (
@@ -874,10 +874,10 @@ function UsersSection() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Supprimer cet utilisateur ?')) await deleteUser.mutateAsync(id);
+    if (confirm('Delete this user?')) await deleteUser.mutateAsync(id);
   };
 
-  if (isError) return <QueryError message="Impossible de charger les utilisateurs." onRetry={refetch} />;
+  if (isError) return <QueryError message="Unable to load users." onRetry={refetch} />;
 
   const mobileCards = users?.map((u) => (
     <MobileCard key={u.id}>
@@ -890,7 +890,7 @@ function UsersSection() {
           {u.role}
         </Badge>
       </div>
-      <p className="mt-2 text-xs text-slate-500">{new Date(u.createdAt).toLocaleDateString('fr-FR')}</p>
+      <p className="mt-2 text-xs text-slate-500">{new Date(u.createdAt).toLocaleDateString('en-US')}</p>
       <div className="mt-3 flex justify-end gap-1">
         <Button size="sm" variant="ghost" onClick={() => openEdit(u)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
         <Button size="sm" variant="ghost" onClick={() => handleDelete(u.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
@@ -901,11 +901,11 @@ function UsersSection() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Ajouter</Button>
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add</Button>
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Nom', 'Email', 'Rôle', 'Date']} isLoading={isLoading} emptyMessage="Aucun utilisateur" mobileCards={mobileCards}>
+          <ResponsiveTable headers={['Name', 'Email', 'Role', 'Date']} isLoading={isLoading} emptyMessage="No users" mobileCards={mobileCards}>
             {users?.map((u) => (
               <tr key={u.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{u.name}</td>
@@ -915,7 +915,7 @@ function UsersSection() {
                     {u.role}
                   </Badge>
                 </td>
-                <td className="py-3 text-slate-400">{new Date(u.createdAt).toLocaleDateString('fr-FR')}</td>
+                <td className="py-3 text-slate-400">{new Date(u.createdAt).toLocaleDateString('en-US')}</td>
                 <td className="py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button size="sm" variant="ghost" onClick={() => openEdit(u)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
@@ -930,19 +930,19 @@ function UsersSection() {
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
-          <DialogHeader><DialogTitle className="text-white">{editing ? 'Modifier' : 'Nouvel utilisateur'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit' : 'New user'}</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Nom</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Email</label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Rôle</label>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Role</label>
               <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as 'ADMIN' | 'USER' })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
-                <option value="USER">Utilisateur</option>
-                <option value="ADMIN">Administrateur</option>
+                <option value="USER">User</option>
+                <option value="ADMIN">Administrator</option>
               </Select>
             </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Annuler</Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Modifier' : 'Créer'}</Button>
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -957,19 +957,19 @@ export default function Admin() {
 
   const tabs = [
     { value: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-    { value: 'products', label: 'Produits', icon: Package },
-    { value: 'categories', label: 'Catégories', icon: Layers },
+    { value: 'products', label: 'Products', icon: Package },
+    { value: 'categories', label: 'Categories', icon: Layers },
     { value: 'flavors', label: 'Flavors', icon: Cpu },
-    { value: 'dependencies', label: 'Dépendances', icon: Link2 },
+    { value: 'dependencies', label: 'Dependencies', icon: Link2 },
     { value: 'forecasts', label: 'Forecasts', icon: Activity },
-    { value: 'users', label: 'Utilisateurs', icon: UserCog },
+    { value: 'users', label: 'Users', icon: UserCog },
   ];
 
   return (
     <div className="space-y-6">
       <div className="animate-fade-in-up">
         <h1 className="text-3xl font-bold text-white">Administration</h1>
-        <p className="mt-2 text-slate-400">Gérez la plateforme CloudMarket.</p>
+        <p className="mt-2 text-slate-400">Manage the CloudMarket platform.</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

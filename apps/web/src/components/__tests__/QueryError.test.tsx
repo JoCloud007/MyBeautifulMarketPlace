@@ -6,8 +6,8 @@ import QueryError from '@/components/QueryError';
 describe('QueryError', () => {
   it('renders default error message', () => {
     render(<QueryError />);
-    expect(screen.getByText(/erreur de chargement/i)).toBeInTheDocument();
-    expect(screen.getByText(/impossible de charger les données/i)).toBeInTheDocument();
+    expect(screen.getByText(/loading error/i)).toBeInTheDocument();
+    expect(screen.getByText(/unable to load data/i)).toBeInTheDocument();
   });
 
   it('renders custom message', () => {
@@ -28,7 +28,7 @@ describe('QueryError', () => {
   it('shows retry button when onRetry is provided', () => {
     const onRetry = vi.fn();
     render(<QueryError onRetry={onRetry} />);
-    expect(screen.getByRole('button', { name: /réessayer/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
   });
 
   it('calls onRetry when retry button clicked', async () => {
@@ -36,7 +36,7 @@ describe('QueryError', () => {
     const user = userEvent.setup();
     render(<QueryError onRetry={onRetry} />);
 
-    const retryBtn = screen.getByRole('button', { name: /réessayer/i });
+    const retryBtn = screen.getByRole('button', { name: /retry/i });
     await user.click(retryBtn);
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
@@ -70,7 +70,7 @@ describe('QueryError', () => {
   it('retry button has outline style', async () => {
     const onRetry = vi.fn();
     render(<QueryError onRetry={onRetry} />);
-    const retryBtn = screen.getByRole('button', { name: /réessayer/i });
+    const retryBtn = screen.getByRole('button', { name: /retry/i });
     expect(retryBtn.classList.contains('border-slate-700')).toBe(true);
   });
 });

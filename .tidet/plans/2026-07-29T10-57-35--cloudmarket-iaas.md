@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 slug: 2026-07-29T10-57-35--cloudmarket-iaas
-title: Plan de Construction - CloudMarket IaaS
+title: Build Plan - CloudMarket IaaS
 status: executed
 created_at: 2026-07-29T09:04:08.334255Z
 decided_at: 2026-07-29T09:12:47.12893Z
@@ -10,91 +10,91 @@ run_id: 7828de0e-cf1d-4095-a532-43ebb4e378b7
 executing_run_id: 99e72ac1-1ac5-470f-a1eb-0a4b9e28c314
 ---
 
-# Plan de Construction - CloudMarket IaaS
+# Build Plan - CloudMarket IaaS
 
-## Objectif
-Construire une marketplace IaaS complète avec :
-- Interface client moderne avec filtres dynamiques
-- Fiches produits (description, documentation, roadmap, dépendances)
-- Dashboard de forecast avec statuts d'approbation
-- Interface d'administration pour gérer les produits
+## Objective
+Build a complete IaaS marketplace with:
+- Modern client interface with dynamic filters
+- Product pages (description, documentation, roadmap, dependencies)
+- Forecast dashboard with approval statuses
+- Administration interface for managing products
 
 ---
 
-## Stack Technique
+## Tech Stack
 
 ### Frontend
 - **React 18** + **TypeScript** + **Vite**
-- **Tailwind CSS** pour le styling
-- **shadcn/ui** pour les composants UI (tables, dialogs, tabs, badges, etc.)
-- **React Router** pour la navigation
-- **TanStack Query** pour la gestion des données serveur
-- **Zustand** pour le state management local
-- **Lucide React** pour les icônes
-- **Recharts** pour les graphiques de stats
+- **Tailwind CSS** for styling
+- **shadcn/ui** for UI components (tables, dialogs, tabs, badges, etc.)
+- **React Router** for navigation
+- **TanStack Query** for server state management
+- **Zustand** for local state management
+- **Lucide React** for icons
+- **Recharts** for stats charts
 
 ### Backend
 - **Node.js** + **Express** + **TypeScript**
-- **Prisma ORM** pour la base de données
-- **Zod** pour la validation des schémas API
-- **CORS** + **Helmet** pour la sécurité
+- **Prisma ORM** for the database
+- **Zod** for API schema validation
+- **CORS** + **Helmet** for security
 
-### Containerisation
-- **Docker Compose** — 3 services containerisés : `web` (React), `api` (Express), `db` (PostgreSQL)
-- Chaque app possède son propre `Dockerfile`
-- Le frontend est servi via Nginx en production (Vite preview en dev)
-- Hot-reload activé via volumes bind pour le développement
+### Containerization
+- **Docker Compose** — 3 containerized services: `web` (React), `api` (Express), `db` (PostgreSQL)
+- Each app has its own `Dockerfile`
+- The frontend is served via Nginx in production (Vite preview in dev)
+- Hot-reload enabled via bind volumes for development
 
-### Base de Données
-- **PostgreSQL** (service `db` dans Docker Compose)
-- Schéma relationnel avec tables pour produits, catégories, flavors, dépendances, forecasts
-- Initialisation automatique via `prisma migrate dev` au démarrage de l'API
+### Database
+- **PostgreSQL** (service `db` in Docker Compose)
+- Relational schema with tables for products, categories, flavors, dependencies, forecasts
+- Automatic initialization via `prisma migrate dev` at API startup
 
 ---
 
-## Structure du Projet
+## Project Structure
 
 ```
 cloudmarket/
-├── docker-compose.yml              # Tous les services (web, api, db)
+├── docker-compose.yml              # All services (web, api, db)
 ├── package.json                    # Root workspace
 ├── apps/
 │   ├── web/                        # Frontend React
 │   │   ├── Dockerfile              # Multi-stage build (Node + Nginx)
-│   │   ├── docker-entrypoint.sh    # Attente de l'API avant démarrage
+│   │   ├── docker-entrypoint.sh    # Wait for API before startup
 │   │   ├── src/
-│   │   │   ├── components/         # Composants réutilisables
+│   │   │   ├── components/         # Reusable components
 │   │   │   │   ├── ui/             # shadcn/ui components
 │   │   │   │   ├── layout/         # Header, Sidebar, Navigation
-│   │   │   │   ├── marketplace/    # Filtres, grille produits, carte produit
-│   │   │   │   ├── product/        # Fiche produit (tabs, dépendances)
-│   │   │   │   ├── forecast/       # Dashboard forecast, table statuts
-│   │   │   │   └── admin/          # CRUD produits, catégories, flavors
+│   │   │   │   ├── marketplace/    # Filters, product grid, product card
+│   │   │   │   ├── product/        # Product page (tabs, dependencies)
+│   │   │   │   ├── forecast/       # Forecast dashboard, status table
+│   │   │   │   └── admin/          # CRUD products, categories, flavors
 │   │   │   ├── pages/              # Pages (route-level)
-│   │   │   ├── hooks/              # Custom hooks ( TanStack Query)
+│   │   │   ├── hooks/              # Custom hooks (TanStack Query)
 │   │   │   ├── stores/             # Zustand stores
-│   │   │   ├── types/              # Types TypeScript
-│   │   │   ├── lib/                # Utilitaires
+│   │   │   ├── types/              # TypeScript types
+│   │   │   ├── lib/                # Utilities
 │   │   │   └── App.tsx             # Router + layout
 │   │   ├── index.html
 │   │   └── vite.config.ts
 │   └── api/                        # Backend Express
-│       ├── Dockerfile              # Multi-stage build Node.js
-│       ├── docker-entrypoint.sh    # Prisma migrate + seed avant démarrage
+│       ├── Dockerfile              # Multi-stage Node.js build
+│       ├── docker-entrypoint.sh    # Prisma migrate + seed before startup
 │       ├── src/
 │       │   ├── routes/             # API routes (REST)
 │       │   ├── controllers/        # Business logic
 │       │   ├── services/           # Database services (Prisma)
 │       │   ├── middleware/         # Auth, validation, error handling
 │       │   ├── validators/         # Zod schemas
-│       │   ├── types/              # Types API
+│       │   ├── types/              # API types
 │       │   ├── prisma/
 │       │   │   ├── schema.prisma   # Database schema
-│       │   │   └── seed.ts         # Données de test
-│       │   └── index.ts            # Entry point Express
+│       │   │   └── seed.ts         # Test data
+│       │   └── index.ts            # Express entry point
 │       └── package.json
 └── packages/
-    └── shared-types/               # Types partagés front/back
+    └── shared-types/               # Shared front/back types
 ```
 
 ---
@@ -103,184 +103,184 @@ cloudmarket/
 
 ### Services
 - **`db`** — PostgreSQL 16 (`postgres:16-alpine`)
-  - Port exposé : `5432`
-  - Volume persistant : `postgres_data`
-  - Variables d'environnement : `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+  - Exposed port: `5432`
+  - Persistent volume: `postgres_data`
+  - Environment variables: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
 
-- **`api`** — Backend Express
-  - Build depuis `apps/api/Dockerfile`
-  - Port exposé : `3001`
-  - Variables : `DATABASE_URL`, `PORT`, `NODE_ENV`
-  - Volume bind pour hot-reload du code source
-  - Healthcheck sur `/api/health`
-  - Dépend de `db` (condition : service healthy)
-  - Entrypoint : `prisma migrate dev` + `prisma db seed` + `npm run dev`
+- **`api`** — Express backend
+  - Build from `apps/api/Dockerfile`
+  - Exposed port: `3001`
+  - Variables: `DATABASE_URL`, `PORT`, `NODE_ENV`
+  - Bind volume for hot-reload of source code
+  - Healthcheck on `/api/health`
+  - Depends on `db` (condition: service healthy)
+  - Entrypoint: `prisma migrate dev` + `prisma db seed` + `npm run dev`
 
-- **`web`** — Frontend React (Nginx)
-  - Build depuis `apps/web/Dockerfile`
-  - Port exposé : `80` (ou `3000` en dev via Vite preview)
-  - Variables : `VITE_API_URL=http://api:3001`
-  - Volume bind pour hot-reload du code source (mode dev)
-  - Dépend de `api` (attente via `dockerize` ou script wait-for)
-  - Nginx reverse proxy vers l'API pour les routes `/api/*`
+- **`web`** — React frontend (Nginx)
+  - Build from `apps/web/Dockerfile`
+  - Exposed port: `80` (or `3000` in dev via Vite preview)
+  - Variables: `VITE_API_URL=http://api:3001`
+  - Bind volume for hot-reload of source code (dev mode)
+  - Depends on `api` (wait via `dockerize` or wait-for script)
+  - Nginx reverse proxy to the API for `/api/*` routes
 
-### Commandes de développement
+### Development Commands
 ```bash
-docker compose up --build          # Build et démarre tout
-docker compose up -d               # Mode détaché
-docker compose logs -f api         # Logs du backend
-docker compose exec api npx prisma studio   # Ouvre Prisma Studio
-docker compose down -v             # Arrête et supprime les volumes
+docker compose up --build          # Build and start everything
+docker compose up -d               # Detached mode
+docker compose logs -f api         # Backend logs
+docker compose exec api npx prisma studio   # Open Prisma Studio
+docker compose down -v             # Stop and remove volumes
 ```
 
-## Schéma Base de Données (Prisma)
+## Database Schema (Prisma)
 
-### Tables principales
+### Main Tables
 
-1. **Category** — Catégories de produits (Compute, Data, Hypervisor, Citrix)
-2. **Product** — Produits IaaS
+1. **Category** — Product categories (Compute, Data, Hypervisor, Citrix)
+2. **Product** — IaaS products
    - name, description, shortDescription, categoryId
    - version, sla, status (active/draft/archived)
    - documentation (markdown), roadmap (JSON)
-   - tags (array), icon/color pour l'UI
-3. **Flavor** — Configurations/tailles (Small, Medium, Large, etc.)
+   - tags (array), icon/color for the UI
+3. **Flavor** — Configurations/sizes (Small, Medium, Large, etc.)
    - name, specs (vCPU, RAM, storage), productId
-4. **Dependency** — Dépendances entre produits
-   - productId (source), dependsOnProductId (cible)
+4. **Dependency** — Dependencies between products
+   - productId (source), dependsOnProductId (target)
    - type: required | recommended | optional
-5. **Forecast** — Demandes de forecast par client
+5. **Forecast** — Client forecast requests
    - userId, productId, flavorId, quantity
    - status: pending | approved | rejected
    - notes, requestedAt, reviewedAt, reviewedBy
-6. **User** — Utilisateurs (simplifié pour MVP)
+6. **User** — Users (simplified for MVP)
    - email, name, role (admin | client)
 
 ---
 
-## API REST Endpoints
+## REST API Endpoints
 
 ### Public
-- `GET /api/categories` — Liste des catégories
-- `GET /api/products` — Liste des produits (avec filtres query params)
-- `GET /api/products/:id` — Détail produit avec dépendances
-- `GET /api/products/:id/flavors` — Flavors d'un produit
+- `GET /api/categories` — List categories
+- `GET /api/products` — List products (with query param filters)
+- `GET /api/products/:id` — Product detail with dependencies
+- `GET /api/products/:id/flavors` — Product flavors
 
-### Client (authentifié)
-- `GET /api/forecasts` — Mes forecasts
-- `POST /api/forecasts` — Créer un forecast
-- `DELETE /api/forecasts/:id` — Annuler un forecast
+### Client (authenticated)
+- `GET /api/forecasts` — My forecasts
+- `POST /api/forecasts` — Create a forecast
+- `DELETE /api/forecasts/:id` — Cancel a forecast
 
 ### Admin
-- `POST /api/products` — Créer un produit
-- `PUT /api/products/:id` — Modifier un produit
-- `DELETE /api/products/:id` — Archiver un produit
-- `GET /api/forecasts/all` — Tous les forecasts (admin)
-- `PUT /api/forecasts/:id/status` — Approuver/Rejeter un forecast
-- `POST /api/categories` — Créer une catégorie
-- `POST /api/flavors` — Créer un flavor
-- `POST /api/dependencies` — Créer une dépendance
+- `POST /api/products` — Create a product
+- `PUT /api/products/:id` — Update a product
+- `DELETE /api/products/:id` — Archive a product
+- `GET /api/forecasts/all` — All forecasts (admin)
+- `PUT /api/forecasts/:id/status` — Approve/Reject a forecast
+- `POST /api/categories` — Create a category
+- `POST /api/flavors` — Create a flavor
+- `POST /api/dependencies` — Create a dependency
 
 ---
 
-## Plan de Construction (Séquence)
+## Build Plan (Sequence)
 
-### Phase 1 — Fondations & Docker (1ère itération)
-1. Initialiser le monorepo avec pnpm workspaces
-2. Créer le `docker-compose.yml` avec 3 services : `db` (PostgreSQL), `api` (Express), `web` (React)
-3. Créer le `Dockerfile` pour l'API (multi-stage Node.js + Prisma)
-4. Créer le `Dockerfile` pour le web (multi-stage Vite build + Nginx)
-5. Ajouter les scripts `docker-entrypoint.sh` pour l'API (migrate + seed) et le web (attente API)
-6. Initialiser le backend Express + TypeScript avec hot-reload via volume bind
-7. Configurer Prisma avec le schéma complet
-8. Générer les migrations et seed la base avec données de test
-9. Vérifier que `docker compose up` démarre l'ensemble (db + api + web)
-10. Documenter le flux `docker compose up --build` dans le README
+### Phase 1 — Foundations & Docker (1st iteration)
+1. Initialize the monorepo with pnpm workspaces
+2. Create the `docker-compose.yml` with 3 services: `db` (PostgreSQL), `api` (Express), `web` (React)
+3. Create the `Dockerfile` for the API (multi-stage Node.js + Prisma)
+4. Create the `Dockerfile` for the web (multi-stage Vite build + Nginx)
+5. Add the `docker-entrypoint.sh` scripts for the API (migrate + seed) and the web (wait for API)
+6. Initialize the Express backend + TypeScript with hot-reload via bind volume
+7. Configure Prisma with the full schema
+8. Generate migrations and seed the database with test data
+9. Verify that `docker compose up` starts everything (db + api + web)
+10. Document the `docker compose up --build` flow in the README
 
-### Phase 2 — Backend API (2ème itération)
-1. Implémenter les routes CRUD pour les catégories
-2. Implémenter les routes CRUD pour les produits (avec filtres)
-3. Implémenter les routes pour les flavors et dépendances
-4. Implémenter les routes pour les forecasts (CRUD + changement de statut)
-5. Ajouter la validation Zod sur toutes les routes
-6. Middleware d'erreur global
-7. Tester l'API avec des requêtes curl/HTTP
+### Phase 2 — Backend API (2nd iteration)
+1. Implement CRUD routes for categories
+2. Implement CRUD routes for products (with filters)
+3. Implement routes for flavors and dependencies
+4. Implement routes for forecasts (CRUD + status change)
+5. Add Zod validation on all routes
+6. Global error middleware
+7. Test the API with curl/HTTP requests
 
-### Phase 3 — Frontend Base (3ème itération)
-1. Initialiser le projet React + Vite + TypeScript
-2. Configurer Tailwind CSS + shadcn/ui
-3. Mettre en place le routing (React Router)
-4. Configurer TanStack Query
-5. Créer le layout principal (Header + Navigation)
-6. Implémenter le thème dark moderne (slate/blue)
+### Phase 3 — Frontend Base (3rd iteration)
+1. Initialize the React + Vite + TypeScript project
+2. Configure Tailwind CSS + shadcn/ui
+3. Set up routing (React Router)
+4. Configure TanStack Query
+5. Create the main layout (Header + Navigation)
+6. Implement the modern dark theme (slate/blue)
 
-### Phase 4 — Marketplace Client (4ème itération)
-1. Page liste produits avec grille responsive
-2. Composant de filtres dynamiques (sidebar)
-3. Carte produit avec tags, dépendances preview
-4. Recherche en temps réel
-5. Connexion API avec TanStack Query
+### Phase 4 — Client Marketplace (4th iteration)
+1. Product list page with responsive grid
+2. Dynamic filter component (sidebar)
+3. Product card with tags, dependency preview
+4. Real-time search
+5. API connection with TanStack Query
 
-### Phase 5 — Fiche Produit (5ème itération)
-1. Page détail produit avec routing
-2. Onglets : Description / Documentation / Roadmap / Dépendances / Flavors
-3. Graphe visuel des dépendances
-4. Bouton "Ajouter au Forecast"
+### Phase 5 — Product Page (5th iteration)
+1. Product detail page with routing
+2. Tabs: Description / Documentation / Roadmap / Dependencies / Flavors
+3. Visual dependency graph
+4. "Add to Forecast" button
 
-### Phase 6 — Dashboard Forecast (6ème itération)
-1. Page "Mon Forecast" avec tableau des demandes
-2. Stats cards (total, en attente, approuvé, refusé)
-3. Filtrage par statut
-4. Actions (détails, annuler)
-5. Connexion API
+### Phase 6 — Forecast Dashboard (6th iteration)
+1. "My Forecast" page with request table
+2. Stats cards (total, pending, approved, rejected)
+3. Filter by status
+4. Actions (details, cancel)
+5. API connection
 
-### Phase 7 — Interface Admin (7ème itération)
-1. Page admin avec sous-routes (produits, catégories, flavors, dépendances, forecasts)
-2. Table CRUD produits avec actions
-3. Formulaire création/édition produit (modal)
-4. Gestion des catégories et flavors
-5. Gestion des dépendances
-6. Vue tous les forecasts avec actions admin (approuver/rejeter)
+### Phase 7 — Admin Interface (7th iteration)
+1. Admin page with sub-routes (products, categories, flavors, dependencies, forecasts)
+2. Product CRUD table with actions
+3. Product creation/edition form (modal)
+4. Category and flavor management
+5. Dependency management
+6. View all forecasts with admin actions (approve/reject)
 
-### Phase 8 — Polish & Intégration (8ème itération)
-1. Ajouter les animations/transitions
-2. Gérer les états de chargement et erreurs
+### Phase 8 — Polish & Integration (8th iteration)
+1. Add animations/transitions
+2. Handle loading and error states
 3. Responsive design (mobile/tablet)
-4. Tests de bout en bout
-5. Documentation README
+4. End-to-end tests
+5. README documentation
 
 ---
 
 ## Design System
 
 ### Palette (Dark Theme)
-- Background principal : `#0f172a` (slate-900)
-- Background secondaire : `#1e293b` (slate-800)
-- Bordures : `#334155` (slate-700)
-- Texte principal : `#f8fafc` (slate-50)
-- Texte secondaire : `#94a3b8` (slate-400)
-- Accent primaire : `#3b82f6` (blue-500)
-- Succès : `#22c55e` (green-500)
-- Avertissement : `#f59e0b` (amber-500)
-- Danger : `#ef4444` (red-500)
+- Main background: `#0f172a` (slate-900)
+- Secondary background: `#1e293b` (slate-800)
+- Borders: `#334155` (slate-700)
+- Primary text: `#f8fafc` (slate-50)
+- Secondary text: `#94a3b8` (slate-400)
+- Primary accent: `#3b82f6` (blue-500)
+- Success: `#22c55e` (green-500)
+- Warning: `#f59e0b` (amber-500)
+- Danger: `#ef4444` (red-500)
 
-### Typographie
-- Police : Inter (system-ui fallback)
-- Tailles : 12px labels, 13px body, 14px/16px titres, 24px/28px H1
+### Typography
+- Font: Inter (system-ui fallback)
+- Sizes: 12px labels, 13px body, 14px/16px titles, 24px/28px H1
 
-### Composants clés shadcn/ui
+### Key shadcn/ui Components
 - Button, Card, Badge, Tabs, Dialog, Input, Select, Table, Checkbox, ScrollArea, Separator
 
 ---
 
-## Données de Test (Seed)
+## Test Data (Seed)
 
-### Catégories
+### Categories
 - Compute (VM, BM, HPC)
 - Data (SAN, NAS, Object Storage)
 - Hypervisor (VMware, KVM, Hyper-V)
 - Citrix (VDI, XenApp)
 
-### Produits (6-8 exemples)
+### Products (6-8 examples)
 - VM Debian 12, VM Windows Server 2022, VM RedHat 9
 - Bare Metal HPC, Bare Metal Standard
 - Object Storage S3, NAS Enterprise
@@ -289,49 +289,49 @@ docker compose down -v             # Arrête et supprime les volumes
 ### Flavors
 - Small (2 vCPU, 4GB), Medium (4 vCPU, 8GB), Large (8 vCPU, 16GB), XL (16 vCPU, 32GB)
 
-### Dépendances
-- VM → Réseau VPC (required), Stockage (recommended)
+### Dependencies
+- VM → VPC Network (required), Storage (recommended)
 - HPC → Object Storage (recommended)
-- Hypervisor → Compute (required), Réseau (required)
+- Hypervisor → Compute (required), Network (required)
 
 ---
 
-## Notes de Construction
+## Build Notes
 
-**2026-07-29:** Le build a été effectué via le workflow `build-app` (29 agents, 32M tokens). Tous les fichiers ont été créés avec succès. Le port PostgreSQL dans `docker-compose.yml` a été changé de 5432 à 5433 pour éviter un conflit avec un PostgreSQL local existant. Vérification manuelle : builds TypeScript réussis pour `packages/shared-types`, `apps/api` et `apps/web` (1640 modules, 400KB JS / 33KB CSS gzippé).
+**2026-07-29:** The build was performed via the `build-app` workflow (29 agents, 32M tokens). All files were created successfully. The PostgreSQL port in `docker-compose.yml` was changed from 5432 to 5433 to avoid a conflict with an existing local PostgreSQL. Manual verification: successful TypeScript builds for `packages/shared-types`, `apps/api`, and `apps/web` (1640 modules, 400KB JS / 33KB CSS gzipped).
 
-**2026-07-29:** Le port du frontend a été changé de 5173 à 5192 sur demande utilisateur. Modifications effectuées dans `docker-compose.yml` (mapping "5192:5192"), `apps/web/vite.config.ts` (port: 5192), `apps/web/Dockerfile` (EXPOSE 5192), `README.md`, `test_polish_and_docs.py`, et `apps/api/src/__tests__/foundations.test.ts`.
+**2026-07-29:** The frontend port was changed from 5173 to 5192 per user request. Changes made in `docker-compose.yml` (mapping "5192:5192"), `apps/web/vite.config.ts` (port: 5192), `apps/web/Dockerfile` (EXPOSE 5192), `README.md`, `test_polish_and_docs.py`, and `apps/api/src/__tests__/foundations.test.ts`.
 
-**2026-07-29:** Docker Compose complet (API + Web + DB) ne fonctionne pas sur macOS ARM64 à cause d'un bug Prisma (détection incorrecte du binaryTarget `musl` vs `glibc` dans les conteneurs Docker). L'image API a été nettoyée (`je-veux-une-marketplace-pour-des-64eb-api` supprimée) et reconstruite avec le nom `cloudmarket`. Solution adoptée : approche hybride — PostgreSQL en Docker isolé sur le port 5433, API et Web en mode dev local (ports 3001 et 5192). La base est initialisée (schéma poussé + seed) et l'application est fonctionnelle.
+**2026-07-29:** Full Docker Compose (API + Web + DB) does not work on macOS ARM64 due to a Prisma bug (incorrect detection of binaryTarget `musl` vs `glibc` in Docker containers). The API image was cleaned (`je-veux-une-marketplace-pour-des-64eb-api` deleted) and rebuilt with the name `cloudmarket`. Adopted solution: hybrid approach — PostgreSQL in isolated Docker on port 5433, API and Web in local dev mode (ports 3001 and 5192). The database is initialized (schema pushed + seed) and the application is functional.
 
 ---
 
-## Livrables
+## Deliverables
 
-1. **Application fonctionnelle** avec toutes les fonctionnalités décrites
-2. **Base de données** PostgreSQL avec schéma Prisma et seed data
-3. **API REST** documentée implicitement via les types Zod
-4. **Interface responsive** avec thème dark moderne
-5. **Docker Compose** pour le démarrage rapide en local
-6. **README** avec instructions d'installation et démarrage
+1. **Functional application** with all described features
+2. **PostgreSQL database** with Prisma schema and seed data
+3. **REST API** implicitly documented via Zod types
+4. **Responsive interface** with modern dark theme
+5. **Docker Compose** for quick local startup
+6. **README** with installation and startup instructions
 
-## Architecture Visuelle
+## Visual Architecture
 
 ```mermaid
 graph TD
     subgraph "Frontend (React + Vite)"
-        A[Marketplace Page] --> B[Filtres Dynamiques]
-        A --> C[Grille Produits]
+        A[Marketplace Page] --> B[Dynamic Filters]
+        A --> C[Product Grid]
         D[Product Detail] --> E[Description Tab]
         D --> F[Documentation Tab]
         D --> G[Roadmap Tab]
-        D --> H[Dépendances Graph]
+        D --> H[Dependency Graph]
         I[Forecast Dashboard] --> J[Stats Cards]
         I --> K[Forecast Table]
-        L[Admin Panel] --> M[CRUD Produits]
-        L --> N[Gestion Catégories]
-        L --> O[Gestion Flavors]
-        L --> P[Validation Forecasts]
+        L[Admin Panel] --> M[Product CRUD]
+        L --> N[Category Management]
+        L --> O[Flavor Management]
+        L --> P[Forecast Validation]
     end
 
     subgraph "Backend (Express + Prisma)"
@@ -342,7 +342,7 @@ graph TD
         Q --> V[Forecasts Controller]
     end
 
-    subgraph "Base de Données (PostgreSQL)"
+    subgraph "Database (PostgreSQL)"
         W[(Products)]
         X[(Categories)]
         Y[(Flavors)]
@@ -363,24 +363,24 @@ graph TD
     V --> AB
 ```
 
-## Flux Utilisateur
+## User Flow
 
 ```mermaid
 flowchart LR
-    A[Client] --> B[Parcourir Marketplace]
-    B --> C{Filtres}
-    C --> D[Voir Produit]
-    D --> E[Ajouter au Forecast]
-    E --> F[Dashboard Forecast]
-    F --> G{Statut}
-    G -->|En attente| H[En cours de revue]
-    G -->|Approuvé| I[Prêt pour déploiement]
-    G -->|Refusé| J[Modifier la demande]
+    A[Client] --> B[Browse Marketplace]
+    B --> C{Filters}
+    C --> D[View Product]
+    D --> E[Add to Forecast]
+    E --> F[Forecast Dashboard]
+    F --> G{Status}
+    G -->|Pending| H[Under Review]
+    G -->|Approved| I[Ready for Deployment]
+    G -->|Rejected| J[Edit Request]
 
-    K[Admin] --> L[Gérer Produits]
-    K --> M[Valider Forecasts]
+    K[Admin] --> L[Manage Products]
+    K --> M[Validate Forecasts]
     M --> G
 ```
 
-## Estimation
-~8 phases d'itération, construction progressive feature par feature.
+## Estimate
+~8 iteration phases, progressive feature-by-feature construction.

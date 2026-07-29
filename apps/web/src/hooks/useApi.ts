@@ -16,7 +16,7 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const message = error.response?.data?.error || error.response?.data?.message || error.message || 'Erreur réseau';
+    const message = error.response?.data?.error || error.response?.data?.message || error.message || 'Network error';
     // Don't toast on 404s for normal queries — handled per-query
     if (error.response?.status !== 404) {
       console.error('API Error:', message);
@@ -58,10 +58,10 @@ export function useCreateProduct() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      addToast('Produit créé avec succès', 'success');
+      addToast('Product created successfully', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Erreur lors de la création du produit', 'error');
+      addToast(err.response?.data?.message || 'Error creating product', 'error');
     },
   });
 }
@@ -76,10 +76,10 @@ export function useUpdateProduct() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      addToast('Produit mis à jour', 'success');
+      addToast('Product updated', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Erreur lors de la mise à jour', 'error');
+      addToast(err.response?.data?.message || 'Error during update', 'error');
     },
   });
 }
@@ -93,10 +93,10 @@ export function useDeleteProduct() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      addToast('Produit supprimé', 'success');
+      addToast('Product deleted', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Impossible de supprimer ce produit', 'error');
+      addToast(err.response?.data?.message || 'Unable to delete this product', 'error');
     },
   });
 }
@@ -123,10 +123,10 @@ export function useCreateCategory() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
-      addToast('Catégorie créée avec succès', 'success');
+      addToast('Category created successfully', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Erreur lors de la création', 'error');
+      addToast(err.response?.data?.message || 'Error during creation', 'error');
     },
   });
 }
@@ -141,10 +141,10 @@ export function useUpdateCategory() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
-      addToast('Catégorie mise à jour', 'success');
+      addToast('Category updated', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Erreur lors de la mise à jour', 'error');
+      addToast(err.response?.data?.message || 'Error during update', 'error');
     },
   });
 }
@@ -158,10 +158,10 @@ export function useDeleteCategory() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
-      addToast('Catégorie supprimée', 'success');
+      addToast('Category deleted', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Impossible de supprimer cette catégorie', 'error');
+      addToast(err.response?.data?.message || 'Unable to delete this category', 'error');
     },
   });
 }
@@ -190,10 +190,10 @@ export function useCreateFlavor() {
       queryClient.invalidateQueries({ queryKey: ['flavors'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
-      addToast('Flavor créé avec succès', 'success');
+      addToast('Flavor created successfully', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Erreur lors de la création', 'error');
+      addToast(err.response?.data?.message || 'Error during creation', 'error');
     },
   });
 }
@@ -210,10 +210,10 @@ export function useUpdateFlavor() {
       queryClient.invalidateQueries({ queryKey: ['flavors'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
-      addToast('Flavor mis à jour', 'success');
+      addToast('Flavor updated', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Erreur lors de la mise à jour', 'error');
+      addToast(err.response?.data?.message || 'Error during update', 'error');
     },
   });
 }
@@ -229,10 +229,10 @@ export function useDeleteFlavor() {
       queryClient.invalidateQueries({ queryKey: ['flavors'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
-      addToast('Flavor supprimé', 'success');
+      addToast('Flavor deleted', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Impossible de supprimer ce flavor', 'error');
+      addToast(err.response?.data?.message || 'Unable to delete this flavor', 'error');
     },
   });
 }
@@ -260,10 +260,10 @@ export function useCreateDependency() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dependencies'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      addToast('Dépendance créée avec succès', 'success');
+      addToast('Dependency created successfully', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Erreur lors de la création', 'error');
+      addToast(err.response?.data?.message || 'Error during creation', 'error');
     },
   });
 }
@@ -279,10 +279,10 @@ export function useUpdateDependency() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dependencies'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      addToast('Dépendance mise à jour', 'success');
+      addToast('Dependency updated', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Erreur lors de la mise à jour', 'error');
+      addToast(err.response?.data?.message || 'Error during update', 'error');
     },
   });
 }
@@ -297,10 +297,10 @@ export function useDeleteDependency() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['dependencies'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      addToast('Dépendance supprimée', 'success');
+      addToast('Dependency deleted', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Impossible de supprimer cette dépendance', 'error');
+      addToast(err.response?.data?.message || 'Unable to delete this dependency', 'error');
     },
   });
 }
@@ -338,10 +338,10 @@ export function useCreateForecast() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['forecasts'] });
       queryClient.invalidateQueries({ queryKey: ['forecast-stats'] });
-      addToast('Demande de forecast créée', 'success');
+      addToast('Forecast request created', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Erreur lors de la création', 'error');
+      addToast(err.response?.data?.message || 'Error during creation', 'error');
     },
   });
 }
@@ -358,12 +358,12 @@ export function useUpdateForecast() {
       queryClient.invalidateQueries({ queryKey: ['forecasts'] });
       queryClient.invalidateQueries({ queryKey: ['forecast-stats'] });
       const status = (variables as any).status;
-      if (status === 'APPROVED') addToast('Demande approuvée', 'success');
-      else if (status === 'REJECTED') addToast('Demande rejetée', 'warning');
-      else addToast('Demande mise à jour', 'success');
+      if (status === 'APPROVED') addToast('Request approved', 'success');
+      else if (status === 'REJECTED') addToast('Request rejected', 'warning');
+      else addToast('Request updated', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Erreur lors de la mise à jour', 'error');
+      addToast(err.response?.data?.message || 'Error during update', 'error');
     },
   });
 }
@@ -378,10 +378,10 @@ export function useDeleteForecast() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['forecasts'] });
       queryClient.invalidateQueries({ queryKey: ['forecast-stats'] });
-      addToast('Demande supprimée', 'success');
+      addToast('Request deleted', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Impossible de supprimer cette demande', 'error');
+      addToast(err.response?.data?.message || 'Unable to delete this request', 'error');
     },
   });
 }
@@ -408,10 +408,10 @@ export function useCreateUser() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      addToast('Utilisateur créé avec succès', 'success');
+      addToast('User created successfully', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Erreur lors de la création', 'error');
+      addToast(err.response?.data?.message || 'Error during creation', 'error');
     },
   });
 }
@@ -426,10 +426,10 @@ export function useUpdateUser() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      addToast('Utilisateur mis à jour', 'success');
+      addToast('User updated', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Erreur lors de la mise à jour', 'error');
+      addToast(err.response?.data?.message || 'Error during update', 'error');
     },
   });
 }
@@ -443,10 +443,10 @@ export function useDeleteUser() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      addToast('Utilisateur supprimé', 'success');
+      addToast('User deleted', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Impossible de supprimer cet utilisateur', 'error');
+      addToast(err.response?.data?.message || 'Unable to delete this user', 'error');
     },
   });
 }

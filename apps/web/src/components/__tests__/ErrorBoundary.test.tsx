@@ -21,7 +21,7 @@ describe('ErrorBoundary', () => {
       </MemoryRouter>
     );
     expect(screen.getByTestId('safe-content')).toBeInTheDocument();
-    expect(screen.queryByText(/erreur est survenue/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/error has occurred/i)).not.toBeInTheDocument();
   });
 
   it('renders fallback UI when child throws', () => {
@@ -33,7 +33,7 @@ describe('ErrorBoundary', () => {
         </ErrorBoundary>
       </MemoryRouter>
     );
-    expect(screen.getByText(/une erreur est survenue/i)).toBeInTheDocument();
+    expect(screen.getByText(/an error has occurred/i)).toBeInTheDocument();
     expect(screen.queryByTestId('safe-content')).not.toBeInTheDocument();
     consoleSpy.mockRestore();
   });
@@ -69,7 +69,7 @@ describe('ErrorBoundary', () => {
       </MemoryRouter>
     );
 
-    const refreshBtn = screen.getByRole('button', { name: /rafraîchir/i });
+    const refreshBtn = screen.getByRole('button', { name: /refresh/i });
     expect(refreshBtn).toBeInTheDocument();
     await user.click(refreshBtn);
     expect(reloadSpy).toHaveBeenCalled();

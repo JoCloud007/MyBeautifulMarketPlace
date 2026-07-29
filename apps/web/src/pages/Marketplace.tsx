@@ -33,9 +33,9 @@ const osOptions = ['Linux', 'Windows', 'ESXi'];
 const flavorOptions = ['Small', 'Medium', 'Large', 'XL'];
 
 const sortLabels: Record<string, string> = {
-  newest: 'Plus récent',
-  name: 'Nom (A-Z)',
-  category: 'Catégorie',
+  newest: 'Newest',
+  name: 'Name (A-Z)',
+  category: 'Category',
 };
 
 function AnimatedCard({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
@@ -76,13 +76,13 @@ export default function Marketplace() {
       <div className="flex flex-col gap-2 animate-fade-in-up">
         <h1 className="text-3xl font-bold text-white">Marketplace</h1>
         <p className="text-slate-400">
-          Parcourez notre catalogue de produits d'infrastructure cloud.
+          Browse our cloud infrastructure product catalog.
         </p>
       </div>
 
       {hasError ? (
         <QueryError
-          message="Impossible de charger le catalogue. Vérifiez votre connexion ou réessayez."
+          message="Unable to load catalog. Check your connection or try again."
           onRetry={() => {
             if (productsError) refetchProducts();
             if (categoriesError) refetchCategories();
@@ -96,7 +96,7 @@ export default function Marketplace() {
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                 <Input
-                  placeholder="Rechercher un produit..."
+                  placeholder="Search for a product..."
                   value={filters.search || ''}
                   onChange={(e) => setFilters({ search: e.target.value || undefined })}
                   className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]"
@@ -108,7 +108,7 @@ export default function Marketplace() {
                   onChange={(e) => setFilters({ os: e.target.value || undefined })}
                   className="h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-900 px-3 text-sm text-white"
                 >
-                  <option value="">Tous OS</option>
+                  <option value="">All OS</option>
                   {osOptions.map((os) => (
                     <option key={os} value={os}>
                       {os}
@@ -120,7 +120,7 @@ export default function Marketplace() {
                   onChange={(e) => setFilters({ flavor: e.target.value || undefined })}
                   className="h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-900 px-3 text-sm text-white"
                 >
-                  <option value="">Tous flavors</option>
+                  <option value="">All flavors</option>
                   {flavorOptions.map((fl) => (
                     <option key={fl} value={fl}>
                       {fl}
@@ -144,7 +144,7 @@ export default function Marketplace() {
                 {activeFilterCount > 0 && (
                   <Button variant="ghost" size="sm" onClick={clearFilters} className="text-slate-400 hover:text-white min-h-[44px]">
                     <X className="h-4 w-4 mr-1" />
-                    Réinitialiser
+                    Reset
                   </Button>
                 )}
               </div>
@@ -165,7 +165,7 @@ export default function Marketplace() {
                   )}
                 >
                   <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" />
-                  Toutes
+                  All
                 </Button>
                 {categories.map((cat) => {
                   const Icon = iconMap[cat.icon || ''] || Server;
@@ -202,7 +202,7 @@ export default function Marketplace() {
             {/* Active Filter Chips */}
             {activeFilterCount > 0 && (
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-slate-500">Filtres actifs :</span>
+                <span className="text-xs text-slate-500">Active filters:</span>
                 {Object.entries(filters).map(([key, value]) => {
                   if (!value) return null;
                   let label = String(value);
@@ -217,7 +217,7 @@ export default function Marketplace() {
                       className="cursor-pointer bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/20"
                       onClick={() => removeFilter(key as keyof typeof filters)}
                     >
-                      {key === 'search' ? `Recherche: "${label}"` : label}
+                      {key === 'search' ? `Search: "${label}"` : label}
                       <X className="ml-1 h-3 w-3" />
                     </Badge>
                   );
@@ -231,9 +231,8 @@ export default function Marketplace() {
                 <Skeleton className="h-4 w-32" />
               ) : (
                 <span>
-                  <span className="font-medium text-slate-300">{sortedProducts.length}</span> produit
-                  {sortedProducts.length !== 1 ? 's' : ''} trouvé
-                  {sortedProducts.length !== 1 ? 's' : ''}
+                  <span className="font-medium text-slate-300">{sortedProducts.length}</span> product
+                  {sortedProducts.length !== 1 ? 's' : ''} found
                 </span>
               )}
             </div>
@@ -249,11 +248,11 @@ export default function Marketplace() {
           ) : sortedProducts.length === 0 ? (
             <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-12 sm:p-16 text-center animate-fade-in">
               <PackageOpen className="mx-auto h-12 w-12 text-slate-600" />
-              <p className="mt-4 text-lg font-medium text-slate-300">Aucun produit trouvé</p>
-              <p className="mt-1 text-slate-500">Aucun produit ne correspond à vos critères de recherche.</p>
+              <p className="mt-4 text-lg font-medium text-slate-300">No products found</p>
+              <p className="mt-1 text-slate-500">No products match your search criteria.</p>
               {activeFilterCount > 0 && (
                 <Button variant="outline" size="sm" onClick={clearFilters} className="mt-4 border-slate-700 text-slate-300 hover:bg-slate-800 min-h-[44px]">
-                  Réinitialiser les filtres
+                  Reset filters
                 </Button>
               )}
             </div>
@@ -293,12 +292,12 @@ export default function Marketplace() {
                             </Badge>
                             {product.dependencies && product.dependencies.length > 0 && (
                               <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
-                                {product.dependencies.length} dépendance{product.dependencies.length > 1 ? 's' : ''}
+                                {product.dependencies.length} dependency{product.dependencies.length > 1 ? 's' : ''}
                               </Badge>
                             )}
                           </div>
                           <div className="mt-4 flex items-center text-xs text-blue-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                            Voir les détails
+                            View details
                             <ChevronRight className="ml-1 h-3 w-3 transition-transform group-hover:translate-x-0.5" />
                           </div>
                         </CardContent>
