@@ -300,6 +300,8 @@ docker compose down -v             # Arrête et supprime les volumes
 
 **2026-07-29:** Le build a été effectué via le workflow `build-app` (29 agents, 32M tokens). Tous les fichiers ont été créés avec succès. Le port PostgreSQL dans `docker-compose.yml` a été changé de 5432 à 5433 pour éviter un conflit avec un PostgreSQL local existant. Vérification manuelle : builds TypeScript réussis pour `packages/shared-types`, `apps/api` et `apps/web` (1640 modules, 400KB JS / 33KB CSS gzippé).
 
+**2026-07-29:** Le port du frontend a été changé de 5173 à 5192 sur demande utilisateur. Modifications effectuées dans `docker-compose.yml` (mapping "5192:5192"), `apps/web/vite.config.ts` (port: 5192), `apps/web/Dockerfile` (EXPOSE 5192), `README.md`, `test_polish_and_docs.py`, et `apps/api/src/__tests__/foundations.test.ts`.
+
 ---
 
 ## Livrables

@@ -119,7 +119,7 @@ docker compose exec api npx tsx prisma/seed.ts
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| Frontend | http://localhost:5173 | Application React |
+| Frontend | http://localhost:5192 | Application React |
 | API | http://localhost:3001 | Serveur Express |
 | Health | http://localhost:3001/health | Health check |
 | DB | localhost:5432 | PostgreSQL 16 |

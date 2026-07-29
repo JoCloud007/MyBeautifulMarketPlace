@@ -17,7 +17,7 @@ import urllib.request
 import urllib.error
 import sys
 
-API = "http://localhost:3002"
+API = "http://localhost:3001"
 
 PASS = 0
 FAIL = 0
@@ -352,7 +352,7 @@ print("=" * 60)
 
 url = f"{API}/health"
 r = urllib.request.Request(url, method="OPTIONS")
-r.add_header("Origin", "http://localhost:5173")
+r.add_header("Origin", "http://localhost:5192")
 r.add_header("Access-Control-Request-Method", "GET")
 try:
     with urllib.request.urlopen(r) as resp:

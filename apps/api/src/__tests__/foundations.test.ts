@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
-const API_URL = process.env.API_URL || 'http://localhost:3002';
+const API_URL = process.env.API_URL || 'http://localhost:3001';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -77,9 +77,9 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       expect(compose).toContain('postgres_data:');
     });
 
-    test('API exposes port 3001 and web exposes port 5173', () => {
+    test('API exposes port 3001 and web exposes port 5192', () => {
       expect(compose).toContain('"3001:3001"');
-      expect(compose).toContain('"5173:5173"');
+      expect(compose).toContain('"5192:5192"');
     });
 
     test('root package.json has correct workspaces', () => {

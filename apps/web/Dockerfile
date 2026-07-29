@@ -17,6 +17,6 @@ RUN npm run build -w packages/shared-types
 
 WORKDIR /app/apps/web
 
-EXPOSE 5173
+EXPOSE 5192
 
 CMD ["npm", "run", "dev"]

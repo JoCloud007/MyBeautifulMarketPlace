@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const fs_1 = require("fs");
 const path_1 = require("path");
-const API_URL = process.env.API_URL || 'http://localhost:3002';
+const API_URL = process.env.API_URL || 'http://localhost:3001';
 // ─── Helpers ────────────────────────────────────────────────────────────────
 async function api(method, path, body) {
     const url = `${API_URL}${path}`;
@@ -65,9 +65,9 @@ describe('🏗️ Project Foundations & Data Layer', () => {
         test('postgres_data volume is defined', () => {
             expect(compose).toContain('postgres_data:');
         });
-        test('API exposes port 3001 and web exposes port 5173', () => {
+        test('API exposes port 3001 and web exposes port 5192', () => {
             expect(compose).toContain('"3001:3001"');
-            expect(compose).toContain('"5173:5173"');
+            expect(compose).toContain('"5192:5192"');
         });
         test('root package.json has correct workspaces', () => {
             const pkg = JSON.parse(readRelative('package.json'));
