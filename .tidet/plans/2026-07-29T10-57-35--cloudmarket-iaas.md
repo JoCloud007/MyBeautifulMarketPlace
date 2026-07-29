@@ -4,7 +4,7 @@ slug: 2026-07-29T10-57-35--cloudmarket-iaas
 title: Plan de Construction - CloudMarket IaaS
 status: proposed
 created_at: 2026-07-29T09:04:08.334255Z
-run_id: f9347659-50d1-4809-8911-d90a8751e70b
+run_id: 7828de0e-cf1d-4095-a532-43ebb4e378b7
 ---
 
 # Plan de Construction - CloudMarket IaaS
@@ -120,9 +120,6 @@ cloudmarket/
   - Volume bind pour hot-reload du code source (mode dev)
   - Dépend de `api` (attente via `dockerize` ou script wait-for)
   - Nginx reverse proxy vers l'API pour les routes `/api/*`
-
-### Réseau
-- Réseau bridge interne `cloudmarket-network` pour la communication inter-services
 
 ### Commandes de développement
 ```bash
