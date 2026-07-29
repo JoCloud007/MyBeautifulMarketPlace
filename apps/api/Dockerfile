@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:20-bullseye AS base
 
 WORKDIR /app
 
@@ -12,7 +12,8 @@ RUN npm install
 # Copy source
 COPY . .
 
-# Generate Prisma client
+# Force clean Prisma generation (avoid cached engines from different base images)
+RUN rm -rf node_modules/.prisma node_modules/@prisma/client
 RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
 
 # Build shared types
