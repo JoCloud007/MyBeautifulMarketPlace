@@ -302,6 +302,8 @@ docker compose down -v             # Arrête et supprime les volumes
 
 **2026-07-29:** Le port du frontend a été changé de 5173 à 5192 sur demande utilisateur. Modifications effectuées dans `docker-compose.yml` (mapping "5192:5192"), `apps/web/vite.config.ts` (port: 5192), `apps/web/Dockerfile` (EXPOSE 5192), `README.md`, `test_polish_and_docs.py`, et `apps/api/src/__tests__/foundations.test.ts`.
 
+**2026-07-29:** Docker Compose complet (API + Web + DB) ne fonctionne pas sur macOS ARM64 à cause d'un bug Prisma (détection incorrecte du binaryTarget `musl` vs `glibc` dans les conteneurs Docker). L'image API a été nettoyée (`je-veux-une-marketplace-pour-des-64eb-api` supprimée) et reconstruite avec le nom `cloudmarket`. Solution adoptée : approche hybride — PostgreSQL en Docker isolé sur le port 5433, API et Web en mode dev local (ports 3001 et 5192). La base est initialisée (schéma poussé + seed) et l'application est fonctionnelle.
+
 ---
 
 ## Livrables
