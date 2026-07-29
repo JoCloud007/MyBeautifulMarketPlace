@@ -2,9 +2,10 @@
 schema_version: 1
 slug: 2026-07-29T10-57-35--cloudmarket-iaas
 title: Plan de Construction - CloudMarket IaaS
-status: approved
+status: executed
 created_at: 2026-07-29T09:04:08.334255Z
 decided_at: 2026-07-29T09:12:47.12893Z
+executed_at: 2026-07-29T10:51:56.524536Z
 run_id: 7828de0e-cf1d-4095-a532-43ebb4e378b7
 executing_run_id: 99e72ac1-1ac5-470f-a1eb-0a4b9e28c314
 ---
@@ -292,6 +293,12 @@ docker compose down -v             # Arrête et supprime les volumes
 - VM → Réseau VPC (required), Stockage (recommended)
 - HPC → Object Storage (recommended)
 - Hypervisor → Compute (required), Réseau (required)
+
+---
+
+## Notes de Construction
+
+**2026-07-29:** Le build a été effectué via le workflow `build-app` (29 agents, 32M tokens). Tous les fichiers ont été créés avec succès. Le port PostgreSQL dans `docker-compose.yml` a été changé de 5432 à 5433 pour éviter un conflit avec un PostgreSQL local existant. Vérification manuelle : builds TypeScript réussis pour `packages/shared-types`, `apps/api` et `apps/web` (1640 modules, 400KB JS / 33KB CSS gzippé).
 
 ---
 

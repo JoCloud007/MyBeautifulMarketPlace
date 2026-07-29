@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: cloudmarket-db
+    environment:
+      POSTGRES_USER: cloudmarket
+      POSTGRES_PASSWORD: cloudmarket_secret
+      POSTGRES_DB: cloudmarket
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudmarket -d cloudmarket"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cloudmarket-net
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: cloudmarket-api
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://cloudmarket:cloudmarket_secret@db:5432/cloudmarket?schema=public
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app/apps/api
+      - /app/apps/api/node_modules
+      - /app/node_modules
+      - ./packages:/app/packages
+    networks:
+      - cloudmarket-net
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: cloudmarket-web
+    environment:
+      VITE_API_URL: http://localhost:3001
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    volumes:
+      - ./apps/web:/app/apps/web
+      - /app/apps/web/node_modules
+      - /app/node_modules
+      - ./packages:/app/packages
+    networks:
+      - cloudmarket-net
+
+volumes:
+  postgres_data:
+
+networks:
+  cloudmarket-net:
+    driver: bridge

@@ -1,0 +1,24 @@
+{
+  "name": "cloudmarket",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "docker compose up --build",
+    "dev:local": "concurrently \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "db:push": "npm run db:push -w apps/api",
+    "db:seed": "npm run db:seed -w apps/api",
+    "db:migrate": "npm run db:migrate -w apps/api",
+    "build": "npm run build -w apps/web && npm run build -w apps/api",
+    "test:web": "npm run test -w apps/web",
+    "lint": "eslint . --ext .ts,.tsx"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.5"
+  }
+}
