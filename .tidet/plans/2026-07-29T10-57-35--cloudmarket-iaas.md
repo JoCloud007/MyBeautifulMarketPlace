@@ -2,9 +2,11 @@
 schema_version: 1
 slug: 2026-07-29T10-57-35--cloudmarket-iaas
 title: Plan de Construction - CloudMarket IaaS
-status: proposed
+status: approved
 created_at: 2026-07-29T09:04:08.334255Z
+decided_at: 2026-07-29T09:12:47.12893Z
 run_id: 7828de0e-cf1d-4095-a532-43ebb4e378b7
+executing_run_id: 99e72ac1-1ac5-470f-a1eb-0a4b9e28c314
 ---
 
 # Plan de Construction - CloudMarket IaaS
