@@ -18,6 +18,7 @@ services:
     networks:
       - cloudmarket-net
   api:
+    platform: linux/amd64
     build:
       context: .
       dockerfile: apps/api/Dockerfile
