@@ -4,7 +4,7 @@ slug: 2026-07-29T10-57-35--cloudmarket-iaas
 title: Plan de Construction - CloudMarket IaaS
 status: proposed
 created_at: 2026-07-29T09:04:08.334255Z
-run_id: 7825feac-3240-4dea-a001-b8f2b9a4bf82
+run_id: f9347659-50d1-4809-8911-d90a8751e70b
 ---
 
 # Plan de Construction - CloudMarket IaaS
@@ -36,9 +36,16 @@ Construire une marketplace IaaS complète avec :
 - **Zod** pour la validation des schémas API
 - **CORS** + **Helmet** pour la sécurité
 
+### Containerisation
+- **Docker Compose** — 3 services containerisés : `web` (React), `api` (Express), `db` (PostgreSQL)
+- Chaque app possède son propre `Dockerfile`
+- Le frontend est servi via Nginx en production (Vite preview en dev)
+- Hot-reload activé via volumes bind pour le développement
+
 ### Base de Données
-- **PostgreSQL** (via Docker pour le développement)
+- **PostgreSQL** (service `db` dans Docker Compose)
 - Schéma relationnel avec tables pour produits, catégories, flavors, dépendances, forecasts
+- Initialisation automatique via `prisma migrate dev` au démarrage de l'API
 
 ---
 
@@ -46,10 +53,12 @@ Construire une marketplace IaaS complète avec :
 
 ```
 cloudmarket/
-├── docker-compose.yml              # PostgreSQL + services
+├── docker-compose.yml              # Tous les services (web, api, db)
 ├── package.json                    # Root workspace
 ├── apps/
 │   ├── web/                        # Frontend React
+│   │   ├── Dockerfile              # Multi-stage build (Node + Nginx)
+│   │   ├── docker-entrypoint.sh    # Attente de l'API avant démarrage
 │   │   ├── src/
 │   │   │   ├── components/         # Composants réutilisables
 │   │   │   │   ├── ui/             # shadcn/ui components
@@ -67,6 +76,8 @@ cloudmarket/
 │   │   ├── index.html
 │   │   └── vite.config.ts
 │   └── api/                        # Backend Express
+│       ├── Dockerfile              # Multi-stage build Node.js
+│       ├── docker-entrypoint.sh    # Prisma migrate + seed avant démarrage
 │       ├── src/
 │       │   ├── routes/             # API routes (REST)
 │       │   ├── controllers/        # Business logic
@@ -84,6 +95,43 @@ cloudmarket/
 ```
 
 ---
+
+## Docker Compose Configuration
+
+### Services
+- **`db`** — PostgreSQL 16 (`postgres:16-alpine`)
+  - Port exposé : `5432`
+  - Volume persistant : `postgres_data`
+  - Variables d'environnement : `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+
+- **`api`** — Backend Express
+  - Build depuis `apps/api/Dockerfile`
+  - Port exposé : `3001`
+  - Variables : `DATABASE_URL`, `PORT`, `NODE_ENV`
+  - Volume bind pour hot-reload du code source
+  - Healthcheck sur `/api/health`
+  - Dépend de `db` (condition : service healthy)
+  - Entrypoint : `prisma migrate dev` + `prisma db seed` + `npm run dev`
+
+- **`web`** — Frontend React (Nginx)
+  - Build depuis `apps/web/Dockerfile`
+  - Port exposé : `80` (ou `3000` en dev via Vite preview)
+  - Variables : `VITE_API_URL=http://api:3001`
+  - Volume bind pour hot-reload du code source (mode dev)
+  - Dépend de `api` (attente via `dockerize` ou script wait-for)
+  - Nginx reverse proxy vers l'API pour les routes `/api/*`
+
+### Réseau
+- Réseau bridge interne `cloudmarket-network` pour la communication inter-services
+
+### Commandes de développement
+```bash
+docker compose up --build          # Build et démarre tout
+docker compose up -d               # Mode détaché
+docker compose logs -f api         # Logs du backend
+docker compose exec api npx prisma studio   # Ouvre Prisma Studio
+docker compose down -v             # Arrête et supprime les volumes
+```
 
 ## Schéma Base de Données (Prisma)
 
@@ -136,13 +184,17 @@ cloudmarket/
 
 ## Plan de Construction (Séquence)
 
-### Phase 1 — Fondations (1ère itération)
+### Phase 1 — Fondations & Docker (1ère itération)
 1. Initialiser le monorepo avec pnpm workspaces
-2. Configurer Docker Compose (PostgreSQL)
-3. Initialiser le backend Express + TypeScript
-4. Configurer Prisma avec le schéma complet
-5. Générer les migrations et seed la base avec données de test
-6. Vérifier que l'API démarre et se connecte à la DB
+2. Créer le `docker-compose.yml` avec 3 services : `db` (PostgreSQL), `api` (Express), `web` (React)
+3. Créer le `Dockerfile` pour l'API (multi-stage Node.js + Prisma)
+4. Créer le `Dockerfile` pour le web (multi-stage Vite build + Nginx)
+5. Ajouter les scripts `docker-entrypoint.sh` pour l'API (migrate + seed) et le web (attente API)
+6. Initialiser le backend Express + TypeScript avec hot-reload via volume bind
+7. Configurer Prisma avec le schéma complet
+8. Générer les migrations et seed la base avec données de test
+9. Vérifier que `docker compose up` démarre l'ensemble (db + api + web)
+10. Documenter le flux `docker compose up --build` dans le README
 
 ### Phase 2 — Backend API (2ème itération)
 1. Implémenter les routes CRUD pour les catégories
