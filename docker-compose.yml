@@ -18,6 +18,7 @@ services:
     networks:
       - cloudmarket-net
   api:
+    image: cloudmarket-api
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -41,6 +42,7 @@ services:
       - cloudmarket-net
 
   web:
+    image: cloudmarket-web
     build:
       context: .
       dockerfile: apps/web/Dockerfile

@@ -1,0 +1,46 @@
+# Node modules (huge, not needed in build context)
+**/node_modules
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+**/coverage
+**/*.test.ts
+**/*.test.tsx
+**/__tests__
+
+# Build outputs (will be rebuilt inside container)
+**/dist
+**/build
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temporary files
+tmp
+temp
+*.tmp
+
+# Docker files themselves (not needed in context)
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Documentation (not needed for build)
+*.md
+
+# Tidet files
+.tidet
