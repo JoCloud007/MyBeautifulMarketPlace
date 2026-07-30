@@ -312,6 +312,8 @@ docker compose down -v             # Stop and remove volumes
 
 **2026-07-30 (correction définitive):** Despite CSP fix, "Loading error" persisted in Tidet preview. Root cause isolated by replacing React Query with native `fetch()` in `Marketplace.tsx` — `fetch()` worked immediately while React Query/Axios failed silently in the headless Chromium preview. The issue was likely an incompatibility between Axios interceptors or React Query's internal fetch wrapper and the headless browser environment. Fix: `Marketplace.tsx` now uses native `fetch()` + `useState`/`useEffect` instead of `useProducts`/`useCategories` hooks. Client-side filtering implemented for search/category/os. Preview loads reliably with all 8 products.
 
+**2026-07-30 (proxy fix):** The "Loading error" persisted because the Vite proxy in `vite.config.ts` pointed to `http://localhost:3001`. Inside the Docker web container, `localhost` resolves to the container's own loopback, not the API container. The proxy therefore returned 500 errors for all `/api/*` requests. Fix: changed proxy target to `http://api:3001` (Docker service name), allowing the Vite dev server to correctly proxy API requests to the API container. Marketplace.tsx was also updated to use `/api/products` and `/api/categories` (same-origin paths) instead of `http://localhost:3001/api/...`. Preview now consistently loads all 8 products.
+
 ---
 
 ## Deliverables

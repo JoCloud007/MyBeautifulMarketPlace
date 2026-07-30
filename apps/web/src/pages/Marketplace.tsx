@@ -54,8 +54,6 @@ function AnimatedCard({ children, delay = 0 }: { children: React.ReactNode; dela
   );
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
 export default function Marketplace() {
   const { filters, sortBy, setFilters, removeFilter, clearFilters, setSortBy } = useAppStore();
   const [products, setProducts] = useState<any[] | null>(null);
@@ -68,8 +66,8 @@ export default function Marketplace() {
     setLoading(true);
     setError(false);
     Promise.all([
-      fetch(`${API_URL}/api/products`).then(r => r.ok ? r.json() : Promise.reject(new Error('products failed'))),
-      fetch(`${API_URL}/api/categories`).then(r => r.ok ? r.json() : Promise.reject(new Error('categories failed')))
+      fetch('/api/products').then(r => r.ok ? r.json() : Promise.reject(new Error('products failed'))),
+      fetch('/api/categories').then(r => r.ok ? r.json() : Promise.reject(new Error('categories failed')))
     ])
       .then(([productsData, categoriesData]) => {
         if (!cancelled) {
@@ -110,8 +108,8 @@ export default function Marketplace() {
     setLoading(true);
     setError(false);
     Promise.all([
-      fetch(`${API_URL}/api/products`).then(r => r.ok ? r.json() : Promise.reject(new Error('products failed'))),
-      fetch(`${API_URL}/api/categories`).then(r => r.ok ? r.json() : Promise.reject(new Error('categories failed')))
+      fetch('/api/products').then(r => r.ok ? r.json() : Promise.reject(new Error('products failed'))),
+      fetch('/api/categories').then(r => r.ok ? r.json() : Promise.reject(new Error('categories failed')))
     ])
       .then(([productsData, categoriesData]) => {
         setProducts(productsData);
