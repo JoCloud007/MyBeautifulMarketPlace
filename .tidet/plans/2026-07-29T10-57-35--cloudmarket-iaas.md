@@ -304,6 +304,8 @@ docker compose down -v             # Stop and remove volumes
 
 **2026-07-29:** Full Docker Compose (API + Web + DB) does not work on macOS ARM64 due to a Prisma bug (incorrect detection of binaryTarget `musl` vs `glibc` in Docker containers). The API image was cleaned (`je-veux-une-marketplace-pour-des-64eb-api` deleted) and rebuilt with the name `cloudmarket`. Adopted solution: hybrid approach — PostgreSQL in isolated Docker on port 5433, API and Web in local dev mode (ports 3001 and 5192). The database is initialized (schema pushed + seed) and the application is functional.
 
+**2026-07-30:** Removed `platform: linux/amd64` from the API service in `docker-compose.yml` (incompatible with macOS ARM64). Added `command: ["npx", "tsx", "src/index.ts"]` to the API service to disable `tsx watch` inside Docker — this fixes the "Loading error" bug where `tsx watch` restarted the server every time Prisma Client was regenerated (during `prisma db push`), causing transient 500 errors that the preview browser cached. Full Docker Compose (all 3 services) now runs stably on macOS.
+
 ---
 
 ## Deliverables

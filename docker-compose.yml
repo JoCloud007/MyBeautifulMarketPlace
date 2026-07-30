@@ -28,6 +28,7 @@ services:
       PORT: 3001
     ports:
       - "3001:3001"
+    command: ["npx", "tsx", "src/index.ts"]
     depends_on:
       db:
         condition: service_healthy
