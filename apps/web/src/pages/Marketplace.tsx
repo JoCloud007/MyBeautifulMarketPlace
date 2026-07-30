@@ -68,7 +68,7 @@ export default function Marketplace() {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     }) ?? [];
 
-  const hasError = productsError || categoriesError;
+  const hasError = (productsError && !products) || (categoriesError && !categories);
 
   return (
     <div className="space-y-6 sm:space-y-8">
