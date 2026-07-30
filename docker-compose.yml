@@ -30,6 +30,11 @@ services:
     ports:
       - "3001:3001"
     command: ["npx", "tsx", "src/index.ts"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     depends_on:
       db:
         condition: service_healthy
@@ -52,7 +57,8 @@ services:
     ports:
       - "5192:5192"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     volumes:
       - ./apps/web:/app/apps/web
       - /app/apps/web/node_modules

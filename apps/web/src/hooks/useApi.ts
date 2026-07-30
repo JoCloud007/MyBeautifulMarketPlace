@@ -34,6 +34,8 @@ export function useProducts(filters?: { category?: string; os?: string; search?:
       const { data } = await api.get('/products', { params: filters });
       return data;
     },
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
@@ -110,6 +112,8 @@ export function useCategories() {
       const { data } = await api.get('/categories');
       return data;
     },
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 

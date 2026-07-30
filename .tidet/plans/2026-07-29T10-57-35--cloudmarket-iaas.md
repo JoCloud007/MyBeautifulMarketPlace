@@ -306,6 +306,8 @@ docker compose down -v             # Stop and remove volumes
 
 **2026-07-30:** Removed `platform: linux/amd64` from the API service in `docker-compose.yml` (incompatible with macOS ARM64). Added `command: ["npx", "tsx", "src/index.ts"]` to the API service to disable `tsx watch` inside Docker — this fixes the "Loading error" bug where `tsx watch` restarted the server every time Prisma Client was regenerated (during `prisma db push`), causing transient 500 errors that the preview browser cached. Full Docker Compose (all 3 services) now runs stably on macOS.
 
+**2026-07-30:** Fixed intermittent "Loading error" in preview. Root cause: web container started before API was ready, and React Query had no retry configured — a single failed request on page load showed permanent error. Fixes applied: (1) Added `retry: 3, retryDelay: 2000` to `useProducts` and `useCategories` hooks in `apps/web/src/hooks/useApi.ts`, (2) Added healthcheck to API service in `docker-compose.yml` (`curl -f http://localhost:3001/health`), (3) Web service now depends on API `condition: service_healthy` instead of just service presence. Preview now loads reliably with all 8 products.
+
 ---
 
 ## Deliverables
