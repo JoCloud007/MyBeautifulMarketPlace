@@ -308,6 +308,8 @@ docker compose down -v             # Stop and remove volumes
 
 **2026-07-30:** Fixed intermittent "Loading error" in preview. Root cause: the `Marketplace.tsx` component showed the error state whenever `isError` was true, even if data was already loaded. In the headless preview browser, transient request failures (race conditions during API startup or Vite HMR reloads) triggered the error UI permanently, while Chrome handled them gracefully. Fixes applied: (1) Changed `hasError` logic in `Marketplace.tsx` from `productsError || categoriesError` to `(productsError && !products) || (categoriesError && !categories)` — error is only shown when data is truly unavailable, (2) Added `retry: 3, retryDelay: 2000` to `useProducts` and `useCategories` hooks in `apps/web/src/hooks/useApi.ts`, (3) Added healthcheck to API service in `docker-compose.yml` (`curl -f http://localhost:3001/health`), (4) Web service now depends on API `condition: service_healthy`. Preview now loads reliably with all 8 products.
 
+**2026-07-30 (correction finale):** The "Loading error" persisted in the Tidet headless preview despite retries and healthchecks. Root cause identified: `helmet()` in `apps/api/src/index.ts` set a strict CSP (`default-src 'self'`) which blocked cross-origin `fetch`/`XMLHttpRequest` to `localhost:3001` in the headless Chromium preview. Chrome handled this differently (likely due to relaxed localhost CSP policies), so only the preview was affected. Fix: configured `helmet.contentSecurityPolicy` with explicit `connectSrc: ["'self'", "http://localhost:3001", "http://127.0.0.1:3001"]` to allow API requests from the frontend origin. Preview now consistently displays all 8 products.
+
 ---
 
 ## Deliverables
