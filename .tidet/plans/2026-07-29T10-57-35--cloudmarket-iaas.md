@@ -314,6 +314,8 @@ docker compose down -v             # Stop and remove volumes
 
 **2026-07-30 (proxy fix):** The "Loading error" persisted because the Vite proxy in `vite.config.ts` pointed to `http://localhost:3001`. Inside the Docker web container, `localhost` resolves to the container's own loopback, not the API container. The proxy therefore returned 500 errors for all `/api/*` requests. Fix: changed proxy target to `http://api:3001` (Docker service name), allowing the Vite dev server to correctly proxy API requests to the API container. Marketplace.tsx was also updated to use `/api/products` and `/api/categories` (same-origin paths) instead of `http://localhost:3001/api/...`. Preview now consistently loads all 8 products.
 
+**2026-07-30 (modal close fix):** The "New request" modal in Forecasts could not be closed via the X button or Cancel button. Root cause: `DialogContent` in `apps/web/src/components/ui/dialog.tsx` never checked `ctx.open` — it was always rendered in the DOM with `position: fixed`, so state changes had no effect on visibility. Additionally, the X button lacked `type="button"`, causing form submission in some cases. Fix: (1) Added `if (!ctx.open) return null;` to `DialogContent`, (2) Added `type="button"` to the X button, (3) `DialogContent` now automatically renders `DialogOverlay` when open (provides dark backdrop + click-outside-to-close). All modals across the app now open/close correctly.
+
 ---
 
 ## Deliverables
