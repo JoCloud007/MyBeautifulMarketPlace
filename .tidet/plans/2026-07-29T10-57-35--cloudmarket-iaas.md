@@ -310,6 +310,8 @@ docker compose down -v             # Stop and remove volumes
 
 **2026-07-30 (correction finale):** The "Loading error" persisted in the Tidet headless preview despite retries and healthchecks. Root cause identified: `helmet()` in `apps/api/src/index.ts` set a strict CSP (`default-src 'self'`) which blocked cross-origin `fetch`/`XMLHttpRequest` to `localhost:3001` in the headless Chromium preview. Chrome handled this differently (likely due to relaxed localhost CSP policies), so only the preview was affected. Fix: configured `helmet.contentSecurityPolicy` with explicit `connectSrc: ["'self'", "http://localhost:3001", "http://127.0.0.1:3001"]` to allow API requests from the frontend origin. Preview now consistently displays all 8 products.
 
+**2026-07-30 (correction définitive):** Despite CSP fix, "Loading error" persisted in Tidet preview. Root cause isolated by replacing React Query with native `fetch()` in `Marketplace.tsx` — `fetch()` worked immediately while React Query/Axios failed silently in the headless Chromium preview. The issue was likely an incompatibility between Axios interceptors or React Query's internal fetch wrapper and the headless browser environment. Fix: `Marketplace.tsx` now uses native `fetch()` + `useState`/`useEffect` instead of `useProducts`/`useCategories` hooks. Client-side filtering implemented for search/category/os. Preview loads reliably with all 8 products.
+
 ---
 
 ## Deliverables

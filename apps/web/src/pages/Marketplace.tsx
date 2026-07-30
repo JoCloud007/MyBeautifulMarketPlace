@@ -11,7 +11,7 @@ import {
   PackageOpen,
   ChevronRight,
 } from 'lucide-react';
-import { useProducts, useCategories } from '@/hooks/useApi';
+import { useState, useEffect } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
@@ -54,21 +54,75 @@ function AnimatedCard({ children, delay = 0 }: { children: React.ReactNode; dela
   );
 }
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
 export default function Marketplace() {
   const { filters, sortBy, setFilters, removeFilter, clearFilters, setSortBy } = useAppStore();
-  const { data: products, isLoading: productsLoading, isError: productsError, refetch: refetchProducts } = useProducts(filters);
-  const { data: categories, isLoading: categoriesLoading, isError: categoriesError, refetch: refetchCategories } = useCategories();
+  const [products, setProducts] = useState<any[] | null>(null);
+  const [categories, setCategories] = useState<any[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(false);
+    Promise.all([
+      fetch(`${API_URL}/api/products`).then(r => r.ok ? r.json() : Promise.reject(new Error('products failed'))),
+      fetch(`${API_URL}/api/categories`).then(r => r.ok ? r.json() : Promise.reject(new Error('categories failed')))
+    ])
+      .then(([productsData, categoriesData]) => {
+        if (!cancelled) {
+          setProducts(productsData);
+          setCategories(categoriesData);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError(true);
+          setLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
+  const filteredProducts = products?.filter((p: any) => {
+    if (filters.category && p.category?.slug !== filters.category) return false;
+    if (filters.os && p.os !== filters.os) return false;
+    if (filters.search && !p.name.toLowerCase().includes(filters.search.toLowerCase())) return false;
+    if (filters.flavor && p.flavor !== filters.flavor) return false;
+    return true;
+  }) ?? [];
+
   const sortedProducts =
-    products?.slice().sort((a, b) => {
+    filteredProducts.slice().sort((a: any, b: any) => {
       if (sortBy === 'name') return a.name.localeCompare(b.name);
       if (sortBy === 'category') return (a.category?.name || '').localeCompare(b.category?.name || '');
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    }) ?? [];
+    });
 
-  const hasError = (productsError && !products) || (categoriesError && !categories);
+  const hasError = error && !products;
+
+  const refetch = () => {
+    setLoading(true);
+    setError(false);
+    Promise.all([
+      fetch(`${API_URL}/api/products`).then(r => r.ok ? r.json() : Promise.reject(new Error('products failed'))),
+      fetch(`${API_URL}/api/categories`).then(r => r.ok ? r.json() : Promise.reject(new Error('categories failed')))
+    ])
+      .then(([productsData, categoriesData]) => {
+        setProducts(productsData);
+        setCategories(categoriesData);
+        setLoading(false);
+      })
+      .catch(() => {
+        setError(true);
+        setLoading(false);
+      });
+  };
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -83,10 +137,7 @@ export default function Marketplace() {
       {hasError ? (
         <QueryError
           message="Unable to load catalog. Check your connection or try again."
-          onRetry={() => {
-            if (productsError) refetchProducts();
-            if (categoriesError) refetchCategories();
-          }}
+          onRetry={refetch}
         />
       ) : (
         <>
@@ -151,7 +202,7 @@ export default function Marketplace() {
             </div>
 
             {/* Category Pills */}
-            {!categoriesLoading && categories && (
+            {!loading && categories && (
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
@@ -227,7 +278,7 @@ export default function Marketplace() {
 
             {/* Results count */}
             <div className="text-sm text-slate-500">
-              {productsLoading ? (
+              {loading ? (
                 <Skeleton className="h-4 w-32" />
               ) : (
                 <span>
@@ -239,7 +290,7 @@ export default function Marketplace() {
           </div>
 
           {/* Product Grid */}
-          {productsLoading || categoriesLoading ? (
+          {loading ? (
             <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (
                 <Skeleton key={i} className="h-56 rounded-lg bg-slate-800 animate-pulse-soft" />
