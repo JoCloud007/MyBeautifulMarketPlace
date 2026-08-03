@@ -25,26 +25,39 @@ api.interceptors.response.use(
   }
 );
 
+// Native fetch helper (replaces Axios for GET queries — fixes headless-browser loading issues)
+async function fetchJson<T>(url: string, params?: Record<string, any>): Promise<T> {
+  let fullUrl = `/api${url}`;
+  if (params) {
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined) searchParams.append(k, String(v));
+    });
+    if (searchParams.toString()) fullUrl += '?' + searchParams.toString();
+  }
+  const res = await fetch(fullUrl);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
 // ========== PRODUCTS ==========
 
 export function useProducts(filters?: { category?: string; os?: string; search?: string }) {
   return useQuery<Product[]>({
     queryKey: ['products', filters],
-    queryFn: async () => {
-      const { data } = await api.get('/products', { params: filters });
-      return data;
-    },
+    queryFn: () => fetchJson('/products', filters),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
 export function useProduct(slug: string) {
   return useQuery<Product>({
     queryKey: ['product', slug],
-    queryFn: async () => {
-      const { data } = await api.get(`/products/${slug}`);
-      return data;
-    },
+    queryFn: () => fetchJson(`/products/${slug}`),
     enabled: !!slug,
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
@@ -106,10 +119,9 @@ export function useDeleteProduct() {
 export function useCategories() {
   return useQuery<Category[]>({
     queryKey: ['categories'],
-    queryFn: async () => {
-      const { data } = await api.get('/categories');
-      return data;
-    },
+    queryFn: () => fetchJson('/categories'),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
@@ -171,10 +183,9 @@ export function useDeleteCategory() {
 export function useFlavors(productId?: string) {
   return useQuery<Flavor[]>({
     queryKey: ['flavors', productId],
-    queryFn: async () => {
-      const { data } = await api.get('/flavors', { params: productId ? { productId } : undefined });
-      return data;
-    },
+    queryFn: () => fetchJson('/flavors', productId ? { productId } : undefined),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
@@ -242,10 +253,9 @@ export function useDeleteFlavor() {
 export function useDependencies() {
   return useQuery<Dependency[]>({
     queryKey: ['dependencies'],
-    queryFn: async () => {
-      const { data } = await api.get('/dependencies');
-      return data;
-    },
+    queryFn: () => fetchJson('/dependencies'),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
@@ -310,20 +320,18 @@ export function useDeleteDependency() {
 export function useForecasts() {
   return useQuery<Forecast[]>({
     queryKey: ['forecasts'],
-    queryFn: async () => {
-      const { data } = await api.get('/forecasts');
-      return data;
-    },
+    queryFn: () => fetchJson('/forecasts'),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
 export function useForecastStats() {
   return useQuery<ForecastStats>({
     queryKey: ['forecast-stats'],
-    queryFn: async () => {
-      const { data } = await api.get('/forecasts/stats');
-      return data;
-    },
+    queryFn: () => fetchJson('/forecasts/stats'),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
@@ -391,10 +399,9 @@ export function useDeleteForecast() {
 export function useUsers() {
   return useQuery<User[]>({
     queryKey: ['users'],
-    queryFn: async () => {
-      const { data } = await api.get('/users');
-      return data;
-    },
+    queryFn: () => fetchJson('/users'),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
@@ -456,70 +463,63 @@ export function useDeleteUser() {
 export function useAdminDashboard() {
   return useQuery({
     queryKey: ['admin-dashboard'],
-    queryFn: async () => {
-      const { data } = await api.get('/admin/dashboard');
-      return data;
-    },
+    queryFn: () => fetchJson('/admin/dashboard'),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
 export function useAdminProducts() {
   return useQuery<Product[]>({
     queryKey: ['admin-products'],
-    queryFn: async () => {
-      const { data } = await api.get('/admin/products');
-      return data;
-    },
+    queryFn: () => fetchJson('/admin/products'),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
 export function useAdminForecasts() {
   return useQuery<Forecast[]>({
     queryKey: ['admin-forecasts'],
-    queryFn: async () => {
-      const { data } = await api.get('/admin/forecasts');
-      return data;
-    },
+    queryFn: () => fetchJson('/admin/forecasts'),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
 export function useAdminCategories() {
   return useQuery<Category[]>({
     queryKey: ['admin-categories'],
-    queryFn: async () => {
-      const { data } = await api.get('/admin/categories');
-      return data;
-    },
+    queryFn: () => fetchJson('/admin/categories'),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
 export function useAdminFlavors() {
   return useQuery<Flavor[]>({
     queryKey: ['admin-flavors'],
-    queryFn: async () => {
-      const { data } = await api.get('/admin/flavors');
-      return data;
-    },
+    queryFn: () => fetchJson('/admin/flavors'),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
 export function useAdminDependencies() {
   return useQuery<Dependency[]>({
     queryKey: ['admin-dependencies'],
-    queryFn: async () => {
-      const { data } = await api.get('/admin/dependencies');
-      return data;
-    },
+    queryFn: () => fetchJson('/admin/dependencies'),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
 export function useAdminUsers() {
   return useQuery<User[]>({
     queryKey: ['admin-users'],
-    queryFn: async () => {
-      const { data } = await api.get('/admin/users');
-      return data;
-    },
+    queryFn: () => fetchJson('/admin/users'),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
