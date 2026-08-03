@@ -21,7 +21,7 @@ const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
-app.use(helmet());
+app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], connectSrc: ["'self'", "http://localhost:3001", "http://127.0.0.1:3001"] } } }));
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000,
