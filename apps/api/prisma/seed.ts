@@ -5,13 +5,21 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Seeding database...');
 
-  // Clean existing data
-  await prisma.forecast.deleteMany();
-  await prisma.dependency.deleteMany();
-  await prisma.flavor.deleteMany();
-  await prisma.product.deleteMany();
-  await prisma.category.deleteMany();
-  await prisma.user.deleteMany();
+  // Clean existing data (ignore if tables don't exist yet on first run)
+  try {
+    await prisma.forecast.deleteMany();
+    await prisma.dependency.deleteMany();
+    await prisma.flavor.deleteMany();
+    await prisma.product.deleteMany();
+    await prisma.category.deleteMany();
+    await prisma.user.deleteMany();
+  } catch (e: any) {
+    if (e.code === 'P2021') {
+      console.log('  Tables do not exist yet — make sure to run "npx prisma db push" first');
+      throw e;
+    }
+    throw e;
+  }
 
   // Create Categories
   const compute = await prisma.category.create({

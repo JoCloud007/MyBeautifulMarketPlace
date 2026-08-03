@@ -113,7 +113,10 @@ cd cloudmarket
 # Launch the full stack
 docker compose up --build
 
-# In another terminal, seed the database
+# Push the Prisma schema to the database (required on first run / fresh clone)
+docker compose exec api npx prisma db push
+
+# Seed the database with sample data
 docker compose exec api npx tsx prisma/seed.ts
 ```
 
