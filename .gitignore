@@ -5,3 +5,6 @@
 
 # Tidet per-session git worktrees (P2a)
 .tidet/worktrees/
+
+# Docker Compose local overrides (machine-specific)
+docker-compose.override.yml
