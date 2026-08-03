@@ -1,0 +1,33 @@
+# Docker Compose override for local development
+# This file is automatically merged with docker-compose.yml — no -f flag needed.
+# Just run: docker compose up
+#
+# Uncomment any section below to activate the override.
+
+services:
+  db:
+    restart: unless-stopped
+
+  api:
+    restart: unless-stopped
+    # Use pre-built image instead of rebuilding from source
+    # image: cloudmarket-api:latest
+
+  web:
+    restart: unless-stopped
+    # Use pre-built image instead of rebuilding from source
+    # image: cloudmarket-web:latest
+
+  # pgAdmin — Web UI for PostgreSQL management (optional)
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: cloudmarket-pgadmin
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: admin@cloudmarket.local
+  #     PGADMIN_DEFAULT_PASSWORD: admin
+  #   ports:
+  #     - "5050:80"
+  #   depends_on:
+  #     - db
+  #   networks:
+  #     - cloudmarket-net
