@@ -2,33 +2,43 @@ services:
   db:
     image: postgres:16-alpine
     container_name: cloudmarket-db
+    env_file:
+      - .env
     environment:
-      POSTGRES_USER: cloudmarket
-      POSTGRES_PASSWORD: cloudmarket_secret
-      POSTGRES_DB: cloudmarket
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cloudmarket -d cloudmarket"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
       - cloudmarket-net
   api:
-    platform: linux/amd64
+    image: cloudmarket-api
     build:
       context: .
       dockerfile: apps/api/Dockerfile
     container_name: cloudmarket-api
+    env_file:
+      - .env
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgresql://cloudmarket:cloudmarket_secret@db:5432/cloudmarket?schema=public
-      PORT: 3001
+      DATABASE_URL: ${DATABASE_URL}
+      PORT: ${PORT}
     ports:
       - "3001:3001"
+    command: ["npx", "tsx", "src/index.ts"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     depends_on:
       db:
         condition: service_healthy
@@ -41,16 +51,20 @@ services:
       - cloudmarket-net
 
   web:
+    image: cloudmarket-web
     build:
       context: .
       dockerfile: apps/web/Dockerfile
     container_name: cloudmarket-web
+    env_file:
+      - .env
     environment:
-      VITE_API_URL: http://localhost:3001
+      VITE_API_URL: ${VITE_API_URL}
     ports:
       - "5192:5192"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     volumes:
       - ./apps/web:/app/apps/web
       - /app/apps/web/node_modules

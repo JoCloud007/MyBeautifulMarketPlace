@@ -304,6 +304,10 @@ docker compose down -v             # Stop and remove volumes
 
 **2026-07-29:** Full Docker Compose (API + Web + DB) does not work on macOS ARM64 due to a Prisma bug (incorrect detection of binaryTarget `musl` vs `glibc` in Docker containers). The API image was cleaned (`je-veux-une-marketplace-pour-des-64eb-api` deleted) and rebuilt with the name `cloudmarket`. Adopted solution: hybrid approach — PostgreSQL in isolated Docker on port 5433, API and Web in local dev mode (ports 3001 and 5192). The database is initialized (schema pushed + seed) and the application is functional.
 
+**2026-07-30:** Extracted sensitive credentials from `docker-compose.yml` into a dedicated `.env` file. Variables moved: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DATABASE_URL`, `PORT`, `VITE_API_URL`. Each service in `docker-compose.yml` now references these via `${VAR:-default}` syntax and loads them via `env_file: - .env`. Added `.env` and `.env.local` to `.gitignore` to prevent accidental commits. `docker compose config` validated successfully; application restarts and runs correctly with the new configuration.
+
+**2026-07-30:** Removed hardcoded `binaryTargets = ["native", "linux-arm64-openssl-1.1.x"]` from `apps/api/prisma/schema.prisma`. The generator block now only specifies `provider = "prisma-client-js"`. Added `PRISMA_CLI_BINARY_TARGETS=linux-arm64-openssl-3.0.x` to `.env` — Prisma CLI reads this environment variable at generate time, making the target architecture configurable without modifying version-controlled schema files. Prisma Client regenerated successfully; application confirmed running with 8 products loaded.
+
 ---
 
 ## Deliverables
