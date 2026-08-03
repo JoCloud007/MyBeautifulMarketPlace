@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useForecasts, useForecastStats, useCreateForecast, useUpdateForecast, useDeleteForecast, useProducts } from '@/hooks/useApi';
+import { useCreateForecast, useUpdateForecast, useDeleteForecast } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { Product, Forecast, ForecastStats } from '@cloudmarket/shared-types';
 import {
   Dialog,
   DialogContent,
@@ -27,7 +28,7 @@ import {
   Trash2,
   Filter,
 } from 'lucide-react';
-import type { ApprovalStatus, Forecast } from '@cloudmarket/shared-types';
+import type { ApprovalStatus } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ApprovalStatus, { label: string; color: string; icon: typeof Clock }> = {
   PENDING: { label: 'Pending', color: 'bg-amber-500/10 text-amber-500 border-amber-500/20', icon: Clock },
@@ -126,9 +127,36 @@ function ForecastCard({ forecast, onApprove, onReject, onDelete }: {
 }
 
 export default function Forecasts() {
-  const { data: forecasts, isLoading: forecastsLoading, isError: forecastsError, refetch: refetchForecasts } = useForecasts();
-  const { data: stats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useForecastStats();
-  const { data: products } = useProducts();
+  const [forecasts, setForecasts] = useState<Forecast[] | null>(null);
+  const [stats, setStats] = useState<ForecastStats | null>(null);
+  const [products, setProducts] = useState<Product[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  const loadData = () => {
+    setLoading(true);
+    setError(false);
+    Promise.all([
+      fetch('/api/forecasts').then(r => r.ok ? r.json() : Promise.reject(new Error('forecasts failed'))),
+      fetch('/api/forecasts/stats').then(r => r.ok ? r.json() : Promise.reject(new Error('stats failed'))),
+      fetch('/api/products').then(r => r.ok ? r.json() : Promise.reject(new Error('products failed')))
+    ])
+      .then(([forecastsData, statsData, productsData]) => {
+        setForecasts(forecastsData);
+        setStats(statsData);
+        setProducts(productsData);
+        setLoading(false);
+      })
+      .catch(() => {
+        setError(true);
+        setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
   const createForecast = useCreateForecast();
   const updateForecast = useUpdateForecast();
   const deleteForecast = useDeleteForecast();
@@ -202,7 +230,7 @@ export default function Forecasts() {
     { label: 'Rejected', value: stats?.rejected ?? 0, icon: XCircle, color: 'text-red-400' },
   ];
 
-  const hasError = forecastsError || statsError;
+  const hasError = error && !forecasts;
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -228,15 +256,12 @@ export default function Forecasts() {
       {hasError ? (
         <QueryError
           message="Unable to load dashboard data."
-          onRetry={() => {
-            if (forecastsError) refetchForecasts();
-            if (statsError) refetchStats();
-          }}
+          onRetry={loadData}
         />
       ) : (
         <>
           {/* Stats Cards */}
-          {statsLoading ? (
+          {loading ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {Array.from({ length: 4 }).map((_, i) => (
                 <Skeleton key={i} className="h-28 rounded-lg bg-slate-800 animate-pulse-soft" />
@@ -307,7 +332,7 @@ export default function Forecasts() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {forecastsLoading ? (
+                {loading ? (
                   <div className="space-y-3">
                     {Array.from({ length: 5 }).map((_, i) => (
                       <Skeleton key={i} className="h-14 rounded-lg bg-slate-800 animate-pulse-soft" />
