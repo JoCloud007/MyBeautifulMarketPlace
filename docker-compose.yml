@@ -25,10 +25,10 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
       args:
-        HTTP_PROXY: ${HTTP_PROXY:-}
-        HTTPS_PROXY: ${HTTPS_PROXY:-}
-        NO_PROXY: ${NO_PROXY:-}
-        NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-1}
+        HTTP_PROXY: ${COMPOSE_HTTP_PROXY:-}
+        HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
+        NO_PROXY: ${COMPOSE_NO_PROXY:-}
+        NODE_TLS_REJECT_UNAUTHORIZED: ${COMPOSE_NODE_TLS_REJECT_UNAUTHORIZED:-1}
     container_name: cloudmarket-api
     env_file:
       - .env
@@ -36,10 +36,10 @@ services:
       NODE_ENV: development
       DATABASE_URL: ${DATABASE_URL}
       PORT: ${PORT}
-      HTTP_PROXY: ${HTTP_PROXY:-}
-      HTTPS_PROXY: ${HTTPS_PROXY:-}
-      NO_PROXY: ${NO_PROXY:-}
-      NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-1}
+      HTTP_PROXY: ${COMPOSE_HTTP_PROXY:-}
+      HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
+      NO_PROXY: ${COMPOSE_NO_PROXY:-}
+      NODE_TLS_REJECT_UNAUTHORIZED: ${COMPOSE_NODE_TLS_REJECT_UNAUTHORIZED:-1}
     ports:
       - "3001:3001"
     command: ["npx", "tsx", "src/index.ts"]
@@ -65,19 +65,19 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        HTTP_PROXY: ${HTTP_PROXY:-}
-        HTTPS_PROXY: ${HTTPS_PROXY:-}
-        NO_PROXY: ${NO_PROXY:-}
-        NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-1}
+        HTTP_PROXY: ${COMPOSE_HTTP_PROXY:-}
+        HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
+        NO_PROXY: ${COMPOSE_NO_PROXY:-}
+        NODE_TLS_REJECT_UNAUTHORIZED: ${COMPOSE_NODE_TLS_REJECT_UNAUTHORIZED:-1}
     container_name: cloudmarket-web
     env_file:
       - .env
     environment:
       VITE_API_URL: ${VITE_API_URL}
-      HTTP_PROXY: ${HTTP_PROXY:-}
-      HTTPS_PROXY: ${HTTPS_PROXY:-}
-      NO_PROXY: ${NO_PROXY:-}
-      NODE_TLS_REJECT_UNAUTHORIZED: ${NODE_TLS_REJECT_UNAUTHORIZED:-1}
+      HTTP_PROXY: ${COMPOSE_HTTP_PROXY:-}
+      HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
+      NO_PROXY: ${COMPOSE_NO_PROXY:-}
+      NODE_TLS_REJECT_UNAUTHORIZED: ${COMPOSE_NODE_TLS_REJECT_UNAUTHORIZED:-1}
     ports:
       - "5192:5192"
     depends_on:
