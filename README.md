@@ -133,17 +133,19 @@ docker compose exec api npx tsx prisma/seed.ts
 # 1. Install dependencies
 npm install
 
-# 2. Start PostgreSQL
+# 2. Start PostgreSQL (load .env first)
+set -a && source .env && set +a
 docker run -d \
   --name cloudmarket-db \
-  -e POSTGRES_USER=cloudmarket \
-  -e POSTGRES_PASSWORD=cloudmarket_secret \
-  -e POSTGRES_DB=cloudmarket \
+  -e POSTGRES_USER="$POSTGRES_USER" \
+  -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+  -e POSTGRES_DB="$POSTGRES_DB" \
   -p 5432:5432 \
   postgres:16-alpine
 
 # 3. Set up the database
 cd apps/api
+set -a && source ../../.env && set +a
 npx prisma db push
 npx tsx prisma/seed.ts
 
