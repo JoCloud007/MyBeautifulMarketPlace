@@ -407,15 +407,20 @@ docker compose build
 
 **Prisma binary download blocked (`binaries.prisma.sh` unreachable)**
 
-Pre-generate the Prisma client on your host (where the proxy works), then build:
+Pre-generate the Prisma client on your host (where the proxy works) with the Linux binary target, then build:
 
 ```bash
-# On host — generate once
-cd apps/api && npx prisma generate && cd ../..
+# On host — generate once with the Linux target
+# (the container runs Linux, the host may be macOS or Windows)
+cd apps/api
+PRISMA_CLI_BINARY_TARGETS=linux-arm64-openssl-3.0.x npx prisma generate
+cd ../..
 
 # Docker will reuse the generated client
 docker compose build api
 ```
+
+> **Why this is needed:** `npx prisma generate` downloads a platform-specific query engine. On macOS it downloads `darwin-arm64-openssl-3.0.x`, but the Docker container needs `linux-arm64-openssl-3.0.x`. Setting `PRISMA_CLI_BINARY_TARGETS` forces both binaries to be downloaded so the container can run correctly.
 
 ## 📄 License
 
