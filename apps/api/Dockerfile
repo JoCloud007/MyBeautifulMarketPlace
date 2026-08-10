@@ -32,7 +32,11 @@ RUN npm install
 # Copy source
 COPY . .
 
-# Generate Prisma client inside the container (ensures correct Linux binary)
+# Re-install dependencies after COPY (COPY . . may have overwritten node_modules
+# with an empty one from the build context since .dockerignore excludes it)
+RUN npm install
+
+# Generate Prisma client with locally installed packages (no npx cache symlinks)
 RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
 
 # Build shared types
