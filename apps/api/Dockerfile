@@ -32,14 +32,10 @@ RUN npm install
 # Copy source
 COPY . .
 
-# Use pre-generated Prisma client from host when available (e.g., behind
-# corporate proxy), otherwise generate inside the container.
-RUN if [ ! -d node_modules/.prisma/client ] || [ -n "$FORCE_PRISMA_REGENERATE" ]; then \
-      rm -rf node_modules/.prisma node_modules/@prisma/client && \
-      npx prisma generate --schema=apps/api/prisma/schema.prisma; \
-    else \
-      echo "Using pre-generated Prisma client from host"; \
-    fi
+# Always regenerate Prisma client inside the container.
+# The host may have darwin binaries that don't work in the Linux container.
+RUN rm -rf node_modules/.prisma node_modules/@prisma/client && \
+    npx prisma generate --schema=apps/api/prisma/schema.prisma
 
 # Build shared types
 RUN npm run build -w packages/shared-types
