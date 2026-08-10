@@ -1,4 +1,5 @@
-FROM node:20-alpine AS base
+ARG BASE_IMAGE=node:20-alpine
+FROM ${BASE_IMAGE} AS base
 
 # Optional proxy configuration
 ARG HTTP_PROXY=""

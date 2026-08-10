@@ -387,6 +387,33 @@ cd apps/api && npx prisma generate
 npm run build -w packages/shared-types
 ```
 
+### 🏢 Corporate Environment
+
+**Custom Docker registry / air-gapped environment**
+
+Both Dockerfiles support custom base images via `BASE_IMAGE`:
+
+```bash
+# Set in .env
+API_BASE_IMAGE=registry.company.com/node:20-bookworm
+WEB_BASE_IMAGE=registry.company.com/node:20-alpine
+
+# Then build normally
+docker compose build
+```
+
+**Prisma binary download blocked (`binaries.prisma.sh` unreachable)**
+
+Pre-generate the Prisma client on your host (where the proxy works), then build:
+
+```bash
+# On host — generate once
+cd apps/api && npx prisma generate && cd ../..
+
+# Docker will reuse the generated client
+docker compose build api
+```
+
 ## 📄 License
 
 MIT — Educational / demonstration project.
