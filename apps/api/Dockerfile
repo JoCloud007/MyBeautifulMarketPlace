@@ -1,4 +1,4 @@
-FROM node:20-bullseye AS base
+FROM node:20-bookworm AS base
 
 # Optional proxy configuration
 ARG HTTP_PROXY=""
