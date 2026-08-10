@@ -25,7 +25,9 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
       args:
-        BASE_IMAGE: ${API_BASE_IMAGE:-node:20-bookworm}
+        REPO_URL: ${REPO_URL:-}
+        IMAGE: ${API_IMAGE:-node}
+        TAG: ${API_TAG:-20-bookworm}
         HTTP_PROXY: ${COMPOSE_HTTP_PROXY:-}
         HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
         NO_PROXY: ${COMPOSE_NO_PROXY:-}
@@ -66,7 +68,9 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        BASE_IMAGE: ${WEB_BASE_IMAGE:-node:20-alpine}
+        REPO_URL: ${REPO_URL:-}
+        IMAGE: ${WEB_IMAGE:-node}
+        TAG: ${WEB_TAG:-20-alpine}
         HTTP_PROXY: ${COMPOSE_HTTP_PROXY:-}
         HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
         NO_PROXY: ${COMPOSE_NO_PROXY:-}
