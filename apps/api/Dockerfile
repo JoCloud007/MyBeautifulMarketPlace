@@ -26,7 +26,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/api/package*.json ./apps/api/
 COPY packages/shared-types/package*.json ./packages/shared-types/
-COPY node_modules/prisma/ ./node_modules/@prisma/client
+RUN mkdir -p ./node_modules/.prisma/client
+ADD node_modules/prisma/ ./node_modules/.prisma/client
 
 RUN npm install
 
