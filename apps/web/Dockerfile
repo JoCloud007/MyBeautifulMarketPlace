@@ -1,7 +1,8 @@
 ARG REPO_URL=""
 ARG IMAGE=node
 ARG TAG=20-alpine
-FROM ${REPO_URL}${IMAGE}:${TAG} AS base
+ARG FULL_IMAGE=${REPO_URL:+$REPO_URL/}${IMAGE}:${TAG}
+FROM ${FULL_IMAGE} AS base
 
 # Optional proxy configuration
 ARG HTTP_PROXY=""

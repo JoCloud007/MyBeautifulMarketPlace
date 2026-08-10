@@ -395,7 +395,7 @@ Both Dockerfiles support custom base images via `REPO_URL`, `IMAGE` and `TAG`:
 
 ```bash
 # Set in .env
-REPO_URL=registry.company.com/
+REPO_URL=registry.company.com
 API_IMAGE=node
 API_TAG=20-bookworm
 WEB_IMAGE=node
