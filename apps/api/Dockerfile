@@ -32,10 +32,8 @@ RUN npm install
 # Copy source
 COPY . .
 
-# Always regenerate Prisma client inside the container.
-# The host may have darwin binaries that don't work in the Linux container.
-RUN rm -rf node_modules/.prisma node_modules/@prisma/client && \
-    npx prisma generate --schema=apps/api/prisma/schema.prisma
+# Generate Prisma client inside the container (ensures correct Linux binary)
+RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
 
 # Build shared types
 RUN npm run build -w packages/shared-types
