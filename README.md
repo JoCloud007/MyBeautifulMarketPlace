@@ -147,6 +147,40 @@ docker compose exec api npx tsx prisma/seed.ts
 | Health | http://localhost:3001/health | Health check |
 | DB | localhost:5432 | PostgreSQL 16 |
 
+### Prisma in Air-Gapped Environments
+
+If you are building in an environment **without internet access** (e.g. corporate network, CI behind a firewall), Prisma cannot download engine binaries on demand. Pre-generate them and commit them to the repo:
+
+1. **Generate the engine for your target platform** (e.g. Debian or Alpine):
+   ```bash
+   # For Debian-based containers (node:20-slim, etc.):
+   PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x \
+     npx prisma generate --schema=apps/api/prisma/schema.prisma
+
+   # For Alpine-based containers (node:20-alpine, etc.):
+   PRISMA_CLI_BINARY_TARGETS=linux-arm64-openssl-3.0.x \
+     npx prisma generate --schema=apps/api/prisma/schema.prisma
+   ```
+
+2. **Copy the generated binaries into `lib/prisma/`**:
+   ```bash
+   mkdir -p lib/prisma
+   cp node_modules/.prisma/client/libquery_engine-*.so.node lib/prisma/
+   cp node_modules/@prisma/engines/schema-engine-* lib/prisma/
+   ```
+
+3. **Set the environment variables** in your `.env` (see `.env.example`):
+   ```bash
+   export PRISMA_GENERATE_SKIP_AUTOINSTALL=1
+   export PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
+   export PRISMA_QUERY_ENGINE_LIBRARY="./lib/prisma/libquery_engine-<target>.so.node"
+   export PRISMA_QUERY_ENGINE_BINARY="./lib/prisma/libquery_engine-<target>.so.node"
+   export PRISMA_SCHEMA_ENGINE_BINARY="./lib/prisma/schema-engine-<target>"
+   export PRISMA_MIGRATION_ENGINE_BINARY="./lib/prisma/schema-engine-<target>"
+   ```
+
+> **Note:** The `lib/prisma/` directory is tracked in git so the binaries are available during the Docker build.
+
 ### Local development (without Docker)
 
 ```bash
