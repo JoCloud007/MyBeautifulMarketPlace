@@ -26,9 +26,6 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/api/package*.json ./apps/api/
 COPY packages/shared-types/package*.json ./packages/shared-types/
-RUN mkdir -p ./node_modules/.prisma/client
-ADD node_modules/prisma/ ./node_modules/.prisma/client
-
 # Optional .npmrc for private registry / auth tokens
 RUN --mount=type=bind,source=.,target=/ctx \
     if [ -f /ctx/.npmrc ]; then cp /ctx/.npmrc /app/; fi
