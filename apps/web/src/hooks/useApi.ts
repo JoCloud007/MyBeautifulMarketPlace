@@ -3,10 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
 import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AdminDashboard } from '@cloudmarket/shared-types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
 const api = axios.create({
-  baseURL: `${API_URL}/api`,
+  baseURL: '/api',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -27,7 +25,7 @@ api.interceptors.response.use(
 
 // Native fetch helper (replaces Axios for GET queries — fixes headless-browser loading issues)
 async function fetchJson<T>(url: string, params?: Record<string, any>): Promise<T> {
-  let fullUrl = `${API_URL}/api${url}`;
+  let fullUrl = `/api${url}`;
   if (params) {
     const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {

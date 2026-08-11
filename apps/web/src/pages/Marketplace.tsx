@@ -29,8 +29,6 @@ const iconMap: Record<string, React.ElementType> = {
   Monitor,
 };
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-
 const osOptions = ['Linux', 'Windows', 'ESXi'];
 const flavorOptions = ['Small', 'Medium', 'Large', 'XL'];
 
@@ -68,8 +66,8 @@ export default function Marketplace() {
     setLoading(true);
     setError(false);
     Promise.all([
-      fetch(`${API_URL}/api/products`).then(r => r.ok ? r.json() : Promise.reject(new Error('products failed'))),
-      fetch(`${API_URL}/api/categories`).then(r => r.ok ? r.json() : Promise.reject(new Error('categories failed')))
+      fetch('/api/products').then(r => r.ok ? r.json() : Promise.reject(new Error('products failed'))),
+      fetch('/api/categories').then(r => r.ok ? r.json() : Promise.reject(new Error('categories failed')))
     ])
       .then(([productsData, categoriesData]) => {
         if (!cancelled) {
@@ -110,8 +108,8 @@ export default function Marketplace() {
     setLoading(true);
     setError(false);
     Promise.all([
-      fetch(`${API_URL}/api/products`).then(r => r.ok ? r.json() : Promise.reject(new Error('products failed'))),
-      fetch(`${API_URL}/api/categories`).then(r => r.ok ? r.json() : Promise.reject(new Error('categories failed')))
+      fetch('/api/products').then(r => r.ok ? r.json() : Promise.reject(new Error('products failed'))),
+      fetch('/api/categories').then(r => r.ok ? r.json() : Promise.reject(new Error('categories failed')))
     ])
       .then(([productsData, categoriesData]) => {
         setProducts(productsData);
