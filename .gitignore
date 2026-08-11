@@ -20,3 +20,10 @@ docker-compose.override.yml
 
 # Local secrets (mount via docker-compose.override.yml)
 .secrets/
+
+# Tidet session files
+.tidet/.gitignore
+.tidet/memory/
+
+# Build outputs
+packages/shared-types/dist/
