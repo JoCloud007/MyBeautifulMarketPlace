@@ -14,9 +14,10 @@
 - [Architecture](#-architecture)
 - [Quick Start](#-quick-start)
   - [Prerequisites](#prerequisites)
-  - [With Docker Compose](#with-docker-compose-recommended)
-  - [Prisma in Air-Gapped Environments](#prisma-in-air-gapped-environments)
-  - [Local Development](#local-development-without-docker)
+  - [With Docker Compose + Makefile](#with-docker-compose--makefile-recommended)
+  - [Environment Variables](#environment-variables)
+  - [Services](#services)
+  - [Available Makefile Targets](#available-makefile-targets)
 - [Database Schema](#-database-schema)
 - [API Reference](#-api-reference)
 - [NPM Scripts](#-npm-scripts)
@@ -191,74 +192,6 @@ make run     # Start all containers
 | API | http://localhost:3001 | Express server |
 | Health | http://localhost:3001/health | Health check |
 | DB | localhost:5432 | PostgreSQL 16 |
-
-### Prisma in Air-Gapped Environments
-
-The engine binaries for `debian-openssl-3.0.x` and `linux-arm64-openssl-3.0.x` are **already generated and committed** to `lib/prisma/`. This is a one-time setup — you do not need to repeat it unless you change the Prisma version or target platform.
-
-> **How it was done:**
-> ```bash
-> # 1. Generate the engine on a machine with internet access
-> PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x \
->   npx prisma generate --schema=apps/api/prisma/schema.prisma
->
-> # 2. Copy the generated binaries into lib/prisma/
-> mkdir -p lib/prisma
-> cp node_modules/.prisma/client/libquery_engine-*.so.node lib/prisma/
-> cp node_modules/@prisma/engines/schema-engine-* lib/prisma/
-> ```
-
-#### Regenerating the Prisma Client in an Air-Gapped Environment
-
-If you need to regenerate the Prisma Client from the air-gapped system (no internet), use the provided `.source.prisma` file to set the offline variables:
-
-```bash
-# 1. Source the environment variables
-source .source.prisma
-
-# 2. Regenerate the client using the pre-committed binaries
-npx prisma generate --schema=apps/api/prisma/schema.prisma
-```
-
-The `.source.prisma` file points Prisma to the pre-generated engines in `lib/prisma/`:
-
-```bash
-export PRISMA_GENERATE_SKIP_AUTOINSTALL=1
-export PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
-export PRISMA_QUERY_ENGINE_LIBRARY="./lib/prisma/libquery_engine-debian-openssl-3.0.x.so.node"
-export PRISMA_SCHEMA_ENGINE_BINARY="./lib/prisma/schema-engine-debian-openssl-3.0.x"
-```
-
-> **Note:** The `lib/prisma/` directory is tracked in git so the binaries are available during the Docker build and on air-gapped clones.
-
-### Local development (without Docker)
-
-```bash
-# 1. Install dependencies
-npm install
-
-# 2. Start PostgreSQL (load .env first)
-set -a && source .env && set +a
-docker run -d \
-  --name cloudmarket-db \
-  -e POSTGRES_USER="$POSTGRES_USER" \
-  -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-  -e POSTGRES_DB="$POSTGRES_DB" \
-  -p 5432:5432 \
-  postgres:16-alpine
-
-# 3. Set up the database
-cd apps/api
-set -a && source ../../.env && set +a
-npx prisma db push
-npx tsx prisma/seed.ts
-
-# 4. Start the API (terminal 1)
-npm run dev -w apps/api
-
-# 5. Start the frontend (terminal 2)
-npm run dev -w apps/web
-```
 
 ## 🗄️ Database Schema
 
