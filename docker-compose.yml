@@ -77,6 +77,8 @@ services:
     env_file:
       - .env
     environment:
+      API_HOST: api
+      API_PORT: 3001
       VITE_API_URL: ${VITE_API_URL}
       HTTP_PROXY: ${COMPOSE_HTTP_PROXY:-}
       HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}

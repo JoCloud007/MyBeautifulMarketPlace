@@ -35,4 +35,4 @@ WORKDIR /app/apps/web
 
 EXPOSE 5192
 
-CMD ["npx", "serve", "dist", "-l", "tcp://0.0.0.0:5192", "-s"]
+CMD ["node", "server.js"]
