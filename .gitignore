@@ -2,6 +2,9 @@
 # Dependencies
 node_modules/
 
+# OS
+.DS_Store
+
 # npm config (may contain registry auth tokens)
 .npmrc
 
