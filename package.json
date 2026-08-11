@@ -23,5 +23,8 @@
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1"
+  },
+  "optionalDependencies": {
+    "@esbuild/linux-arm64": "^0.28.2"
   }
 }
