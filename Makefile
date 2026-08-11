@@ -4,6 +4,9 @@
 
 .PHONY: clean build deploy run help
 
+# Force bash — avoids POSIX/dash incompatibilities on Ubuntu
+SHELL := /bin/bash
+
 # Detect OS for platform-specific npm install
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
