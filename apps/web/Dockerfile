@@ -33,6 +33,6 @@ RUN npx tsc -p apps/web/tsconfig.json --noEmit && cd apps/web && npx vite build
 
 WORKDIR /app/apps/web
 
-EXPOSE 80
+EXPOSE 5192
 
-CMD ["npx", "serve", "dist", "-l", "80"]
+CMD ["npx", "serve", "dist", "-l", "tcp://0.0.0.0:5192"]
