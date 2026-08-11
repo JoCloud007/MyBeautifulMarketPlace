@@ -27,7 +27,7 @@ api.interceptors.response.use(
 
 // Native fetch helper (replaces Axios for GET queries — fixes headless-browser loading issues)
 async function fetchJson<T>(url: string, params?: Record<string, any>): Promise<T> {
-  let fullUrl = `/api${url}`;
+  let fullUrl = `${API_URL}/api${url}`;
   if (params) {
     const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {

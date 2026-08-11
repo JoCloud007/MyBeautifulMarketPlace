@@ -28,6 +28,8 @@ import {
   Trash2,
   Filter,
 } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 import type { ApprovalStatus } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ApprovalStatus, { label: string; color: string; icon: typeof Clock }> = {
@@ -137,9 +139,9 @@ export default function Forecasts() {
     setLoading(true);
     setError(false);
     Promise.all([
-      fetch('/api/forecasts').then(r => r.ok ? r.json() : Promise.reject(new Error('forecasts failed'))),
-      fetch('/api/forecasts/stats').then(r => r.ok ? r.json() : Promise.reject(new Error('stats failed'))),
-      fetch('/api/products').then(r => r.ok ? r.json() : Promise.reject(new Error('products failed')))
+      fetch(`${API_URL}/api/forecasts`).then(r => r.ok ? r.json() : Promise.reject(new Error('forecasts failed'))),
+      fetch(`${API_URL}/api/forecasts/stats`).then(r => r.ok ? r.json() : Promise.reject(new Error('stats failed'))),
+      fetch(`${API_URL}/api/products`).then(r => r.ok ? r.json() : Promise.reject(new Error('products failed')))
     ])
       .then(([forecastsData, statsData, productsData]) => {
         setForecasts(forecastsData);
