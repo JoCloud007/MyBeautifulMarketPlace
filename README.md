@@ -170,37 +170,42 @@ docker compose exec api npx tsx prisma/seed.ts
 
 ### Prisma in Air-Gapped Environments
 
-If you are building in an environment **without internet access** (e.g. corporate network, CI behind a firewall), Prisma cannot download engine binaries on demand. Pre-generate them and commit them to the repo:
+The engine binaries for `debian-openssl-3.0.x` and `linux-arm64-openssl-3.0.x` are **already generated and committed** to `lib/prisma/`. This is a one-time setup — you do not need to repeat it unless you change the Prisma version or target platform.
 
-1. **Generate the engine for your target platform** (e.g. Debian or Alpine):
-   ```bash
-   # For Debian-based containers (node:20-slim, etc.):
-   PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x \
-     npx prisma generate --schema=apps/api/prisma/schema.prisma
+> **How it was done:**
+> ```bash
+> # 1. Generate the engine on a machine with internet access
+> PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x \
+>   npx prisma generate --schema=apps/api/prisma/schema.prisma
+>
+> # 2. Copy the generated binaries into lib/prisma/
+> mkdir -p lib/prisma
+> cp node_modules/.prisma/client/libquery_engine-*.so.node lib/prisma/
+> cp node_modules/@prisma/engines/schema-engine-* lib/prisma/
+> ```
 
-   # For Alpine-based containers (node:20-alpine, etc.):
-   PRISMA_CLI_BINARY_TARGETS=linux-arm64-openssl-3.0.x \
-     npx prisma generate --schema=apps/api/prisma/schema.prisma
-   ```
+#### Regenerating the Prisma Client in an Air-Gapped Environment
 
-2. **Copy the generated binaries into `lib/prisma/`**:
-   ```bash
-   mkdir -p lib/prisma
-   cp node_modules/.prisma/client/libquery_engine-*.so.node lib/prisma/
-   cp node_modules/@prisma/engines/schema-engine-* lib/prisma/
-   ```
+If you need to regenerate the Prisma Client from the air-gapped system (no internet), use the provided `.source.prisma` file to set the offline variables:
 
-3. **Set the environment variables** in your `.env` (see `.env.example`):
-   ```bash
-   export PRISMA_GENERATE_SKIP_AUTOINSTALL=1
-   export PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
-   export PRISMA_QUERY_ENGINE_LIBRARY="./lib/prisma/libquery_engine-<target>.so.node"
-   export PRISMA_QUERY_ENGINE_BINARY="./lib/prisma/libquery_engine-<target>.so.node"
-   export PRISMA_SCHEMA_ENGINE_BINARY="./lib/prisma/schema-engine-<target>"
-   export PRISMA_MIGRATION_ENGINE_BINARY="./lib/prisma/schema-engine-<target>"
-   ```
+```bash
+# 1. Source the environment variables
+source .source.prisma
 
-> **Note:** The `lib/prisma/` directory is tracked in git so the binaries are available during the Docker build.
+# 2. Regenerate the client using the pre-committed binaries
+npx prisma generate --schema=apps/api/prisma/schema.prisma
+```
+
+The `.source.prisma` file points Prisma to the pre-generated engines in `lib/prisma/`:
+
+```bash
+export PRISMA_GENERATE_SKIP_AUTOINSTALL=1
+export PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
+export PRISMA_QUERY_ENGINE_LIBRARY="./lib/prisma/libquery_engine-debian-openssl-3.0.x.so.node"
+export PRISMA_SCHEMA_ENGINE_BINARY="./lib/prisma/schema-engine-debian-openssl-3.0.x"
+```
+
+> **Note:** The `lib/prisma/` directory is tracked in git so the binaries are available during the Docker build and on air-gapped clones.
 
 ### Local development (without Docker)
 
