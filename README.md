@@ -418,6 +418,45 @@ registry=https://registry.company.com/
 
 The Dockerfiles automatically copy `.npmrc` into the container before `npm install` so dependencies are fetched from your private registry.
 
+**Secrets (API keys, database passwords)**
+
+Sensitive values should not be committed to git. Use Docker Compose secrets via a local `docker-compose.override.yml`:
+
+```bash
+# 1. Create the secrets directory (already gitignored)
+mkdir .secrets
+
+# 2. Write your secrets as files
+echo 'my-db-password' > .secrets/db_password
+echo 'my-api-key' > .secrets/api_key
+```
+
+```yaml
+# docker-compose.override.yml — machine-specific, not versioned
+version: "3.8"
+
+secrets:
+  db_password:
+    file: .secrets/db_password
+  api_key:
+    file: .secrets/api_key
+
+services:
+  api:
+    secrets:
+      - db_password
+      - api_key
+```
+
+Inside the container, secrets are available under `/run/secrets/`:
+
+```ts
+// apps/api/src/config.ts
+const dbPassword = fs.readFileSync('/run/secrets/db_password', 'utf8').trim();
+```
+
+> The `.secrets/` directory is gitignored by default. Each developer creates their own local files.
+
 **Prisma binary download blocked (`binaries.prisma.sh` unreachable)**
 
 The API Dockerfile runs `npx prisma generate` during the build, which downloads the correct Linux engine binary directly into the container:
