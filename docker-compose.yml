@@ -79,6 +79,7 @@ services:
     environment:
       API_HOST: api
       API_PORT: 3001
+      PORT: 5192
       VITE_API_URL: ${VITE_API_URL}
       HTTP_PROXY: ${COMPOSE_HTTP_PROXY:-}
       HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
@@ -89,9 +90,6 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    volumes:
-      - ./apps/web:/app/apps/web
-      - ./packages:/app/packages
     networks:
       - cloudmarket-net
 
