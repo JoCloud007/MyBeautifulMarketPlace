@@ -157,15 +157,20 @@ Key variables in `.env` to review before running:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `cloudmarket` / `cloudmarket_secret` / `cloudmarket` | Database credentials |
-| `DATABASE_URL` | `postgresql://...` | Connection string (must match credentials above) |
-| `PORT` | `3001` | API port |
+| `POSTGRES_USER` | `cloudmarket` | PostgreSQL username |
+| `POSTGRES_PASSWORD` | `cloudmarket_secret` | PostgreSQL password |
+| `POSTGRES_DB` | `cloudmarket` | PostgreSQL database name |
+| `DATABASE_URL` | `postgresql://...` | Full connection string (must match credentials above) |
+| `PORT` | `3001` | API server port |
 | `VITE_API_URL` | `http://localhost:3001` | Frontend API base URL |
 | `PRISMA_CLI_BINARY_TARGETS` | `linux-arm64-openssl-3.0.x` | Prisma engine target platform (see `.env.example` for options) |
 | `REPO_URL` | *(empty)* | Corporate Docker registry mirror (optional) |
-| `API_IMAGE` / `API_TAG` | `node` / `20-bookworm` | API container base image (optional) |
-| `WEB_IMAGE` / `WEB_TAG` | `node` / `20-alpine` | Web container base image (optional) |
-| `COMPOSE_HTTP_PROXY` / `COMPOSE_HTTPS_PROXY` | *(empty)* | Docker Compose proxy settings (optional) |
+| `API_IMAGE` | `node` | API container base image name (optional) |
+| `API_TAG` | `20-bookworm` | API container base image tag (optional) |
+| `WEB_IMAGE` | `node` | Web container base image name (optional) |
+| `WEB_TAG` | `20-alpine` | Web container base image tag (optional) |
+| `COMPOSE_HTTP_PROXY` | *(empty)* | HTTP proxy for Docker Compose (optional) |
+| `COMPOSE_HTTPS_PROXY` | *(empty)* | HTTPS proxy for Docker Compose (optional) |
 | `COMPOSE_NO_PROXY` | *(empty)* | Comma-separated list of hosts to exclude from proxy (optional) |
 | `COMPOSE_NODE_TLS_REJECT_UNAUTHORIZED` | `1` | Set to `0` to disable TLS certificate verification behind corporate proxies (optional) |
 
