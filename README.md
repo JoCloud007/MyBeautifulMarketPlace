@@ -127,24 +127,32 @@ cloudmarket/
 
 ### With Docker Compose + Makefile (recommended)
 
-This project includes a **Makefile** that automates the entire workflow. There are two usage modes depending on your environment:
+The installation procedure is **the same for everyone** — whether you have internet access or are in an air-gapped environment. The Prisma engine binaries are already committed to `lib/prisma/`.
 
-| Mode | When to use | Commands |
-|------|-------------|----------|
-| **Online** | You have internet access on the build machine | `make build` → commit → `make deploy` → `make run` |
-| **Air-gapped** | No internet on the target machine | `make deploy` → `make run` (binaries already in `lib/prisma/`) |
+```bash
+# 1. Clone the project
+git clone <repo-url> cloudmarket && cd cloudmarket
+
+# 2. Configure your environment
+cp .env.example .env
+# Edit .env and set your database credentials, port, etc.
+
+# 3. Build Docker images
+make deploy
+
+# 4. Start all containers
+make run
+
+# 5. Initialize the database (first run only)
+docker compose exec api npx prisma db push
+docker compose exec api npx tsx prisma/seed.ts
+```
 
 ---
 
-#### Step 1 — Configure your environment
+#### Environment variables
 
-Copy `.env.example` to `.env` and adjust the values:
-
-```bash
-cp .env.example .env
-```
-
-Key variables to review:
+Key variables in `.env` to review before running:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -157,44 +165,7 @@ Key variables to review:
 
 ---
 
-#### Step 2 — Build Prisma binaries (online machine only)
-
-Run this **once** on any machine that can reach `binaries.prisma.sh` (internet access required). This generates the engine binaries and copies them to `lib/prisma/`:
-
-```bash
-make build
-```
-
-After this step, commit the generated binaries so they are available on air-gapped machines:
-
-```bash
-git add lib/prisma/
-git commit -m "chore(prisma): add generated engine binaries"
-```
-
----
-
-#### Step 3 — Deploy (build Docker images)
-
-Run this on the target machine (air-gapped or online). It sources `.source.prisma` (offline Prisma variables), installs platform-native dependencies, regenerates the Prisma client from local binaries, and builds all Docker images:
-
-```bash
-make deploy
-```
-
-The Makefile auto-detects your OS:
-- **macOS** → installs `linux-arm64` musl binaries
-- **Linux** → installs `linux-x64` musl binaries
-
----
-
-#### Step 4 — Run (start all containers)
-
-```bash
-make run
-```
-
-Services will be available at:
+#### Services
 
 | Service | URL | Description |
 |---------|-----|-------------|
@@ -205,25 +176,12 @@ Services will be available at:
 
 ---
 
-#### Step 5 — Initialize the database (first run only)
-
-```bash
-# Push the Prisma schema to the database
-docker compose exec api npx prisma db push
-
-# Seed with sample data
-docker compose exec api npx tsx prisma/seed.ts
-```
-
----
-
 #### Available Makefile targets
 
 ```bash
 make help    # Show all targets and workflow
 make clean   # Remove node_modules, dist, Docker containers (DB volume is preserved)
-make build   # Generate Prisma binaries (requires internet)
-make deploy  # Build Docker images for deployment
+make deploy  # Build Docker images (offline-friendly, uses lib/prisma/ binaries)
 make run     # Start all containers
 ```
 
@@ -512,6 +470,26 @@ The seed automatically creates:
 - Functional components with hooks
 - TanStack Query for server state
 - Zustand for client state
+
+### Regenerating Prisma Engine Binaries
+
+The engine binaries in `lib/prisma/` are pre-generated and committed to git. You only need to regenerate them if you:
+- Upgrade the Prisma version
+- Change the target platform (e.g. from Alpine to Debian)
+- Add a new binary target to `schema.prisma`
+
+Run this on a machine with internet access:
+
+```bash
+make build
+```
+
+This generates the engines and copies them to `lib/prisma/`. After that, commit the changes:
+
+```bash
+git add lib/prisma/
+git commit -m "chore(prisma): regenerate engine binaries"
+```
 
 ## 🐛 Troubleshooting
 
