@@ -40,9 +40,11 @@ clean:
 ## After this, commit lib/prisma/ to git.
 build:
 	npm install
-	npx prisma generate --schema=apps/api/prisma/schema.prisma
+	PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x npx prisma generate --schema=apps/api/prisma/schema.prisma
+	PRISMA_CLI_BINARY_TARGETS=linux-arm64-openssl-3.0.x npx prisma generate --schema=apps/api/prisma/schema.prisma
+	PRISMA_CLI_BINARY_TARGETS=darwin npx prisma generate --schema=apps/api/prisma/schema.prisma
 	mkdir -p lib/prisma
-	cp node_modules/.prisma/client/libquery_engine-*.so.node lib/prisma/
+	cp node_modules/.prisma/client/libquery_engine-*.node lib/prisma/
 	cp node_modules/@prisma/engines/schema-engine-* lib/prisma/
 	@echo ""
 	@echo "✓ Prisma binaries generated in lib/prisma/"

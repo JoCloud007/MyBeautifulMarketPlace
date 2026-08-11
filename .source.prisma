@@ -4,9 +4,11 @@
 #
 # Usage: source .source.prisma
 
+source .env
+
 export PRISMA_GENERATE_SKIP_AUTOINSTALL=1
 export PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
-export PRISMA_QUERY_ENGINE_LIBRARY="./lib/prisma/libquery_engine-debian-openssl-3.0.x.so.node"
-export PRISMA_QUERY_ENGINE_BINARY="./lib/prisma/libquery_engine-debian-openssl-3.0.x.so.node"
-export PRISMA_SCHEMA_ENGINE_BINARY="./lib/prisma/schema-engine-debian-openssl-3.0.x"
-export PRISMA_MIGRATION_ENGINE_BINARY="./lib/prisma/schema-engine-debian-openssl-3.0.x"
+export PRISMA_QUERY_ENGINE_LIBRARY="./lib/prisma/libquery_engine-${PRISMA_CLI_BINARY_TARGETS}.so.node"
+export PRISMA_QUERY_ENGINE_BINARY="./lib/prisma/libquery_engine-${PRISMA_CLI_BINARY_TARGETS}.so.node"
+export PRISMA_SCHEMA_ENGINE_BINARY="./lib/prisma/schema-engine-${PRISMA_CLI_BINARY_TARGETS}"
+export PRISMA_MIGRATION_ENGINE_BINARY="./lib/prisma/schema-engine-${PRISMA_CLI_BINARY_TARGETS}"

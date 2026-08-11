@@ -417,6 +417,8 @@ Run this on a machine with internet access:
 make build
 ```
 
+> **Target platform:** The `PRISMA_CLI_BINARY_TARGETS` variable in your `.env` controls which engine is generated. Uncomment the line matching your container base image (default: `linux-arm64-openssl-3.0.x` for Alpine on ARM64).
+
 This generates the engines and copies them to `lib/prisma/`. After that, commit the changes:
 
 ```bash
