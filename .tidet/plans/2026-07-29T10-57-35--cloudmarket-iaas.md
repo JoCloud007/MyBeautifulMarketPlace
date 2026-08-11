@@ -325,7 +325,10 @@ docker compose down -v             # Stop and remove volumes
 4. `badge.tsx` and `button.tsx` — added explicit `variant?: ...` and `size?: ...` to `BadgeProps`/`ButtonProps` interfaces to resolve TypeScript inference issues in large files.
 5. `ProductDetail.tsx` — added missing `import * as React from 'react'` and explicit type annotations (`: Product`, `: Dependency`, `: Flavor`) on `map`/`filter` callbacks.
 6. `Admin.tsx` — fixed numerous implicit `any` parameter types via sub-agent.
-7. Documented the native-binary installation step in README Quick Start and Troubleshooting sections.
+7. Documented the native-binary installation step and `prisma generate` in README Quick Start and Troubleshooting sections.
+8. `docker-compose.yml` — removed anonymous `/app/node_modules` volumes that overwrote image `node_modules` with empty directories, breaking air-gapped containers.
+9. `apps/web/Dockerfile` — added `-s` flag to `serve` for SPA client-side routing (React Router), and bound to `tcp://0.0.0.0:5192` for IPv4.
+10. All services verified healthy: web on port 5192, API on port 3001, marketplace loads correctly in preview.
 
 **2026-08-10:** Added `BASE_IMAGE` build argument to both Dockerfiles (`apps/api/Dockerfile` and `apps/web/Dockerfile`). API defaults to `node:20-bookworm`, WEB defaults to `node:20-alpine`. Docker Compose passes `API_BASE_IMAGE` and `WEB_BASE_IMAGE` from `.env`, enabling corporate registry mirrors and air-gapped environments. Added corporate environment troubleshooting section to README with instructions for custom registries and pre-generating Prisma client behind proxies. Both images build successfully with default and override values.
 
