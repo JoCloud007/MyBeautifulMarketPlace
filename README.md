@@ -405,6 +405,19 @@ WEB_TAG=20-alpine
 docker compose build
 ```
 
+**Private npm registry (`npm install` blocked)**
+
+If your company uses a private npm registry (e.g., Nexus, Artifactory, GitHub Packages), create a `.npmrc` at the project root:
+
+```bash
+# .npmrc — not versioned (in .gitignore)
+registry=https://registry.company.com/
+@mycompany:registry=https://registry.company.com/
+//registry.company.com/:_authToken=YOUR_TOKEN
+```
+
+The Dockerfiles automatically copy `.npmrc` into the container before `npm install` so dependencies are fetched from your private registry.
+
 **Prisma binary download blocked (`binaries.prisma.sh` unreachable)**
 
 The API Dockerfile runs `npx prisma generate` during the build, which downloads the correct Linux engine binary directly into the container:
