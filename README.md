@@ -113,6 +113,9 @@ cd cloudmarket
 # Install dependencies on the host (containers have no network access)
 npm install
 
+# Generate the Prisma Client (types must be present before Docker build)
+npx prisma generate --schema=apps/api/prisma/schema.prisma
+
 # Install native binaries for the container platform
 # The Dockerfile copies node_modules from the host, but the host OS/arch
 # may differ from the container (e.g. macOS → Linux Alpine).
