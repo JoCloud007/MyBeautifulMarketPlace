@@ -125,40 +125,106 @@ cloudmarket/
 - Docker Desktop / Docker Engine + Docker Compose v2
 - Node.js 20+ (optional, for local development)
 
-### With Docker Compose (recommended)
+### With Docker Compose + Makefile (recommended)
+
+This project includes a **Makefile** that automates the entire workflow. There are two usage modes depending on your environment:
+
+| Mode | When to use | Commands |
+|------|-------------|----------|
+| **Online** | You have internet access on the build machine | `make build` → commit → `make deploy` → `make run` |
+| **Air-gapped** | No internet on the target machine | `make deploy` → `make run` (binaries already in `lib/prisma/`) |
+
+---
+
+#### Step 1 — Configure your environment
+
+Copy `.env.example` to `.env` and adjust the values:
 
 ```bash
-# Clone and enter the project
-cd cloudmarket
+cp .env.example .env
+```
 
-# Install dependencies on the host (containers have no network access)
-npm install
+Key variables to review:
 
-# Generate the Prisma Client (types must be present before Docker build)
-npx prisma generate --schema=apps/api/prisma/schema.prisma
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | `cloudmarket` / `cloudmarket_secret` / `cloudmarket` | Database credentials |
+| `DATABASE_URL` | `postgresql://...` | Connection string (must match credentials above) |
+| `PORT` | `3001` | API port |
+| `VITE_API_URL` | `http://localhost:3001` | Frontend API base URL |
 
-# Install native binaries for the container platform
-# The Dockerfile copies node_modules from the host, but the host OS/arch
-# may differ from the container (e.g. macOS → Linux Alpine).
-# This command adds the optional native dependencies for the target platform.
-#
-# Apple Silicon (ARM64) → Linux ARM64 musl (Alpine):
-npm install --cpu=arm64 --os=linux --libc=musl
-#
-# Intel/AMD (x86_64) → Linux x64 musl (Alpine):
-# npm install --cpu=x64 --os=linux --libc=musl
-#
-# ⚠️ Re-run this after every `npm install` or `npm update` on the host,
-#    as npm may clean up optional dependencies for other platforms.
+> **Never commit `.env` — it is gitignored.**
 
-# Launch the full stack
-docker compose up --build
+---
 
-# Push the Prisma schema to the database (required on first run / fresh clone)
+#### Step 2 — Build Prisma binaries (online machine only)
+
+Run this **once** on any machine that can reach `binaries.prisma.sh` (internet access required). This generates the engine binaries and copies them to `lib/prisma/`:
+
+```bash
+make build
+```
+
+After this step, commit the generated binaries so they are available on air-gapped machines:
+
+```bash
+git add lib/prisma/
+git commit -m "chore(prisma): add generated engine binaries"
+```
+
+---
+
+#### Step 3 — Deploy (build Docker images)
+
+Run this on the target machine (air-gapped or online). It sources `.source.prisma` (offline Prisma variables), installs platform-native dependencies, regenerates the Prisma client from local binaries, and builds all Docker images:
+
+```bash
+make deploy
+```
+
+The Makefile auto-detects your OS:
+- **macOS** → installs `linux-arm64` musl binaries
+- **Linux** → installs `linux-x64` musl binaries
+
+---
+
+#### Step 4 — Run (start all containers)
+
+```bash
+make run
+```
+
+Services will be available at:
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Frontend | http://localhost:5192 | React application |
+| API | http://localhost:3001 | Express server |
+| Health | http://localhost:3001/health | Health check |
+| DB | localhost:5432 | PostgreSQL 16 |
+
+---
+
+#### Step 5 — Initialize the database (first run only)
+
+```bash
+# Push the Prisma schema to the database
 docker compose exec api npx prisma db push
 
-# Seed the database with sample data
+# Seed with sample data
 docker compose exec api npx tsx prisma/seed.ts
+```
+
+---
+
+#### Available Makefile targets
+
+```bash
+make help    # Show all targets and workflow
+make clean   # Remove node_modules, dist, Docker containers (DB volume is preserved)
+make build   # Generate Prisma binaries (requires internet)
+make deploy  # Build Docker images for deployment
+make run     # Start all containers
 ```
 
 | Service | URL | Description |
