@@ -12,18 +12,14 @@ node_modules/
 .env
 .env.local
 
-# Tidet per-session git worktrees (P2a)
-.tidet/worktrees/
+# Tidet
+.tidet/
 
 # Docker Compose local overrides (machine-specific)
 docker-compose.override.yml
 
 # Local secrets (mount via docker-compose.override.yml)
 .secrets/
-
-# Tidet session files
-.tidet/.gitignore
-.tidet/memory/
 
 # Build outputs
 packages/shared-types/dist/
