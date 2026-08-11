@@ -517,7 +517,7 @@ docker compose build web --no-cache
 
 **Custom Docker registry / air-gapped environment**
 
-Both Dockerfiles support custom base images via `REPO_URL`, `IMAGE` and `TAG`:
+Both Dockerfiles support custom base images via `REPO_URL`, `API_IMAGE` / `WEB_IMAGE` and `API_TAG` / `WEB_TAG`:
 
 ```bash
 # Set in .env
