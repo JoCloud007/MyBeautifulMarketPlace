@@ -161,6 +161,11 @@ Key variables in `.env` to review before running:
 | `DATABASE_URL` | `postgresql://...` | Connection string (must match credentials above) |
 | `PORT` | `3001` | API port |
 | `VITE_API_URL` | `http://localhost:3001` | Frontend API base URL |
+| `PRISMA_CLI_BINARY_TARGETS` | `linux-arm64-openssl-3.0.x` | Prisma engine target platform (see `.env.example` for options) |
+| `REPO_URL` | *(empty)* | Corporate Docker registry mirror (optional) |
+| `API_IMAGE` / `API_TAG` | `node` / `20-bookworm` | API container base image (optional) |
+| `WEB_IMAGE` / `WEB_TAG` | `node` / `20-alpine` | Web container base image (optional) |
+| `COMPOSE_HTTP_PROXY` / `COMPOSE_HTTPS_PROXY` | *(empty)* | Docker Compose proxy settings (optional) |
 
 > **Never commit `.env` — it is gitignored.**
 
