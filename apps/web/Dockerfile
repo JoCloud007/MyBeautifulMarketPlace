@@ -27,6 +27,10 @@ COPY package*.json ./
 COPY apps/web/package*.json ./apps/web/
 COPY packages/shared-types/package*.json ./packages/shared-types/
 
+# Optional .npmrc for private registry / auth tokens
+RUN --mount=type=bind,source=.,target=/ctx \
+    if [ -f /ctx/.npmrc ]; then cp /ctx/.npmrc /app/; fi
+
 RUN npm install
 
 # Copy source
