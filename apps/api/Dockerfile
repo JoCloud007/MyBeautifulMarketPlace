@@ -34,6 +34,9 @@ COPY . .
 
 RUN npm install
 
+# Defensive: ensure generated Prisma client (with schema-specific enums) is present
+COPY node_modules/.prisma/client ./node_modules/.prisma/client
+
 # Build shared types
 RUN npm run build -w packages/shared-types
 
