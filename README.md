@@ -110,6 +110,9 @@ cloudmarket/
 # Clone and enter the project
 cd cloudmarket
 
+# Install dependencies on the host (containers have no network access)
+npm install
+
 # Launch the full stack
 docker compose up --build
 
@@ -405,9 +408,9 @@ WEB_TAG=20-alpine
 docker compose build
 ```
 
-**Private npm registry (`npm install` blocked)**
+**Private npm registry (air-gapped environment)**
 
-If your company uses a private npm registry (e.g., Nexus, Artifactory, GitHub Packages), create a `.npmrc` at the project root:
+`npm install` runs on the host (not inside containers). If your company uses a private npm registry (e.g., Nexus, Artifactory, GitHub Packages), create a `.npmrc` at the project root:
 
 ```bash
 # .npmrc — not versioned (in .gitignore)
@@ -416,7 +419,15 @@ registry=https://registry.company.com/
 //registry.company.com/:_authToken=YOUR_TOKEN
 ```
 
-The Dockerfiles automatically copy `.npmrc` into the container before `npm install` so dependencies are fetched from your private registry.
+Then run `npm install` on the host before building Docker images.
+
+**Prisma client generation**
+
+The generated Prisma client (`node_modules/.prisma/client/`) is tracked in git and includes the Linux query engine binary. If you modify `schema.prisma`, regenerate on the host:
+
+```bash
+npx prisma generate --schema=apps/api/prisma/schema.prisma
+```
 
 **Secrets (API keys, database passwords)**
 

@@ -22,20 +22,8 @@ RUN if [ "$NODE_TLS_REJECT_UNAUTHORIZED" = "0" ]; then npm config set strict-ssl
 
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
-COPY apps/api/package*.json ./apps/api/
-COPY packages/shared-types/package*.json ./packages/shared-types/
-# Optional .npmrc for private registry / auth tokens
-RUN --mount=type=bind,source=.,target=/ctx \
-    if [ -f /ctx/.npmrc ]; then cp /ctx/.npmrc /app/; fi
-
+# Copy full project including node_modules (installed on host before build)
 COPY . .
-
-RUN npm install
-
-# Defensive: ensure generated Prisma client (with schema-specific enums) is present
-COPY node_modules/.prisma/client ./node_modules/.prisma/client
 
 # Build shared types
 RUN npm run build -w packages/shared-types

@@ -22,25 +22,17 @@ RUN if [ "$NODE_TLS_REJECT_UNAUTHORIZED" = "0" ]; then npm config set strict-ssl
 
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
-COPY apps/web/package*.json ./apps/web/
-COPY packages/shared-types/package*.json ./packages/shared-types/
-
-# Optional .npmrc for private registry / auth tokens
-RUN --mount=type=bind,source=.,target=/ctx \
-    if [ -f /ctx/.npmrc ]; then cp /ctx/.npmrc /app/; fi
-
-RUN npm install
-
-# Copy source
+# Copy full project including node_modules (installed on host before build)
 COPY . .
 
 # Build shared types
 RUN npm run build -w packages/shared-types
 
+# Build web app
+RUN npm run build -w apps/web
+
 WORKDIR /app/apps/web
 
-EXPOSE 5192
+EXPOSE 80
 
-CMD ["npm", "run", "dev"]
+CMD ["npx", "serve", "dist", "-l", "80"]
