@@ -4,10 +4,8 @@
 #
 # Usage: . .source.prisma
 
-# Load .env (set -a auto-exports all variables defined by the shell)
-set -a
-. .env 2>/dev/null || true
-set +a
+# Load .env (source is a bashism; the Makefile forces /bin/bash)
+source .env 2>/dev/null || true
 
 # Default target platform if not set in .env
 PRISMA_CLI_BINARY_TARGETS="${PRISMA_CLI_BINARY_TARGETS:-debian-openssl-3.0.x}"
