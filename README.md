@@ -166,6 +166,8 @@ Key variables in `.env` to review before running:
 | `API_IMAGE` / `API_TAG` | `node` / `20-bookworm` | API container base image (optional) |
 | `WEB_IMAGE` / `WEB_TAG` | `node` / `20-alpine` | Web container base image (optional) |
 | `COMPOSE_HTTP_PROXY` / `COMPOSE_HTTPS_PROXY` | *(empty)* | Docker Compose proxy settings (optional) |
+| `COMPOSE_NO_PROXY` | *(empty)* | Comma-separated list of hosts to exclude from proxy (optional) |
+| `COMPOSE_NODE_TLS_REJECT_UNAUTHORIZED` | `1` | Set to `0` to disable TLS certificate verification behind corporate proxies (optional) |
 
 > **Never commit `.env` — it is gitignored.**
 
