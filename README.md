@@ -421,6 +421,59 @@ npm install --cpu=x64 --os=linux --libc=musl
 
 Then rebuild: `docker compose build web`
 
+**API fails with "You installed esbuild for another platform"**
+
+The host `node_modules` is missing the Linux ARM64 esbuild binary. Add it as an optional dependency:
+
+```bash
+npm install --force @esbuild/linux-arm64
+```
+
+Then remove the API container (with its anonymous volume) and recreate:
+
+```bash
+docker compose rm -f -v api
+docker compose up -d api
+```
+
+**API fails with "Cannot read properties of undefined (reading 'REQUIRED')"**
+
+The Prisma Client was generated from an outdated schema. Regenerate on the host:
+
+```bash
+npx prisma generate --schema=apps/api/prisma/schema.prisma
+```
+
+Then rebuild and recreate the API container:
+
+```bash
+docker compose build api --no-cache
+docker compose rm -f -v api
+docker compose up -d api
+```
+
+**Preview / headless browser shows "Erreur de chargement" but Chrome works**
+
+The frontend uses relative `/api/...` URLs that work with Vite's dev proxy but fail in production with `serve` (no proxy). The fix: rebuild the web image with absolute API URLs (`http://localhost:3001/api/...`) already applied in the source code. Just rebuild:
+
+```bash
+docker compose build web --no-cache
+docker compose rm -f -v web
+docker compose up -d web
+```
+
+**SPA routes (e.g., `/marketplace`) return 404 in production**
+
+The static file server (`serve`) needs the `-s` flag to fallback to `index.html` for client-side routing. Already configured in the Dockerfile. If you see 404s on refresh, rebuild:
+
+```bash
+docker compose build web --no-cache
+```
+
+**Web container unreachable on port 5192**
+
+`serve` may bind to IPv6 only (`::`) which Docker Desktop on macOS cannot forward. The Dockerfile uses `tcp://0.0.0.0:5192` for explicit IPv4 binding. Already fixed — just rebuild if needed.
+
 ### 🏢 Corporate Environment
 
 **Custom Docker registry / air-gapped environment**
@@ -509,6 +562,78 @@ docker compose build api
 ```
 
 > The `binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]` setting in `schema.prisma` ensures the Linux binary is available. If your corporate proxy blocks `binaries.prisma.sh`, set `HTTP_PROXY` / `HTTPS_PROXY` in your `.env` so the container can reach it.
+
+## 🧹 Clean Up
+
+### Stop containers (preserve data)
+
+```bash
+docker compose down
+```
+
+Containers are stopped and removed. The PostgreSQL data volume (`postgres_data`) is preserved. Next `docker compose up` will reuse the existing database.
+
+### Stop containers and remove ALL data
+
+```bash
+# ⚠️ DESTROYS DATABASE — use with caution
+docker compose down -v
+```
+
+The `-v` flag removes all named volumes including `postgres_data`. You will lose all data and need to re-run `prisma db push` and `seed.ts` on next start.
+
+### Rebuild a single service cleanly
+
+When `node_modules` changes on the host (e.g., new dependency, native binary, Prisma regeneration), you must rebuild the image **and** remove the container so the new `node_modules` is copied in:
+
+```bash
+# Rebuild web from scratch
+docker compose build web --no-cache
+docker compose rm -f -v web
+docker compose up -d web
+
+# Rebuild API from scratch
+docker compose build api --no-cache
+docker compose rm -f -v api
+docker compose up -d api
+```
+
+> `--no-cache` ensures Docker does not reuse an old image layer.  
+> `rm -f -v` removes the container **and** its anonymous volumes (which could contain a stale `node_modules` that overrides the image).
+
+### Start completely fresh (from a clean git clone)
+
+```bash
+# 1. Clone
+git clone <repo-url> cloudmarket && cd cloudmarket
+
+# 2. Install dependencies (host needs network)
+npm install
+
+# 3. Generate Prisma Client on host
+npx prisma generate --schema=apps/api/prisma/schema.prisma
+
+# 4. Install Linux-native binaries for the container
+npm install --cpu=arm64 --os=linux --libc=musl
+
+# 5. Build and start everything
+docker compose up --build
+
+# 6. Push schema and seed (in another terminal)
+docker compose exec api npx prisma db push
+docker compose exec api npx tsx prisma/seed.ts
+```
+
+### Verify all services are healthy
+
+```bash
+docker compose ps
+```
+
+All three services should show `healthy`:
+- `cloudmarket-db` (postgres)
+- `cloudmarket-api` (node)
+- `cloudmarket-web` (node)
 
 ## 📄 License
 
