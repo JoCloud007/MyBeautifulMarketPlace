@@ -28,8 +28,8 @@ COPY . .
 # Build shared types
 RUN npm run build -w packages/shared-types
 
-# Build web app
-RUN npm run build -w apps/web
+# Build web app — run tsc from project root so node_modules is found
+RUN npx tsc -p apps/web/tsconfig.json --noEmit && cd apps/web && npx vite build
 
 WORKDIR /app/apps/web
 

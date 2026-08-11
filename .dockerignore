@@ -23,8 +23,11 @@ Thumbs.db
 **/__tests__
 
 # Build outputs (will be rebuilt inside container)
-**/dist
-**/build
+# WARNING: do not use **/dist — it would exclude node_modules/*/dist/
+apps/*/dist
+packages/*/dist
+apps/*/build
+packages/*/build
 
 # Logs
 *.log

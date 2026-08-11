@@ -113,6 +113,20 @@ cd cloudmarket
 # Install dependencies on the host (containers have no network access)
 npm install
 
+# Install native binaries for the container platform
+# The Dockerfile copies node_modules from the host, but the host OS/arch
+# may differ from the container (e.g. macOS → Linux Alpine).
+# This command adds the optional native dependencies for the target platform.
+#
+# Apple Silicon (ARM64) → Linux ARM64 musl (Alpine):
+npm install --cpu=arm64 --os=linux --libc=musl
+#
+# Intel/AMD (x86_64) → Linux x64 musl (Alpine):
+# npm install --cpu=x64 --os=linux --libc=musl
+#
+# ⚠️ Re-run this after every `npm install` or `npm update` on the host,
+#    as npm may clean up optional dependencies for other platforms.
+
 # Launch the full stack
 docker compose up --build
 
@@ -389,6 +403,20 @@ cd apps/api && npx prisma generate
 ```bash
 npm run build -w packages/shared-types
 ```
+
+**Build fails with "Cannot find module @rollup/rollup-linux-..." or esbuild binary error**
+
+The container needs native binaries compiled for Linux, but `npm install` on the host installed them for your host OS (e.g. macOS). Re-run the platform-targeted install:
+
+```bash
+# Apple Silicon
+npm install --cpu=arm64 --os=linux --libc=musl
+
+# Intel/AMD
+npm install --cpu=x64 --os=linux --libc=musl
+```
+
+Then rebuild: `docker compose build web`
 
 ### 🏢 Corporate Environment
 

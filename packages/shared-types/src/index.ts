@@ -101,3 +101,13 @@ export interface ForecastStats {
   approved: number;
   rejected: number;
 }
+
+export interface AdminDashboard {
+  counts: {
+    products: number;
+    categories: number;
+    forecasts: number;
+    users: number;
+  };
+  recentForecasts: Forecast[];
+}

@@ -318,6 +318,15 @@ docker compose down -v             # Stop and remove volumes
 
 **2026-08-03:** Fixed seed failure (`P2021` — table does not exist) on fresh clones. Root cause: `prisma.forecast.deleteMany()` in `seed.ts` fails when tables have not been created yet (schema not pushed). Fix: added clear error message in `seed.ts` guiding the user to run `npx prisma db push` first. Updated README Quick Start section to document the correct 3-step workflow: `docker compose up --build` → `prisma db push` → `seed.ts`.
 
+**2026-08-11:** Fixed Docker web build failures in air-gapped environment (container has no network, `node_modules` copied from host). Root causes and fixes:
+1. `.dockerignore` had `**/dist` and `**/build` which excluded `node_modules/*/dist/` and `node_modules/*/build/`, breaking TypeScript module resolution inside the container. Fix: changed to `apps/*/dist`, `packages/*/dist`, `apps/*/build`, `packages/*/build` to only exclude project build outputs.
+2. Native binaries (Rollup, esbuild) installed by `npm install` on macOS ARM64 did not work inside the Alpine Linux ARM64 container. Fix: added `npm install --cpu=arm64 --os=linux --libc=musl` step to install Linux-native optional dependencies alongside macOS ones.
+3. `tsconfig.json` needed `"moduleResolution": "bundler"` + `"esModuleInterop": true` + `"allowSyntheticDefaultImports": true` for proper ESM package resolution in the container.
+4. `badge.tsx` and `button.tsx` — added explicit `variant?: ...` and `size?: ...` to `BadgeProps`/`ButtonProps` interfaces to resolve TypeScript inference issues in large files.
+5. `ProductDetail.tsx` — added missing `import * as React from 'react'` and explicit type annotations (`: Product`, `: Dependency`, `: Flavor`) on `map`/`filter` callbacks.
+6. `Admin.tsx` — fixed numerous implicit `any` parameter types via sub-agent.
+7. Documented the native-binary installation step in README Quick Start and Troubleshooting sections.
+
 **2026-08-10:** Added `BASE_IMAGE` build argument to both Dockerfiles (`apps/api/Dockerfile` and `apps/web/Dockerfile`). API defaults to `node:20-bookworm`, WEB defaults to `node:20-alpine`. Docker Compose passes `API_BASE_IMAGE` and `WEB_BASE_IMAGE` from `.env`, enabling corporate registry mirrors and air-gapped environments. Added corporate environment troubleshooting section to README with instructions for custom registries and pre-generating Prisma client behind proxies. Both images build successfully with default and override values.
 
 **2026-08-10:** Refactored `BASE_IMAGE` into three separate Docker build arguments per user request for Docker-native conventions: `REPO_URL` (optional registry prefix), `IMAGE` (image name), and `TAG` (version tag). API uses `API_IMAGE`/`API_TAG`, WEB uses `WEB_IMAGE`/`WEB_TAG`, both sharing the same optional `REPO_URL`. Added bash parameter expansion (`${REPO_URL:+$REPO_URL/}`) in Dockerfiles to automatically insert a `/` between REPO_URL and IMAGE — no trailing slash required in REPO_URL anymore. Docker Compose, `.env` template and README corporate section updated accordingly. Both images build successfully with defaults and custom registry overrides.

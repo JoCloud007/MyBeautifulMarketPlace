@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
-import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User } from '@cloudmarket/shared-types';
+import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AdminDashboard } from '@cloudmarket/shared-types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -357,15 +357,15 @@ export function useCreateForecast() {
 export function useUpdateForecast() {
   const queryClient = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
-  return useMutation({
-    mutationFn: async ({ id, ...payload }: { id: string } & Partial<Forecast>) => {
-      const { data } = await api.patch(`/forecasts/${id}`, payload);
+  return useMutation<Forecast, Error, { id: string } & Partial<Forecast>>({
+    mutationFn: async ({ id, ...payload }) => {
+      const { data } = await api.patch<Forecast>(`/forecasts/${id}`, payload);
       return data;
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['forecasts'] });
       queryClient.invalidateQueries({ queryKey: ['forecast-stats'] });
-      const status = (variables as any).status;
+      const status = variables.status;
       if (status === 'APPROVED') addToast('Request approved', 'success');
       else if (status === 'REJECTED') addToast('Request rejected', 'warning');
       else addToast('Request updated', 'success');
@@ -461,7 +461,7 @@ export function useDeleteUser() {
 // ========== ADMIN ==========
 
 export function useAdminDashboard() {
-  return useQuery({
+  return useQuery<AdminDashboard>({
     queryKey: ['admin-dashboard'],
     queryFn: () => fetchJson('/admin/dashboard'),
     retry: 3,

@@ -294,7 +294,7 @@ function ProductsSection() {
 
   if (isError) return <QueryError message="Unable to load products." onRetry={refetch} />;
 
-  const mobileCards = products?.map((product) => (
+  const mobileCards = products?.map((product: Product) => (
     <MobileCard key={product.id}>
       <div className="flex items-start justify-between">
         <div>
@@ -335,7 +335,7 @@ function ProductsSection() {
             emptyMessage="No products"
             mobileCards={mobileCards}
           >
-            {products?.map((product) => (
+            {products?.map((product: Product) => (
               <tr key={product.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{product.name}</td>
                 <td className="py-3 text-slate-400">{product.category?.name}</td>
@@ -380,7 +380,7 @@ function ProductsSection() {
               <label className="text-sm font-medium text-slate-300">Category</label>
               <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                 <option value="">Choose...</option>
-                {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {categories?.map((c: Category) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
             </div>
             <div className="space-y-2">
@@ -445,7 +445,7 @@ function CategoriesSection() {
 
   if (isError) return <QueryError message="Unable to load categories." onRetry={refetch} />;
 
-  const mobileCards = categories?.map((cat) => (
+  const mobileCards = categories?.map((cat: Category) => (
     <MobileCard key={cat.id}>
       <div className="flex items-start justify-between">
         <div>
@@ -469,7 +469,7 @@ function CategoriesSection() {
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable headers={['Name', 'Slug', 'Description', 'Products']} isLoading={isLoading} emptyMessage="No categories" mobileCards={mobileCards}>
-            {categories?.map((cat) => (
+            {categories?.map((cat: Category) => (
               <tr key={cat.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{cat.name}</td>
                 <td className="py-3 text-slate-400">{cat.slug}</td>
@@ -535,7 +535,7 @@ function FlavorsSection() {
 
   if (isError) return <QueryError message="Unable to load flavors." onRetry={refetch} />;
 
-  const mobileCards = flavors?.map((flavor) => (
+  const mobileCards = flavors?.map((flavor: Flavor) => (
     <MobileCard key={flavor.id}>
       <div className="flex items-start justify-between">
         <div>
@@ -561,7 +561,7 @@ function FlavorsSection() {
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable headers={['Name', 'Product', 'vCPU', 'RAM', 'Description']} isLoading={isLoading} emptyMessage="No flavors" mobileCards={mobileCards}>
-            {flavors?.map((flavor) => (
+            {flavors?.map((flavor: Flavor) => (
               <tr key={flavor.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{flavor.name}</td>
                 <td className="py-3 text-slate-400">{(flavor as any).product?.name}</td>
@@ -588,7 +588,7 @@ function FlavorsSection() {
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Product</label>
               <Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                 <option value="">Choose...</option>
-                {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {products?.map((p: Product) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -636,7 +636,7 @@ function DependenciesSection() {
 
   if (isError) return <QueryError message="Unable to load dependencies." onRetry={refetch} />;
 
-  const mobileCards = dependencies?.map((dep) => (
+  const mobileCards = dependencies?.map((dep: Dependency) => (
     <MobileCard key={dep.id}>
       <div className="flex items-start justify-between">
         <div>
@@ -662,7 +662,7 @@ function DependenciesSection() {
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable headers={['Product', 'Depends on', 'Type', 'Description']} isLoading={isLoading} emptyMessage="No dependencies" mobileCards={mobileCards}>
-            {dependencies?.map((dep) => (
+            {dependencies?.map((dep: Dependency) => (
               <tr key={dep.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{dep.product?.name}</td>
                 <td className="py-3 text-slate-400">{dep.dependsOn?.name}</td>
@@ -691,13 +691,13 @@ function DependenciesSection() {
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Product</label>
               <Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                 <option value="">Choose...</option>
-                {products?.map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
+                {products?.map((p: Product) => (<option key={p.id} value={p.id}>{p.name}</option>))}
               </Select>
             </div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Depends on</label>
               <Select value={form.dependsOnId} onChange={(e) => setForm({ ...form, dependsOnId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                 <option value="">Choose...</option>
-                {products?.filter(p => p.id !== form.productId).map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
+                {products?.filter((p: Product) => p.id !== form.productId).map((p: Product) => (<option key={p.id} value={p.id}>{p.name}</option>))}
               </Select>
             </div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Type</label>
@@ -726,7 +726,7 @@ function ForecastsAdminSection() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ApprovalStatus | 'ALL'>('ALL');
 
-  const filtered = forecasts?.filter((f) => {
+  const filtered = forecasts?.filter((f: Forecast) => {
     const matchesSearch = !searchQuery || f.product?.name?.toLowerCase().includes(searchQuery.toLowerCase()) || f.requestedBy?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'ALL' || f.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -746,7 +746,7 @@ function ForecastsAdminSection() {
 
   if (isError) return <QueryError message="Unable to load forecasts." onRetry={refetch} />;
 
-  const mobileCards = filtered?.map((forecast) => (
+  const mobileCards = filtered?.map((forecast: Forecast) => (
     <MobileCard key={forecast.id}>
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
@@ -815,7 +815,7 @@ function ForecastsAdminSection() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {filtered?.map((forecast) => (
+                    {filtered?.map((forecast: Forecast) => (
                       <tr key={forecast.id} className="hover:bg-slate-800/50 transition-colors">
                         <td className="py-3 font-medium text-white">{forecast.product?.name}</td>
                         <td className="py-3 text-slate-400">{forecast.flavor?.name}</td>
@@ -879,7 +879,7 @@ function UsersSection() {
 
   if (isError) return <QueryError message="Unable to load users." onRetry={refetch} />;
 
-  const mobileCards = users?.map((u) => (
+  const mobileCards = users?.map((u: User) => (
     <MobileCard key={u.id}>
       <div className="flex items-start justify-between">
         <div>
@@ -906,7 +906,7 @@ function UsersSection() {
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable headers={['Name', 'Email', 'Role', 'Date']} isLoading={isLoading} emptyMessage="No users" mobileCards={mobileCards}>
-            {users?.map((u) => (
+            {users?.map((u: User) => (
               <tr key={u.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{u.name}</td>
                 <td className="py-3 text-slate-400">{u.email}</td>

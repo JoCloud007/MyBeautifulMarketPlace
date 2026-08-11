@@ -1,4 +1,6 @@
+import * as React from 'react';
 import { useParams, Link } from 'react-router-dom';
+import type { Product, Dependency, Flavor } from '@cloudmarket/shared-types';
 import { useProduct, useProducts } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
@@ -274,10 +276,10 @@ export default function ProductDetail() {
   }
 
   const Icon = iconMap[product.category?.icon || ''] || Server;
-  const maxVcpu = Math.max(...(product.flavors?.map((f) => f.vcpu) ?? [1]));
-  const maxRam = Math.max(...(product.flavors?.map((f) => f.ramGb) ?? [1]));
+  const maxVcpu = Math.max(...(product.flavors?.map((f: Flavor) => f.vcpu) ?? [1]));
+  const maxRam = Math.max(...(product.flavors?.map((f: Flavor) => f.ramGb) ?? [1]));
 
-  const related = relatedProducts?.filter((p) => p.id !== product.id).slice(0, 3) ?? [];
+  const related = relatedProducts?.filter((p: Product) => p.id !== product.id).slice(0, 3) ?? [];
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -406,7 +408,7 @@ export default function ProductDetail() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {product.flavors?.map((flavor) => (
+                    {product.flavors?.map((flavor: Flavor) => (
                       <div
                         key={flavor.id}
                         className="rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 space-y-2"
@@ -497,7 +499,7 @@ export default function ProductDetail() {
                   <>
                     <DependencyGraph productName={product.name} dependencies={product.dependencies} />
                     <div className="space-y-3">
-                      {product.dependencies.map((dep) => (
+                      {product.dependencies.map((dep: Dependency) => (
                         <div
                           key={dep.id}
                           className="flex items-center gap-4 rounded-lg border border-slate-800 bg-slate-950 px-4 py-3"
@@ -551,7 +553,7 @@ export default function ProductDetail() {
           <div className="space-y-4">
             <h2 className="text-xl font-bold text-white">Similar products</h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {related.map((rel) => {
+              {related.map((rel: Product) => {
                 const RelIcon = iconMap[rel.category?.icon || ''] || Server;
                 return (
                   <Link key={rel.id} to={`/products/${rel.slug}`} className="group">
