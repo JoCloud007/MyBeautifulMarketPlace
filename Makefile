@@ -26,11 +26,13 @@ help:
 	@echo "  2. Commit lib/prisma/ to git"
 	@echo "  3. On the air-gapped target:      make deploy && make run"
 
-## Clean everything — node_modules, dist, Docker containers and volumes
+## Clean everything — node_modules, dist, Docker containers.
+## NOTE: Docker volumes (including postgres_data) are PRESERVED.
+## Use `docker compose down -v` manually if you really want to wipe the DB.
 clean:
 	rm -rf node_modules apps/*/node_modules packages/*/node_modules
 	rm -rf apps/web/dist packages/shared-types/dist
-	docker compose down -v
+	docker compose down
 	docker system prune -f
 
 ## Build — Generate Prisma engine binaries on a host with internet access.
