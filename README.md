@@ -8,6 +8,27 @@
 
 > Full-featured cloud infrastructure marketplace with a modern client interface, forecast dashboard, and administration panel.
 
+## 📑 Table of Contents
+
+- [Features](#-features)
+- [Architecture](#-architecture)
+- [Quick Start](#-quick-start)
+  - [Prerequisites](#prerequisites)
+  - [With Docker Compose](#with-docker-compose-recommended)
+  - [Prisma in Air-Gapped Environments](#prisma-in-air-gapped-environments)
+  - [Local Development](#local-development-without-docker)
+- [Database Schema](#-database-schema)
+- [API Reference](#-api-reference)
+- [NPM Scripts](#-npm-scripts)
+- [Seed Data](#-seed-data)
+- [Design System](#-design-system)
+- [Responsive](#-responsive)
+- [Error Handling](#-error-handling)
+- [Development](#-development)
+- [Troubleshooting](#-troubleshooting)
+- [Clean Up](#-clean-up)
+- [License](#-license)
+
 ## ✨ Features
 
 ### 🛒 Marketplace
