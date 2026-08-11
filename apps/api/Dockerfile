@@ -30,9 +30,9 @@ COPY packages/shared-types/package*.json ./packages/shared-types/
 RUN --mount=type=bind,source=.,target=/ctx \
     if [ -f /ctx/.npmrc ]; then cp /ctx/.npmrc /app/; fi
 
-RUN npm install
-
 COPY . .
+
+RUN npm install
 
 # Build shared types
 RUN npm run build -w packages/shared-types
