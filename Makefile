@@ -58,7 +58,7 @@ build:
 ## dependencies, regenerates Prisma client from local binaries, and builds
 ## all Docker images.
 deploy:
-	. $(CURDIR)/.source.prisma && \
+	. $(shell pwd)/.source.prisma && \
 	npm install && \
 	npm install $(NPM_PLATFORM_FLAGS) && \
 	npx prisma generate --schema=apps/api/prisma/schema.prisma && \
