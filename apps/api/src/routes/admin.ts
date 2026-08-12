@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../index';
+import { prisma } from '../db';
 
 const router = Router();
 
@@ -13,6 +13,7 @@ const productSchema = z.object({
   documentation: z.string().optional(),
   roadmap: z.string().optional(),
   isActive: z.boolean().optional(),
+  availabilityZoneIds: z.array(z.string().uuid()).optional(),
 });
 
 const flavorSchema = z.object({
@@ -42,16 +43,19 @@ const userSchema = z.object({
   role: z.enum(['ADMIN', 'USER']).optional(),
 });
 
+const idParamSchema = z.string().uuid();
+
 // ===================== DASHBOARD =====================
 
 // GET /api/admin/dashboard
 router.get('/dashboard', async (_req, res, next) => {
   try {
-    const [productCount, categoryCount, forecastCount, userCount] = await Promise.all([
+    const [productCount, categoryCount, forecastCount, userCount, azCount] = await Promise.all([
       prisma.product.count(),
       prisma.category.count(),
       prisma.forecast.count(),
       prisma.user.count(),
+      prisma.availabilityZone.count(),
     ]);
 
     const recentForecasts = await prisma.forecast.findMany({
@@ -61,7 +65,7 @@ router.get('/dashboard', async (_req, res, next) => {
     });
 
     res.json({
-      counts: { products: productCount, categories: categoryCount, forecasts: forecastCount, users: userCount },
+      counts: { products: productCount, categories: categoryCount, forecasts: forecastCount, users: userCount, availabilityZones: azCount },
       recentForecasts,
     });
   } catch (err) {
@@ -75,7 +79,12 @@ router.get('/dashboard', async (_req, res, next) => {
 router.get('/products', async (_req, res, next) => {
   try {
     const products = await prisma.product.findMany({
-      include: { category: true, flavors: true, _count: { select: { forecasts: true } } },
+      include: {
+        category: true,
+        flavors: true,
+        availabilityZones: { include: { availabilityZone: true } },
+        _count: { select: { forecasts: true } },
+      },
       orderBy: { updatedAt: 'desc' },
     });
     res.json(products);
@@ -88,6 +97,7 @@ router.get('/products', async (_req, res, next) => {
 router.post('/products', async (req, res, next) => {
   try {
     const data = productSchema.parse(req.body);
+    const { availabilityZoneIds, ...productData } = data;
 
     // Check for duplicate slug
     const existing = await prisma.product.findUnique({ where: { slug: data.slug } });
@@ -95,9 +105,22 @@ router.post('/products', async (req, res, next) => {
       return res.status(409).json({ error: 'A product with this slug already exists' });
     }
 
+    // Validate availabilityZoneIds exist
+    if (availabilityZoneIds && availabilityZoneIds.length > 0) {
+      const zones = await prisma.availabilityZone.findMany({ where: { id: { in: availabilityZoneIds } } });
+      if (zones.length !== availabilityZoneIds.length) {
+        return res.status(400).json({ error: 'One or more availability zones do not exist' });
+      }
+    }
+
     const product = await prisma.product.create({
-      data,
-      include: { category: true, flavors: true },
+      data: {
+        ...productData,
+        availabilityZones: availabilityZoneIds
+          ? { create: availabilityZoneIds.map((id) => ({ availabilityZoneId: id })) }
+          : undefined,
+      },
+      include: { category: true, flavors: true, availabilityZones: { include: { availabilityZone: true } } },
     });
     res.status(201).json(product);
   } catch (err) {
@@ -109,7 +132,9 @@ router.post('/products', async (req, res, next) => {
 router.patch('/products/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
     const data = productSchema.partial().parse(req.body);
+    const { availabilityZoneIds, ...productData } = data;
 
     // Check for duplicate slug if updating slug
     if (data.slug) {
@@ -119,10 +144,30 @@ router.patch('/products/:id', async (req, res, next) => {
       }
     }
 
-    const product = await prisma.product.update({
-      where: { id },
-      data,
-      include: { category: true, flavors: true },
+    if (availabilityZoneIds) {
+      // Validate new availabilityZoneIds exist before deleting old ones
+      if (availabilityZoneIds.length > 0) {
+        const zones = await prisma.availabilityZone.findMany({ where: { id: { in: availabilityZoneIds } } });
+        if (zones.length !== availabilityZoneIds.length) {
+          return res.status(400).json({ error: 'One or more availability zones do not exist' });
+        }
+      }
+    }
+
+    const product = await prisma.$transaction(async (tx) => {
+      if (availabilityZoneIds) {
+        await tx.productAvailabilityZone.deleteMany({ where: { productId: id } });
+      }
+      return tx.product.update({
+        where: { id },
+        data: {
+          ...productData,
+          availabilityZones: availabilityZoneIds
+            ? { create: availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) }
+            : undefined,
+        },
+        include: { category: true, flavors: true, availabilityZones: { include: { availabilityZone: true } } },
+      });
     });
     res.json(product);
   } catch (err) {
@@ -134,6 +179,7 @@ router.patch('/products/:id', async (req, res, next) => {
 router.delete('/products/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
 
     // Check for related records that would block deletion
     const product = await prisma.product.findUnique({
@@ -170,6 +216,7 @@ router.delete('/products/:id', async (req, res, next) => {
 router.post('/products/:id/flavors', async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
 
     // Verify product exists
     const product = await prisma.product.findUnique({ where: { id } });
@@ -233,6 +280,7 @@ router.post('/categories', async (req, res, next) => {
 router.patch('/categories/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
     const data = categorySchema.partial().parse(req.body);
     const category = await prisma.category.update({
       where: { id },
@@ -249,6 +297,7 @@ router.patch('/categories/:id', async (req, res, next) => {
 router.delete('/categories/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
 
     // Check if category has products
     const category = await prisma.category.findUnique({
@@ -288,6 +337,7 @@ router.get('/flavors', async (_req, res, next) => {
 router.patch('/flavors/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
     const data = flavorSchema.partial().parse(req.body);
     const flavor = await prisma.flavor.update({
       where: { id },
@@ -304,6 +354,7 @@ router.patch('/flavors/:id', async (req, res, next) => {
 router.delete('/flavors/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
 
     // Check if flavor has associated forecasts
     const flavor = await prisma.flavor.findUnique({
@@ -363,6 +414,7 @@ router.post('/dependencies', async (req, res, next) => {
 router.patch('/dependencies/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
     const data = dependencySchema.partial().parse(req.body);
     const dependency = await prisma.dependency.update({
       where: { id },
@@ -382,6 +434,7 @@ router.patch('/dependencies/:id', async (req, res, next) => {
 router.delete('/dependencies/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
     await prisma.dependency.delete({ where: { id } });
     res.status(204).send();
   } catch (err) {
@@ -431,6 +484,7 @@ router.post('/users', async (req, res, next) => {
 router.patch('/users/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
     const data = userSchema.partial().parse(req.body);
     const user = await prisma.user.update({ where: { id }, data });
     res.json(user);
@@ -443,6 +497,7 @@ router.patch('/users/:id', async (req, res, next) => {
 router.delete('/users/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
     await prisma.user.delete({ where: { id } });
     res.status(204).send();
   } catch (err) {

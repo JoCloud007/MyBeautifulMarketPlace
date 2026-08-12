@@ -29,6 +29,7 @@ export interface Product {
   flavors: Flavor[];
   dependencies: Dependency[];
   dependentProducts: Dependency[];
+  availabilityZones: ProductAvailabilityZone[];
   documentation: string | null;
   roadmap: string | null;
   os: string | null;
@@ -88,11 +89,35 @@ export interface User {
   updatedAt: string;
 }
 
+export interface AvailabilityZone {
+  id: string;
+  code: string;
+  name: string;
+  city: string;
+  country: string;
+  region: string;
+  latitude: number;
+  longitude: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  productAvailabilities?: { id: string; product: { slug: string; name: string } }[];
+}
+
+export interface ProductAvailabilityZone {
+  id: string;
+  productId: string;
+  availabilityZoneId: string;
+  availabilityZone: AvailabilityZone;
+  createdAt: string;
+}
+
 export interface ProductFilters {
   category?: string;
   os?: string;
   flavor?: string;
   search?: string;
+  availabilityZoneIds?: string;
 }
 
 export interface ForecastStats {
@@ -108,6 +133,7 @@ export interface AdminDashboard {
     categories: number;
     forecasts: number;
     users: number;
+    availabilityZones: number;
   };
   recentForecasts: Forecast[];
 }

@@ -20,22 +20,23 @@ model Category {
 }
 
 model Product {
-  id                String       @id @default(uuid())
+  id                String                      @id @default(uuid())
   name              String
-  slug              String       @unique
+  slug              String                      @unique
   description       String?
   categoryId        String
-  category          Category     @relation(fields: [categoryId], references: [id])
+  category          Category                    @relation(fields: [categoryId], references: [id])
   flavors           Flavor[]
-  dependencies      Dependency[] @relation("ProductDependencies")
-  dependentProducts Dependency[] @relation("ProductDependents")
+  dependencies      Dependency[]                @relation("ProductDependencies")
+  dependentProducts Dependency[]                @relation("ProductDependents")
   forecasts         Forecast[]
+  availabilityZones ProductAvailabilityZone[]
   documentation     String?
   roadmap           String?
   os                String?
-  isActive          Boolean      @default(true)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  isActive          Boolean                     @default(true)
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
 }
 
 model Flavor {
@@ -82,6 +83,32 @@ model Forecast {
   requestedAt     DateTime       @default(now())
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+}
+
+model AvailabilityZone {
+  id                    String                      @id @default(uuid())
+  code                  String                      @unique
+  name                  String
+  city                  String
+  country               String
+  region                String
+  latitude              Float
+  longitude             Float
+  isActive              Boolean                     @default(true)
+  productAvailabilities ProductAvailabilityZone[]
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+}
+
+model ProductAvailabilityZone {
+  id                 String           @id @default(uuid())
+  productId          String
+  product            Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  availabilityZoneId String
+  availabilityZone   AvailabilityZone @relation(fields: [availabilityZoneId], references: [id], onDelete: Cascade)
+  createdAt          DateTime         @default(now())
+
+  @@unique([productId, availabilityZoneId])
 }
 
 model User {

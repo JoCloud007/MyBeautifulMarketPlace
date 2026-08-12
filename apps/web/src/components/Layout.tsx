@@ -1,11 +1,12 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Cloud, LayoutGrid, BarChart3, Shield, Menu, X } from 'lucide-react';
+import { Cloud, LayoutGrid, BarChart3, Shield, Globe, Menu, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { path: '/', label: 'Home', icon: Cloud },
   { path: '/marketplace', label: 'Marketplace', icon: LayoutGrid },
+  { path: '/availability-zones', label: 'Regions', icon: Globe },
   { path: '/forecasts', label: 'Forecasts', icon: BarChart3 },
   { path: '/admin', label: 'Admin', icon: Shield },
 ];

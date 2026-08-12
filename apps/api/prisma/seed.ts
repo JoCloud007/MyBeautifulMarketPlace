@@ -10,7 +10,9 @@ async function main() {
     await prisma.forecast.deleteMany();
     await prisma.dependency.deleteMany();
     await prisma.flavor.deleteMany();
+    await prisma.productAvailabilityZone.deleteMany();
     await prisma.product.deleteMany();
+    await prisma.availabilityZone.deleteMany();
     await prisma.category.deleteMany();
     await prisma.user.deleteMany();
   } catch (e: any) {
@@ -131,6 +133,59 @@ async function main() {
       roadmap: '## Roadmap\n- Q3 2024: Citrix DaaS integration\n- Q4 2024: WebRTC redirection',
     },
   });
+
+  // Create Availability Zones
+  const azParis1 = await prisma.availabilityZone.create({
+    data: { code: 'eu-west-par1', name: 'Paris AZ1', city: 'Paris', country: 'France', region: 'Europe', latitude: 48.8566, longitude: 2.3522, isActive: true },
+  });
+  const azParis2 = await prisma.availabilityZone.create({
+    data: { code: 'eu-west-par2', name: 'Paris AZ2', city: 'Paris', country: 'France', region: 'Europe', latitude: 48.8566, longitude: 2.3522 + 0.02, isActive: true },
+  });
+  const azLondon = await prisma.availabilityZone.create({
+    data: { code: 'eu-west-lon1', name: 'London', city: 'London', country: 'United Kingdom', region: 'Europe', latitude: 51.5074, longitude: -0.1278, isActive: true },
+  });
+  const azNewYork = await prisma.availabilityZone.create({
+    data: { code: 'us-east-nyc1', name: 'New York', city: 'New York', country: 'United States', region: 'North America', latitude: 40.7128, longitude: -74.006, isActive: true },
+  });
+  const azSingapore = await prisma.availabilityZone.create({
+    data: { code: 'ap-south-sin1', name: 'Singapore', city: 'Singapore', country: 'Singapore', region: 'Asia-Pacific', latitude: 1.3521, longitude: 103.8198, isActive: true },
+  });
+  const azHongKong = await prisma.availabilityZone.create({
+    data: { code: 'ap-east-hkg1', name: 'Hong Kong', city: 'Hong Kong', country: 'China', region: 'Asia-Pacific', latitude: 22.3193, longitude: 114.1694, isActive: true },
+  });
+
+  // Link products to availability zones (region logic: all products available in Europe and North America; compute and storage also in Asia-Pacific)
+  const europeAzs = [azParis1, azParis2, azLondon];
+  const northAmericaAzs = [azNewYork];
+  const asiaPacificAzs = [azSingapore, azHongKong];
+
+  const computeProducts = [vmDebian, vmWindows, vmRedHat, bareMetalHpc];
+  const storageProducts = [objectStorage, nas];
+  const otherProducts = [vmware, citrixVdi];
+  const allProducts = [...computeProducts, ...storageProducts, ...otherProducts];
+
+  // All products in Europe and North America
+  for (const product of allProducts) {
+    for (const az of europeAzs) {
+      await prisma.productAvailabilityZone.create({
+        data: { productId: product.id, availabilityZoneId: az.id },
+      });
+    }
+    for (const az of northAmericaAzs) {
+      await prisma.productAvailabilityZone.create({
+        data: { productId: product.id, availabilityZoneId: az.id },
+      });
+    }
+  }
+
+  // Compute and storage also in Asia-Pacific
+  for (const product of [...computeProducts, ...storageProducts]) {
+    for (const az of asiaPacificAzs) {
+      await prisma.productAvailabilityZone.create({
+        data: { productId: product.id, availabilityZoneId: az.id },
+      });
+    }
+  }
 
   // Create Flavors for each product
   const flavors = [
