@@ -66,9 +66,10 @@ deploy:
 	@echo ""
 	@echo "✓ Images built. Run 'make run' to start containers."
 
-## Run — Start all containers (db, api, web)
+## Run — Start all containers (db, api, web).
+## Recreates containers to ensure the latest built images are used.
 run:
-	docker compose up -d
+	docker compose up -d --force-recreate
 	@echo ""
 	@echo "✓ Containers started:"
 	@echo "  Web:    http://localhost:5192"
