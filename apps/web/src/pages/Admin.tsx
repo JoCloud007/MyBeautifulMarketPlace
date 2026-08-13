@@ -24,6 +24,10 @@ import {
   useDeleteUser,
   useUpdateForecast,
   useDeleteForecast,
+  useAvailabilityZones,
+  useCreateAvailabilityZone,
+  useUpdateAvailabilityZone,
+  useDeleteAvailabilityZone,
 } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
@@ -58,8 +62,9 @@ import {
   Link2,
   UserCog,
   Cpu,
+  MapPin,
 } from 'lucide-react';
-import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast } from '@cloudmarket/shared-types';
+import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ApprovalStatus, { label: string; color: string }> = {
   PENDING: { label: 'Pending', color: 'border-amber-500/20 text-amber-500' },
@@ -1060,6 +1065,161 @@ function UsersSection() {
   );
 }
 
+// ============ AVAILABILITY ZONES SECTION ============
+function AvailabilityZonesSection() {
+  const { data: zones, isLoading, isError, refetch } = useAvailabilityZones();
+  const createZone = useCreateAvailabilityZone();
+  const updateZone = useUpdateAvailabilityZone();
+  const deleteZone = useDeleteAvailabilityZone();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<AvailabilityZone | null>(null);
+  const [form, setForm] = useState({
+    code: '', name: '', city: '', country: '', region: '', latitude: '', longitude: '', isActive: true,
+  });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const resetForm = () => {
+    setForm({ code: '', name: '', city: '', country: '', region: '', latitude: '', longitude: '', isActive: true });
+    setEditing(null);
+  };
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (z: AvailabilityZone) => {
+    setEditing(z);
+    setForm({
+      code: z.code, name: z.name, city: z.city, country: z.country, region: z.region,
+      latitude: String(z.latitude), longitude: String(z.longitude), isActive: z.isActive,
+    });
+    setIsOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      ...form,
+      latitude: parseFloat(form.latitude),
+      longitude: parseFloat(form.longitude),
+    };
+    if (editing) await updateZone.mutateAsync({ id: editing.id, ...payload });
+    else await createZone.mutateAsync(payload);
+    setIsOpen(false); resetForm();
+  };
+
+  const handleDelete = (id: string) => {
+    setConfirmDelete({ open: true, id });
+  };
+  const handleConfirmDelete = async () => {
+    if (confirmDelete.id) {
+      await deleteZone.mutateAsync(confirmDelete.id);
+    }
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  const filtered = zones?.filter((z) =>
+    z.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    z.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (isError) return <QueryError message="Unable to load availability zones." onRetry={refetch} />;
+
+  const mobileCards = filtered?.map((z) => (
+    <MobileCard key={z.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{z.name}</p>
+          <p className="text-sm text-slate-400">{z.code}</p>
+        </div>
+        <Badge variant="outline" className={z.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+          {z.isActive ? 'Active' : 'Inactive'}
+        </Badge>
+      </div>
+      <div className="mt-2 text-sm text-slate-500">
+        <p>{z.city}, {z.country}</p>
+        <p>Region: {z.region}</p>
+      </div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openEdit(z)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => handleDelete(z.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <Input placeholder="Search by code or name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]" />
+        </div>
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add</Button>
+      </div>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable headers={['Code', 'Name', 'City', 'Country', 'Region', 'Status']} isLoading={isLoading} emptyMessage="No availability zones" mobileCards={mobileCards}>
+            {filtered?.map((z) => (
+              <tr key={z.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{z.code}</td>
+                <td className="py-3 text-slate-400">{z.name}</td>
+                <td className="py-3 text-slate-400">{z.city}</td>
+                <td className="py-3 text-slate-400">{z.country}</td>
+                <td className="py-3 text-slate-400">{z.region}</td>
+                <td className="py-3">
+                  <Badge variant="outline" className={z.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+                    {z.isActive ? 'Active' : 'Inactive'}
+                  </Badge>
+                </td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(z)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(z.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit availability zone' : 'New availability zone'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Code</label><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">City</label><Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Country</label><Input value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Region</label><Input value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Latitude</label><Input type="number" step="any" min="-90" max="90" value={form.latitude} onChange={(e) => setForm({ ...form, latitude: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Longitude</label><Input type="number" step="any" min="-180" max="180" value={form.longitude} onChange={(e) => setForm({ ...form, longitude: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2 flex items-center gap-2 pt-6">
+                <input type="checkbox" id="az-active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
+                <label htmlFor="az-active" className="text-sm font-medium text-slate-300">Active</label>
+              </div>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete Availability Zone"
+        description="Are you sure you want to delete this availability zone? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
+    </div>
+  );
+}
+
 // ============ MAIN ADMIN PAGE ============
 export default function Admin() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -1072,6 +1232,7 @@ export default function Admin() {
     { value: 'dependencies', label: 'Dependencies', icon: Link2 },
     { value: 'forecasts', label: 'Forecasts', icon: Activity },
     { value: 'users', label: 'Users', icon: UserCog },
+    { value: 'availability-zones', label: 'Availability Zones', icon: MapPin },
   ];
 
   return (
@@ -1106,6 +1267,7 @@ export default function Admin() {
         <TabsContent value="dependencies" className="animate-fade-in"><DependenciesSection /></TabsContent>
         <TabsContent value="forecasts" className="animate-fade-in"><ForecastsAdminSection /></TabsContent>
         <TabsContent value="users" className="animate-fade-in"><UsersSection /></TabsContent>
+        <TabsContent value="availability-zones" className="animate-fade-in"><AvailabilityZonesSection /></TabsContent>
       </Tabs>
     </div>
   );

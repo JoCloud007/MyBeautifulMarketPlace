@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
-import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User } from '@cloudmarket/shared-types';
+import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone } from '@cloudmarket/shared-types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -30,7 +30,7 @@ api.interceptors.response.use(
 
 // Native fetch helper (replaces Axios for GET queries — fixes headless-browser loading issues)
 async function fetchJson<T>(url: string, params?: Record<string, any>): Promise<T> {
-  let fullUrl = `/api${url}`;
+  let fullUrl = `${API_URL}/api${url}`;
   if (params) {
     const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {
@@ -486,6 +486,79 @@ export function useDeleteUser() {
     },
     onError: (err: any) => {
       addToast(err.response?.data?.message || 'Unable to delete this user', 'error');
+    },
+  });
+}
+
+// ========== AVAILABILITY ZONES ==========
+
+export function useAvailabilityZones() {
+  return useQuery<AvailabilityZone[]>({
+    queryKey: ['availability-zones'],
+    queryFn: () => fetchJson('/availability-zones'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreateAvailabilityZone() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (payload: Partial<AvailabilityZone>) => {
+      const { data } = await api.post('/availability-zones', payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['availability-zones'] });
+      addToast('Availability zone created successfully', 'success');
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Error during creation';
+      addToast(msg, 'error');
+    },
+  });
+}
+
+export function useUpdateAvailabilityZone() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & Partial<AvailabilityZone>) => {
+      const { data } = await api.patch(`/availability-zones/${id}`, payload);
+      return data;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(['availability-zones'], (old: AvailabilityZone[] | undefined) =>
+        old?.map((az) => (az.id === variables.id ? data : az)) ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['availability-zones'] });
+      addToast('Availability zone updated', 'success');
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Error during update';
+      addToast(msg, 'error');
+    },
+  });
+}
+
+export function useDeleteAvailabilityZone() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/availability-zones/${id}`);
+    },
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(['availability-zones'], (old: AvailabilityZone[] | undefined) =>
+        old?.filter((az) => az.id !== id) ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['availability-zones'] });
+      addToast('Availability zone deleted', 'success');
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Unable to delete this availability zone';
+      addToast(msg, 'error');
     },
   });
 }

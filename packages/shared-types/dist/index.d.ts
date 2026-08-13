@@ -38,7 +38,7 @@ export interface ProductAvailabilityZone {
     id: string;
     productId: string;
     availabilityZoneId: string;
-    availabilityZone: any;
+    availabilityZone: AvailabilityZone;
     code?: string;
     createdAt: string;
 }
@@ -97,15 +97,46 @@ export interface User {
     createdAt: string;
     updatedAt: string;
 }
+export interface AvailabilityZone {
+    id: string;
+    code: string;
+    name: string;
+    city: string;
+    country: string;
+    region: string;
+    latitude: number;
+    longitude: number;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+    productAvailabilities?: {
+        id: string;
+        product: {
+            slug: string;
+            name: string;
+        };
+    }[];
+}
 export interface ProductFilters {
     category?: string;
     os?: string;
     flavor?: string;
     search?: string;
+    availabilityZoneIds?: string;
 }
 export interface ForecastStats {
     total: number;
     pending: number;
     approved: number;
     rejected: number;
+}
+export interface AdminDashboard {
+    counts: {
+        products: number;
+        categories: number;
+        forecasts: number;
+        users: number;
+        availabilityZones: number;
+    };
+    recentForecasts: Forecast[];
 }

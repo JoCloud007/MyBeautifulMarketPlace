@@ -42,7 +42,7 @@ export interface ProductAvailabilityZone {
   id: string;
   productId: string;
   availabilityZoneId: string;
-  availabilityZone: any;
+  availabilityZone: AvailabilityZone;
   code?: string;
   createdAt: string;
 }
@@ -120,14 +120,6 @@ export interface AvailabilityZone {
   createdAt: string;
   updatedAt: string;
   productAvailabilities?: { id: string; product: { slug: string; name: string } }[];
-}
-
-export interface ProductAvailabilityZone {
-  id: string;
-  productId: string;
-  availabilityZoneId: string;
-  availabilityZone: AvailabilityZone;
-  createdAt: string;
 }
 
 export interface ProductFilters {
