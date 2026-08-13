@@ -54,6 +54,10 @@ function ProductTimeline({ product, yearStart, yearEnd }: { product: Product; ye
   const lifecycles = product.lifecycles || [];
   if (lifecycles.length === 0) return null;
 
+  const upgradeFrom = (product as any).upgradeFrom || [];
+  const upgradeTo = (product as any).upgradeTo || [];
+  const allUpgrades = [...upgradeFrom, ...upgradeTo];
+
   return (
     <div className="mb-6">
       <button
@@ -71,6 +75,19 @@ function ProductTimeline({ product, yearStart, yearEnd }: { product: Product; ye
             <LifecycleBar key={lc.id} lifecycle={lc} yearStart={yearStart} yearEnd={yearEnd} />
           ))}
         </div>
+
+        {allUpgrades.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {allUpgrades.map((up: any) => (
+              <div key={up.id} className="inline-flex items-center gap-1 text-xs bg-slate-800 border border-slate-700 rounded-md px-2 py-1">
+                <span className="text-slate-400">{up.fromVersion}</span>
+                <ArrowRight className="h-3 w-3 text-cyan-500" />
+                <span className="text-slate-300">{up.toVersion}</span>
+                <span className="text-slate-500 ml-1">({up.migrationType})</span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {expanded && (
           <div className="mt-3 grid gap-2">
@@ -100,6 +117,16 @@ function ProductTimeline({ product, yearStart, yearEnd }: { product: Product; ye
 function YearAxis({ yearStart, yearEnd }: { yearStart: number; yearEnd: number }) {
   const years: number[] = [];
   for (let y = yearStart; y <= yearEnd; y++) years.push(y);
+
+  if (years.length <= 1) {
+    return (
+      <div className="relative h-8 mb-2 border-b border-slate-700">
+        <div className="absolute text-xs text-slate-500 font-mono" style={{ left: '0%' }}>
+          {years[0] ?? yearStart}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-8 mb-2 border-b border-slate-700">

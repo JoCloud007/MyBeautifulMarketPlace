@@ -7,29 +7,30 @@ const prisma = new PrismaClient();
 async function updateLifecyclePhases() {
   const now = new Date();
 
-  // RELEASED -> NORMAL_SUPPORT
+  // RELEASED -> NORMAL_SUPPORT (product has been released)
   await prisma.productLifecycle.updateMany({
     where: {
       phase: LifecyclePhase.RELEASED,
-      normalSupportEnd: { lt: now },
+      releaseDate: { lte: now },
+      normalSupportEnd: { gte: now },
     },
     data: { phase: LifecyclePhase.NORMAL_SUPPORT },
   });
 
-  // NORMAL_SUPPORT -> EXTENDED_SUPPORT
+  // NORMAL_SUPPORT -> EXTENDED_SUPPORT (normal support has ended)
   await prisma.productLifecycle.updateMany({
     where: {
       phase: LifecyclePhase.NORMAL_SUPPORT,
-      extendedSupportEnd: { lt: now },
+      normalSupportEnd: { lt: now },
     },
     data: { phase: LifecyclePhase.EXTENDED_SUPPORT },
   });
 
-  // EXTENDED_SUPPORT -> NO_SUPPORT
+  // EXTENDED_SUPPORT -> NO_SUPPORT (extended support has ended)
   await prisma.productLifecycle.updateMany({
     where: {
       phase: LifecyclePhase.EXTENDED_SUPPORT,
-      eolDate: { lt: now },
+      extendedSupportEnd: { lt: now },
     },
     data: { phase: LifecyclePhase.NO_SUPPORT },
   });

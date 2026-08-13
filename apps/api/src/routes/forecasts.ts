@@ -79,7 +79,9 @@ router.get('/stats', async (_req, res, next) => {
 // GET /api/forecasts/trends
 router.get('/trends', async (req, res, next) => {
   try {
-    const days = Math.min(parseInt(req.query.days as string) || 30, 365);
+    const rawDays = req.query.days;
+    const parsedDays = typeof rawDays === 'string' && /^\d+$/.test(rawDays) ? parseInt(rawDays, 10) : 30;
+    const days = Math.min(parsedDays, 365);
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
     const forecasts = await prisma.forecast.findMany({
@@ -109,9 +111,10 @@ router.get('/trends', async (req, res, next) => {
 // GET /api/forecasts/resources-by-zone
 router.get('/resources-by-zone', async (_req, res, next) => {
   try {
+    // Sum resources from approved forecast lines
     const lines = await prisma.forecastLine.findMany({
       where: { forecast: { status: ApprovalStatus.APPROVED } },
-      include: { flavor: true },
+      include: { flavor: true, forecast: true },
     });
 
     const grouped = new Map<string, { vcpu: number; ramGb: number }>();
@@ -120,6 +123,23 @@ router.get('/resources-by-zone', async (_req, res, next) => {
       entry.vcpu += (line.flavor.vcpu || 0) * line.quantity;
       entry.ramGb += (line.flavor.ramGb || 0) * line.quantity;
       grouped.set(line.azCode, entry);
+    }
+
+    // Subtract resources from terminated instances linked to approved forecasts
+    const terminatedInstances = await prisma.instance.findMany({
+      where: { status: 'TERMINATED', forecastId: { not: null } },
+      include: { flavor: true },
+    });
+
+    for (const instance of terminatedInstances) {
+      const entry = grouped.get(instance.azCode);
+      if (entry && instance.flavor) {
+        entry.vcpu -= (instance.flavor.vcpu || 0);
+        entry.ramGb -= (instance.flavor.ramGb || 0);
+        if (entry.vcpu <= 0 && entry.ramGb <= 0) {
+          grouped.delete(instance.azCode);
+        }
+      }
     }
 
     const result = Array.from(grouped.entries()).map(([azCode, resources]) => ({
@@ -176,6 +196,8 @@ router.post('/', async (req, res, next) => {
       return res.status(404).json({ error: `Application not found: ${data.applicationId}` });
     }
 
+    // Validate each line and group HA/MULTI_AZ lines by product for resiliency validation
+    const azsByProduct = new Map<string, Set<string>>();
     for (const line of data.lines) {
       const flavor = await prisma.flavor.findUnique({ where: { id: line.flavorId } });
       if (!flavor) {
@@ -195,11 +217,22 @@ router.post('/', async (req, res, next) => {
         return res.status(409).json({ error: `Product ${line.productId} is not available in zone ${line.azCode}` });
       }
 
-      // HA/MULTI_AZ requires minimum 2 AZs if quantity > 1
-      if ((line.resiliency === 'HA' || line.resiliency === 'MULTI_AZ') && line.quantity < 2) {
-        return res.status(400).json({
-          error: `Resiliency ${line.resiliency} requires quantity >= 2 for product ${line.productId}`,
-        });
+      if (line.resiliency === 'HA' || line.resiliency === 'MULTI_AZ') {
+        const set = azsByProduct.get(line.productId) || new Set<string>();
+        set.add(line.azCode);
+        azsByProduct.set(line.productId, set);
+      }
+    }
+
+    // HA/MULTI_AZ requires minimum 2 distinct AZs per product (counting only HA/MULTI_AZ lines)
+    for (const line of data.lines) {
+      if ((line.resiliency === 'HA' || line.resiliency === 'MULTI_AZ')) {
+        const distinctAzs = azsByProduct.get(line.productId) || new Set<string>();
+        if (distinctAzs.size < 2) {
+          return res.status(400).json({
+            error: `Resiliency ${line.resiliency} requires at least 2 distinct availability zones for product ${line.productId}`,
+          });
+        }
       }
     }
 

@@ -42,6 +42,17 @@ export declare enum InstanceStatus {
     STOPPED = "STOPPED",
     TERMINATED = "TERMINATED"
 }
+export declare enum HealthStatus {
+    HEALTHY = "HEALTHY",
+    DEGRADED = "DEGRADED",
+    UNHEALTHY = "UNHEALTHY"
+}
+export declare enum MaintenanceStatus {
+    SCHEDULED = "SCHEDULED",
+    IN_PROGRESS = "IN_PROGRESS",
+    COMPLETED = "COMPLETED",
+    CANCELLED = "CANCELLED"
+}
 export interface Category {
     id: string;
     name: string;
@@ -178,6 +189,32 @@ export interface Instance {
     startedAt: string | null;
     stoppedAt: string | null;
     terminatedAt: string | null;
+}
+export interface HealthCheck {
+    id: string;
+    instanceId: string;
+    instance: Instance;
+    status: HealthStatus;
+    cpuPercent: number;
+    memoryPercent: number;
+    diskPercent: number;
+    responseTimeMs: number;
+    checkedAt: string;
+    createdAt: string;
+}
+export interface MaintenanceWindow {
+    id: string;
+    instanceId: string | null;
+    instance: Instance | null;
+    applicationId: string | null;
+    application: Application | null;
+    title: string;
+    description: string | null;
+    startTime: string;
+    endTime: string;
+    status: MaintenanceStatus;
+    createdAt: string;
+    updatedAt: string;
 }
 export interface ForecastLine {
     id: string;

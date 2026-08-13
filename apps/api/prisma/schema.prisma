@@ -156,8 +156,8 @@ model Forecast {
   updatedAt      DateTime       @updatedAt
   lines          ForecastLine[]
   instances      Instance[]
-  applicationId  String
-  application    Application    @relation(fields: [applicationId], references: [id])
+  applicationId  String?
+  application    Application?   @relation(fields: [applicationId], references: [id])
   environment    Environment    @default(DEV)
 }
 
@@ -283,6 +283,29 @@ enum MaintenanceStatus {
   CANCELLED
 }
 
+enum BackupStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model Backup {
+  id          String       @id @default(uuid())
+  instanceId  String
+  instance    Instance     @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  status      BackupStatus @default(PENDING)
+  sizeBytes   Int?
+  createdAt   DateTime     @default(now())
+  completedAt DateTime?
+  restoredAt  DateTime?
+
+  @@index([instanceId])
+  @@index([status])
+}
+
 model Instance {
   id            String         @id @default(uuid())
   name          String
@@ -309,6 +332,7 @@ model Instance {
   terminatedAt  DateTime?
   healthChecks  HealthCheck[]
   maintenanceWindows MaintenanceWindow[]
+  backups       Backup[]
 }
 
 model HealthCheck {

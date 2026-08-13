@@ -39,7 +39,25 @@ async function fetchJson<T>(url: string, params?: Record<string, any>): Promise<
     if (searchParams.toString()) fullUrl += '?' + searchParams.toString();
   }
   const res = await fetch(fullUrl);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const contentType = res.headers.get('content-type') || '';
+  if (!res.ok) {
+    let message = `${res.status} ${res.statusText}`;
+    if (contentType.includes('application/json')) {
+      try {
+        const body = await res.json();
+        message = body?.error || body?.message || message;
+      } catch { /* ignore parse errors */ }
+    } else {
+      try {
+        const text = await res.text();
+        if (text) message = text.slice(0, 200);
+      } catch { /* ignore */ }
+    }
+    throw new Error(message);
+  }
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Expected JSON response but received ${contentType || 'unknown content type'}`);
+  }
   return res.json();
 }
 
@@ -98,7 +116,7 @@ export function useUpdateProduct() {
       addToast('Product updated', 'success');
     },
     onError: (err: any) => {
-      console.error('Update forecast error:', err);
+      console.error('Update product error:', err);
       const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Error during update';
       addToast(msg, 'error');
     },
@@ -366,6 +384,9 @@ export function useCreateForecast() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['forecasts'] });
       queryClient.invalidateQueries({ queryKey: ['forecast-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['forecast-trends'] });
+      queryClient.invalidateQueries({ queryKey: ['resources-by-zone'] });
+      queryClient.invalidateQueries({ queryKey: ['demand-heatmap'] });
       addToast('Forecast request created', 'success');
     },
     onError: (err: any) => {
@@ -388,6 +409,9 @@ export function useUpdateForecast() {
       );
       queryClient.invalidateQueries({ queryKey: ['forecasts'] });
       queryClient.invalidateQueries({ queryKey: ['forecast-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['forecast-trends'] });
+      queryClient.invalidateQueries({ queryKey: ['resources-by-zone'] });
+      queryClient.invalidateQueries({ queryKey: ['demand-heatmap'] });
       const status = (variables as any).status;
       if (status === 'APPROVED') addToast('Request approved', 'success');
       else if (status === 'REJECTED') addToast('Request rejected', 'warning');
@@ -412,6 +436,9 @@ export function useDeleteForecast() {
       );
       queryClient.invalidateQueries({ queryKey: ['forecasts'] });
       queryClient.invalidateQueries({ queryKey: ['forecast-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['forecast-trends'] });
+      queryClient.invalidateQueries({ queryKey: ['resources-by-zone'] });
+      queryClient.invalidateQueries({ queryKey: ['demand-heatmap'] });
       addToast('Request deleted', 'success');
     },
     onError: (err: any) => {
@@ -779,6 +806,25 @@ export function useDeleteProductLifecycle() {
   });
 }
 
+export function useUpdateProductLifecycle() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ productId, lifecycleId, ...payload }: { productId: string; lifecycleId: string } & Partial<ProductLifecycle>) => {
+      const { data } = await api.patch(`/products/${productId}/lifecycles/${lifecycleId}`, payload);
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['product-lifecycles', variables.productId] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Lifecycle updated', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error during update', 'error');
+    },
+  });
+}
+
 // ========== PRODUCT OPTIONS ==========
 
 export function useProductOptions(productId: string) {
@@ -837,6 +883,43 @@ export function useUpgradePaths(productId: string) {
     enabled: !!productId,
     retry: 3,
     retryDelay: 2000,
+  });
+}
+
+export function useCreateUpgradePath() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ productId, ...payload }: { productId: string } & Partial<UpgradePath>) => {
+      const { data } = await api.post(`/products/${productId}/upgrade-paths`, payload);
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['upgrade-paths', variables.productId] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Upgrade path created successfully', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error during creation', 'error');
+    },
+  });
+}
+
+export function useDeleteUpgradePath() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ productId, pathId }: { productId: string; pathId: string }) => {
+      await api.delete(`/products/${productId}/upgrade-paths/${pathId}`);
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['upgrade-paths', variables.productId] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Upgrade path deleted', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Unable to delete this upgrade path', 'error');
+    },
   });
 }
 

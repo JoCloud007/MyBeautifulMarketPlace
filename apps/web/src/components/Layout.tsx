@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Cloud, LayoutGrid, BarChart3, Shield, Globe, Map, Server, Menu, X } from 'lucide-react';
+import { Cloud, LayoutGrid, BarChart3, Shield, Globe, Map, Server, HeartPulse, Wrench, ShieldCheck, Menu, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -9,6 +9,9 @@ const navItems = [
   { path: '/availability-zones', label: 'Regions', icon: Globe },
   { path: '/roadmap', label: 'Roadmap', icon: Map },
   { path: '/instances', label: 'Instances', icon: Server },
+  { path: '/health', label: 'Health', icon: HeartPulse },
+  { path: '/maintenance', label: 'Maintenance', icon: Wrench },
+  { path: '/continuity', label: 'Continuity', icon: ShieldCheck },
   { path: '/forecasts', label: 'Forecasts', icon: BarChart3 },
   { path: '/admin', label: 'Admin', icon: Shield },
 ];

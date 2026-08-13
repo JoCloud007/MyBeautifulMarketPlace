@@ -28,9 +28,6 @@ const updateInstanceSchema = z.object({
   ipAddress: z.string().optional(),
   hostname: z.string().optional(),
   metadata: z.record(z.any()).optional(),
-  startedAt: z.string().datetime().optional(),
-  stoppedAt: z.string().datetime().optional(),
-  terminatedAt: z.string().datetime().optional(),
 });
 
 const idParamSchema = z.string().uuid();
@@ -172,14 +169,9 @@ router.patch('/:id', async (req, res, next) => {
     idParamSchema.parse(id);
     const data = updateInstanceSchema.parse(req.body);
 
-    const updateData: any = { ...data };
-    if (data.startedAt) updateData.startedAt = new Date(data.startedAt);
-    if (data.stoppedAt) updateData.stoppedAt = new Date(data.stoppedAt);
-    if (data.terminatedAt) updateData.terminatedAt = new Date(data.terminatedAt);
-
     const instance = await prisma.instance.update({
       where: { id },
-      data: updateData,
+      data,
       include: {
         application: { include: { continuityLevel: true } },
         product: { include: { category: true } },

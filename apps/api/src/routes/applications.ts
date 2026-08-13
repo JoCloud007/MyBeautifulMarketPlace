@@ -56,17 +56,15 @@ router.post('/', async (req, res, next) => {
   try {
     const data = createApplicationSchema.parse(req.body);
 
-    const existing = await prisma.application.findUnique({ where: { name: data.name } });
-    if (existing) {
-      return res.status(409).json({ error: 'An application with this name already exists' });
-    }
-
     const application = await prisma.application.create({
       data,
       include: { continuityLevel: true },
     });
     res.status(201).json(application);
-  } catch (err) {
+  } catch (err: any) {
+    if (err.code === 'P2002') {
+      return res.status(409).json({ error: 'An application with this name already exists' });
+    }
     next(err);
   }
 });
@@ -78,20 +76,16 @@ router.patch('/:id', async (req, res, next) => {
     idParamSchema.parse(id);
     const data = updateApplicationSchema.parse(req.body);
 
-    if (data.name) {
-      const existing = await prisma.application.findUnique({ where: { name: data.name } });
-      if (existing && existing.id !== id) {
-        return res.status(409).json({ error: 'An application with this name already exists' });
-      }
-    }
-
     const application = await prisma.application.update({
       where: { id },
       data,
       include: { continuityLevel: true },
     });
     res.json(application);
-  } catch (err) {
+  } catch (err: any) {
+    if (err.code === 'P2002') {
+      return res.status(409).json({ error: 'An application with this name already exists' });
+    }
     next(err);
   }
 });
@@ -104,16 +98,21 @@ router.delete('/:id', async (req, res, next) => {
 
     const app = await prisma.application.findUnique({
       where: { id },
-      include: { _count: { select: { forecasts: true } } },
+      include: { _count: { select: { forecasts: true, instances: true, maintenanceWindows: true } } },
     });
 
     if (!app) {
       return res.status(404).json({ error: 'Application not found' });
     }
 
-    if (app._count.forecasts > 0) {
+    const blocks: string[] = [];
+    if (app._count.forecasts > 0) blocks.push('forecasts');
+    if (app._count.instances > 0) blocks.push('instances');
+    if (app._count.maintenanceWindows > 0) blocks.push('maintenance windows');
+
+    if (blocks.length > 0) {
       return res.status(409).json({
-        error: 'Cannot delete application with existing forecasts. Please remove or reassign them first.',
+        error: `Cannot delete application with existing ${blocks.join(', ')}. Please remove or reassign them first.`,
       });
     }
 

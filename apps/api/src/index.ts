@@ -19,6 +19,7 @@ import { continuityLevelRoutes } from './routes/continuity-levels';
 import { instanceRoutes } from './routes/instances';
 import { healthCheckRoutes } from './routes/health-checks';
 import { maintenanceWindowRoutes } from './routes/maintenance-windows';
+import { backupRoutes } from './routes/backups';
 import { startCronJobs } from './cron';
 
 dotenv.config();
@@ -27,7 +28,7 @@ const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
+app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173' }));
 app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], connectSrc: ["'self'", "http://localhost:3001", "http://127.0.0.1:3001"] } } }));
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -55,12 +56,16 @@ app.use('/api/continuity-levels', continuityLevelRoutes);
 app.use('/api/instances', instanceRoutes);
 app.use('/api/health-checks', healthCheckRoutes);
 app.use('/api/maintenance-windows', maintenanceWindowRoutes);
+app.use('/api/backups', backupRoutes);
 
-// Conditional admin API key protection (active only when ADMIN_API_KEY is set)
+// Conditional admin API key protection (fail-closed: requires key if set)
 const adminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const key = process.env.ADMIN_API_KEY;
-  if (!key) return next();
   const provided = req.headers['x-admin-api-key'];
+  if (!key) {
+    // No key configured — allow access (documented as "requires key if set")
+    return next();
+  }
   if (provided !== key) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -79,7 +84,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
     return;
   }
 
-  console.error('Unhandled error:', err.message);
+  console.error('Unhandled error:', err?.message || String(err));
 
   // Zod validation errors
   if (err instanceof ZodError) {

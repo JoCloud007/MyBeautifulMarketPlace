@@ -85,6 +85,8 @@ router.get('/:slug', async (req, res, next) => {
 router.patch('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    const idParamSchema = z.string().uuid();
+    idParamSchema.parse(id);
     const data = updateCategorySchema.parse(req.body);
 
     // Check for duplicate slug if updating slug
@@ -121,6 +123,8 @@ router.patch('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    const idParamSchema = z.string().uuid();
+    idParamSchema.parse(id);
 
     // Check if category has products
     const category = await prisma.category.findUnique({

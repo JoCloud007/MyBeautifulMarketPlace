@@ -50,22 +50,24 @@ const idParamSchema = z.string().uuid();
 // GET /api/admin/dashboard
 router.get('/dashboard', async (_req, res, next) => {
   try {
-    const [productCount, categoryCount, forecastCount, userCount, azCount] = await Promise.all([
+    const [productCount, categoryCount, forecastCount, userCount, azCount, applicationCount, continuityLevelCount] = await Promise.all([
       prisma.product.count(),
       prisma.category.count(),
       prisma.forecast.count(),
       prisma.user.count(),
       prisma.availabilityZone.count(),
+      prisma.application.count(),
+      prisma.continuityLevel.count(),
     ]);
 
     const recentForecasts = await prisma.forecast.findMany({
       take: 10,
       orderBy: { createdAt: 'desc' },
-      include: { lines: { include: { product: true, flavor: true } } },
+      include: { lines: { include: { product: true, flavor: true } }, application: { include: { continuityLevel: true } } },
     });
 
     res.json({
-      counts: { products: productCount, categories: categoryCount, forecasts: forecastCount, users: userCount, availabilityZones: azCount },
+      counts: { products: productCount, categories: categoryCount, forecasts: forecastCount, users: userCount, availabilityZones: azCount, applications: applicationCount, continuityLevels: continuityLevelCount },
       recentForecasts,
     });
   } catch (err) {
@@ -185,7 +187,20 @@ router.delete('/products/:id', async (req, res, next) => {
     const product = await prisma.product.findUnique({
       where: { id },
       include: {
-        _count: { select: { flavors: true, dependencies: true, dependentProducts: true, forecastLines: true } },
+        _count: {
+          select: {
+            flavors: true,
+            dependencies: true,
+            dependentProducts: true,
+            forecastLines: true,
+            instances: true,
+            options: true,
+            lifecycles: true,
+            upgradeFrom: true,
+            upgradeTo: true,
+            availabilityZones: true,
+          },
+        },
       },
     });
 
@@ -198,6 +213,12 @@ router.delete('/products/:id', async (req, res, next) => {
     if (product._count.dependencies > 0) blocks.push('dependencies');
     if (product._count.dependentProducts > 0) blocks.push('dependent products');
     if (product._count.forecastLines > 0) blocks.push('forecast lines');
+    if (product._count.instances > 0) blocks.push('instances');
+    if (product._count.options > 0) blocks.push('options');
+    if (product._count.lifecycles > 0) blocks.push('lifecycles');
+    if (product._count.upgradeFrom > 0) blocks.push('upgrade paths');
+    if (product._count.upgradeTo > 0) blocks.push('dependent upgrade paths');
+    if (product._count.availabilityZones > 0) blocks.push('availability zones');
 
     if (blocks.length > 0) {
       return res.status(409).json({
@@ -356,15 +377,19 @@ router.delete('/flavors/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
 
-    // Check if flavor has associated forecasts
+    // Check if flavor has associated forecasts or instances
     const flavor = await prisma.flavor.findUnique({
       where: { id },
-      include: { _count: { select: { forecastLines: true } } },
+      include: { _count: { select: { forecastLines: true, instances: true } } },
     });
 
-    if (flavor && flavor._count.forecastLines > 0) {
+    const blocks: string[] = [];
+    if (flavor && flavor._count.forecastLines > 0) blocks.push('forecasts');
+    if (flavor && flavor._count.instances > 0) blocks.push('instances');
+
+    if (blocks.length > 0) {
       return res.status(409).json({
-        error: 'Cannot delete flavor with existing forecasts. Please delete forecasts first.',
+        error: `Cannot delete flavor with existing ${blocks.join(', ')}. Please delete them first.`,
       });
     }
 
@@ -448,7 +473,7 @@ router.delete('/dependencies/:id', async (req, res, next) => {
 router.get('/forecasts', async (_req, res, next) => {
   try {
     const forecasts = await prisma.forecast.findMany({
-      include: { lines: { include: { product: { include: { category: true } }, flavor: true } } },
+      include: { lines: { include: { product: { include: { category: true } }, flavor: true } }, application: { include: { continuityLevel: true } } },
       orderBy: { createdAt: 'desc' },
     });
     res.json(forecasts);

@@ -71,7 +71,7 @@ import {
   MapPin,
   Server,
 } from 'lucide-react';
-import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Instance, InstanceStatus } from '@cloudmarket/shared-types';
+import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Instance, InstanceStatus, Environment } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ApprovalStatus, { label: string; color: string }> = {
   PENDING: { label: 'Pending', color: 'border-amber-500/20 text-amber-500' },
@@ -169,11 +169,14 @@ function ResponsiveTable({
 function DashboardSection() {
   const { data: dashboard, isLoading, isError, refetch } = useAdminDashboard();
 
+  const counts = (dashboard as any)?.counts ?? {};
   const countCards = [
-    { label: 'Products', value: (dashboard as any)?.counts.products ?? 0, icon: Package, color: 'text-blue-400' },
-    { label: 'Categories', value: (dashboard as any)?.counts.categories ?? 0, icon: Layers, color: 'text-purple-400' },
-    { label: 'Forecasts', value: (dashboard as any)?.counts.forecasts ?? 0, icon: BarChart3, color: 'text-amber-400' },
-    { label: 'Users', value: (dashboard as any)?.counts.users ?? 0, icon: Users, color: 'text-emerald-400' },
+    { label: 'Products', value: counts.products ?? 0, icon: Package, color: 'text-blue-400' },
+    { label: 'Categories', value: counts.categories ?? 0, icon: Layers, color: 'text-purple-400' },
+    { label: 'Forecasts', value: counts.forecasts ?? 0, icon: BarChart3, color: 'text-amber-400' },
+    { label: 'Users', value: counts.users ?? 0, icon: Users, color: 'text-emerald-400' },
+    { label: 'Applications', value: counts.applications ?? 0, icon: Activity, color: 'text-cyan-400' },
+    { label: 'Continuity Levels', value: counts.continuityLevels ?? 0, icon: CheckCircle, color: 'text-rose-400' },
   ];
 
   if (isError) {
@@ -183,13 +186,13 @@ function DashboardSection() {
   return (
     <div className="space-y-6">
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-28 rounded-lg bg-slate-800 animate-pulse-soft" />
           ))}
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {countCards.map((card, i) => {
             const Icon = card.icon;
             return (
@@ -296,18 +299,26 @@ function ProductsSection() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...form, slug: form.slug || form.name.toLowerCase().replace(/\s+/g, '-') };
-    if (editing) await updateProduct.mutateAsync({ id: editing.id, ...payload });
-    else await createProduct.mutateAsync(payload);
-    setIsOpen(false); resetForm();
+    try {
+      const payload = { ...form, slug: form.slug || form.name.toLowerCase().replace(/\s+/g, '-') };
+      if (editing) await updateProduct.mutateAsync({ id: editing.id, ...payload });
+      else await createProduct.mutateAsync(payload);
+      setIsOpen(false); resetForm();
+    } catch {
+      /* mutation error handled by hook onError */
+    }
   };
 
   const handleDelete = (id: string) => {
     setConfirmDelete({ open: true, id });
   };
   const handleConfirmDelete = async () => {
-    if (confirmDelete.id) {
-      await deleteProduct.mutateAsync(confirmDelete.id);
+    try {
+      if (confirmDelete.id) {
+        await deleteProduct.mutateAsync(confirmDelete.id);
+      }
+    } catch {
+      /* mutation error handled by hook onError */
     }
     setConfirmDelete({ open: false, id: null });
   };
@@ -465,18 +476,26 @@ function CategoriesSection() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...form, slug: form.slug || form.name.toLowerCase().replace(/\s+/g, '-'), icon: form.icon || undefined };
-    if (editing) await updateCategory.mutateAsync({ id: editing.id, ...payload });
-    else await createCategory.mutateAsync(payload);
-    setIsOpen(false); resetForm();
+    try {
+      const payload = { ...form, slug: form.slug || form.name.toLowerCase().replace(/\s+/g, '-'), icon: form.icon || undefined };
+      if (editing) await updateCategory.mutateAsync({ id: editing.id, ...payload });
+      else await createCategory.mutateAsync(payload);
+      setIsOpen(false); resetForm();
+    } catch {
+      /* mutation error handled by hook onError */
+    }
   };
 
   const handleDelete = (id: string) => {
     setConfirmDelete({ open: true, id });
   };
   const handleConfirmDelete = async () => {
-    if (confirmDelete.id) {
-      await deleteCategory.mutateAsync(confirmDelete.id);
+    try {
+      if (confirmDelete.id) {
+        await deleteCategory.mutateAsync(confirmDelete.id);
+      }
+    } catch {
+      /* mutation error handled by hook onError */
     }
     setConfirmDelete({ open: false, id: null });
   };
@@ -1247,16 +1266,19 @@ function InstancesSection() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Instance | null>(null);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    name: string; description: string; applicationId: string; productId: string; flavorId: string; azCode: string;
+    status: InstanceStatus; environment: Environment; ipAddress: string; hostname: string;
+  }>({
     name: '', description: '', applicationId: '', productId: '', flavorId: '', azCode: '',
-    status: 'PENDING' as InstanceStatus, environment: 'DEV' as string, ipAddress: '', hostname: '',
+    status: 'PENDING' as InstanceStatus, environment: 'DEV' as Environment, ipAddress: '', hostname: '',
   });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [searchQuery, setSearchQuery] = useState('');
 
   const resetForm = () => {
     setForm({ name: '', description: '', applicationId: '', productId: '', flavorId: '', azCode: '',
-      status: 'PENDING', environment: 'DEV', ipAddress: '', hostname: '' });
+      status: 'PENDING' as InstanceStatus, environment: 'DEV' as Environment, ipAddress: '', hostname: '' });
     setEditing(null);
   };
   const openCreate = () => { resetForm(); setIsOpen(true); };
@@ -1414,7 +1436,7 @@ function InstancesSection() {
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300">Environment</label>
-                <Select value={form.environment} onChange={(e) => setForm({ ...form, environment: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <Select value={form.environment} onChange={(e) => setForm({ ...form, environment: e.target.value as Environment })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                   <option value="DEV">Development</option>
                   <option value="STG">Staging</option>
                   <option value="PRD">Production</option>

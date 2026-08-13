@@ -427,13 +427,22 @@ async function main() {
       requesterEmail: 'user@cloudmarket.local',
       status: ApprovalStatus.REJECTED,
       lines: {
-        create: [{
-          productId: bareMetalHpc.id,
-          flavorId: allFlavors.find(f => f.productId === bareMetalHpc.id && f.name === 'XL')!.id,
-          azCode: 'ap-south-sin1',
-          quantity: 2,
-          resiliency: 'MULTI_AZ',
-        }],
+        create: [
+          {
+            productId: bareMetalHpc.id,
+            flavorId: allFlavors.find(f => f.productId === bareMetalHpc.id && f.name === 'XL')!.id,
+            azCode: 'ap-south-sin1',
+            quantity: 1,
+            resiliency: 'MULTI_AZ',
+          },
+          {
+            productId: bareMetalHpc.id,
+            flavorId: allFlavors.find(f => f.productId === bareMetalHpc.id && f.name === 'XL')!.id,
+            azCode: 'ap-south-hk1',
+            quantity: 1,
+            resiliency: 'MULTI_AZ',
+          },
+        ],
       },
       justification: 'HPC nodes for ML training',
       reviewedBy: 'System Administrator',
