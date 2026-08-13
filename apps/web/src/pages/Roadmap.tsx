@@ -1,20 +1,30 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useProducts } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
-import { Clock, Calendar, ArrowRight, Filter } from 'lucide-react';
+import { Filter, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Product, ProductLifecycle, LifecyclePhase } from '@cloudmarket/shared-types';
 
-const phaseConfig: Record<LifecyclePhase, { label: string; color: string; bg: string }> = {
-  RELEASED: { label: 'Released', color: 'text-emerald-400', bg: 'bg-emerald-500/20' },
-  NORMAL_SUPPORT: { label: 'Normal Support', color: 'text-blue-400', bg: 'bg-blue-500/20' },
-  EXTENDED_SUPPORT: { label: 'Extended Support', color: 'text-amber-400', bg: 'bg-amber-500/20' },
-  NO_SUPPORT: { label: 'No Support', color: 'text-orange-400', bg: 'bg-orange-500/20' },
-  EOL: { label: 'End of Life', color: 'text-red-400', bg: 'bg-red-500/20' },
+const phaseConfig: Record<LifecyclePhase, { label: string; color: string; bg: string; border: string }> = {
+  RELEASED: { label: 'Released', color: 'text-emerald-400', bg: 'bg-emerald-500', border: 'border-emerald-500/30' },
+  NORMAL_SUPPORT: { label: 'Normal Support', color: 'text-blue-400', bg: 'bg-blue-500', border: 'border-blue-500/30' },
+  EXTENDED_SUPPORT: { label: 'Extended Support', color: 'text-amber-400', bg: 'bg-amber-500', border: 'border-amber-500/30' },
+  NO_SUPPORT: { label: 'No Support', color: 'text-orange-400', bg: 'bg-orange-500', border: 'border-orange-500/30' },
+  EOL: { label: 'End of Life', color: 'text-red-400', bg: 'bg-red-500', border: 'border-red-500/30' },
 };
+
+const familyConfig: Record<string, { label: string; color: string; bg: string }> = {
+  LINUX: { label: 'LINUX', color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/30' },
+  WINDOWS: { label: 'WINDOWS', color: 'text-sky-400', bg: 'bg-sky-500/10 border-sky-500/30' },
+  HYPERVISOR: { label: 'HYPERVISOR', color: 'text-slate-400', bg: 'bg-slate-500/10 border-slate-500/30' },
+};
+
+function getFamilyLabel(family: string | null) {
+  return familyConfig[family || ''] || { label: family || 'OTHER', color: 'text-slate-400', bg: 'bg-slate-500/10 border-slate-500/30' };
+}
 
 function AnimatedSection({ children, className, delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
   const { ref, isVisible } = useScrollReveal<HTMLDivElement>();
@@ -29,122 +39,78 @@ function AnimatedSection({ children, className, delay = 0 }: { children: React.R
   );
 }
 
-function LifecycleBar({ lifecycle, yearStart, yearEnd }: { lifecycle: ProductLifecycle; yearStart: number; yearEnd: number }) {
+/* ── Gantt Bar ─────────────────────────────────────────────────── */
+
+function GanttBar({ lc, yearStart, yearEnd }: { lc: ProductLifecycle; yearStart: number; yearEnd: number }) {
   const totalYears = yearEnd - yearStart;
-  const releaseDate = new Date(lifecycle.releaseDate);
-  const eolDate = new Date(lifecycle.eolDate);
+  const releaseDate = new Date(lc.releaseDate);
+  const normalEnd = new Date(lc.normalSupportEnd);
+  const extendedEnd = new Date(lc.extendedSupportEnd);
+  const eolDate = new Date(lc.eolDate);
+
   const releaseYear = releaseDate.getFullYear();
+  const normalYear = normalEnd.getFullYear();
+  const extendedYear = extendedEnd.getFullYear();
   const eolYear = eolDate.getFullYear();
 
-  if (isNaN(releaseYear) || isNaN(eolYear) || totalYears <= 0) {
-    return null;
-  }
+  if (isNaN(releaseYear) || totalYears <= 0) return null;
 
-  const leftPercent = Math.max(0, Math.min(100, ((releaseYear - yearStart) / totalYears) * 100));
-  const rawWidth = ((eolYear - releaseYear) / totalYears) * 100;
-  const widthPercent = isNaN(rawWidth) ? 3 : Math.max(3, Math.min(100 - leftPercent, rawWidth));
-  const phase = phaseConfig[lifecycle.phase];
+  const leftPct = (y: number) => Math.max(0, Math.min(100, ((y - yearStart) / totalYears) * 100));
+  const widthPct = (from: number, to: number) => Math.max(0.5, Math.min(100, ((to - from) / totalYears) * 100));
+
+  const rLeft = leftPct(releaseYear);
+  const nLeft = leftPct(normalYear);
+  const eLeft = leftPct(extendedYear);
+  const xLeft = leftPct(eolYear);
 
   return (
-    <div
-      className={`absolute h-7 rounded-md flex items-center px-2 text-xs font-medium whitespace-nowrap overflow-hidden ${phase.bg} ${phase.color} border border-white/10`}
-      style={{ left: `${leftPercent}%`, width: `${widthPercent}%`, minWidth: '60px' }}
-      title={`${lifecycle.version}: ${releaseDate.toLocaleDateString()} → ${eolDate.toLocaleDateString()}`}
-    >
-      <span className="truncate">{lifecycle.version}</span>
+    <div className="flex-1 relative h-5 bg-slate-900/80 rounded overflow-hidden">
+      {/* Released */}
+      {rLeft < nLeft && (
+        <div
+          className="absolute h-full bg-emerald-500/80"
+          style={{ left: `${rLeft}%`, width: `${widthPct(releaseYear, normalYear)}%` }}
+          title={`Released: ${releaseDate.toLocaleDateString()} → ${normalEnd.toLocaleDateString()}`}
+        />
+      )}
+      {/* Normal Support */}
+      {nLeft < eLeft && (
+        <div
+          className="absolute h-full bg-blue-500/80"
+          style={{ left: `${nLeft}%`, width: `${widthPct(normalYear, extendedYear)}%` }}
+          title={`Normal Support: ${normalEnd.toLocaleDateString()} → ${extendedEnd.toLocaleDateString()}`}
+        />
+      )}
+      {/* Extended Support */}
+      {eLeft < xLeft && (
+        <div
+          className="absolute h-full bg-amber-500/80"
+          style={{ left: `${eLeft}%`, width: `${widthPct(extendedYear, eolYear)}%` }}
+          title={`Extended Support: ${extendedEnd.toLocaleDateString()} → ${eolDate.toLocaleDateString()}`}
+        />
+      )}
+      {/* EOL tail */}
+      {xLeft < 100 && (
+        <div
+          className="absolute h-full bg-red-500/60"
+          style={{ left: `${xLeft}%`, width: `${widthPct(eolYear, yearEnd)}%` }}
+          title={`EOL: ${eolDate.toLocaleDateString()}`}
+        />
+      )}
     </div>
   );
 }
 
-function ProductTimeline({ product, yearStart, yearEnd }: { product: Product; yearStart: number; yearEnd: number }) {
-  const [expanded, setExpanded] = useState(false);
-  const lifecycles = product.lifecycles || [];
-  if (lifecycles.length === 0) return null;
-
-  const upgradeFrom = (product as any).upgradeFrom || [];
-  const upgradeTo = (product as any).upgradeTo || [];
-  const allUpgrades = [...upgradeFrom, ...upgradeTo];
-
-  return (
-    <div className="mb-6">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 mb-3 text-left group"
-      >
-        <ArrowRight className={`h-4 w-4 text-slate-500 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-        <h3 className="text-white font-semibold group-hover:text-cyan-400 transition-colors">{product.name}</h3>
-        <Badge variant="outline" className="text-xs">{lifecycles.length} versions</Badge>
-      </button>
-
-      <div className="relative ml-6">
-        <div className="space-y-2 mb-2">
-          {lifecycles.map((lc) => (
-            <div key={lc.id} className="relative h-8">
-              <LifecycleBar lifecycle={lc} yearStart={yearStart} yearEnd={yearEnd} />
-            </div>
-          ))}
-        </div>
-
-        {allUpgrades.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            {allUpgrades.map((up: any) => (
-              <div key={up.id} className="inline-flex items-center gap-1 text-xs bg-slate-800 border border-slate-700 rounded-md px-2 py-1">
-                <span className="text-slate-400">{up.fromVersion}</span>
-                <ArrowRight className="h-3 w-3 text-cyan-500" />
-                <span className="text-slate-300">{up.toVersion}</span>
-                <span className="text-slate-500 ml-1">({up.migrationType})</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {expanded && (
-          <div className="mt-3 grid gap-2">
-            {lifecycles.map((lc) => {
-              const phase = phaseConfig[lc.phase];
-              return (
-                <div key={lc.id} className="flex items-center gap-3 text-sm p-2 rounded-lg bg-slate-900/50 border border-slate-800">
-                  <span className={`inline-block w-2 h-2 rounded-full ${phase.bg.replace('/20', '')}`} />
-                  <span className="font-medium text-slate-200 w-20">{lc.version}</span>
-                  <Badge variant="outline" className={`text-xs ${phase.color} ${phase.bg}`}>
-                    {phase.label}
-                  </Badge>
-                  <span className="text-slate-500 flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    {new Date(lc.releaseDate).toLocaleDateString()} → {new Date(lc.eolDate).toLocaleDateString()}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+/* ── Year Axis ─────────────────────────────────────────────────── */
 
 function YearAxis({ yearStart, yearEnd }: { yearStart: number; yearEnd: number }) {
   const years: number[] = [];
   for (let y = yearStart; y <= yearEnd; y++) years.push(y);
 
-  if (years.length <= 1) {
-    return (
-      <div className="relative h-8 mb-2 border-b border-slate-700">
-        <div className="absolute text-xs text-slate-500 font-mono" style={{ left: '0%' }}>
-          {years[0] ?? yearStart}
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="relative h-8 mb-2 border-b border-slate-700">
-      {years.map((year, i) => (
-        <div
-          key={year}
-          className="absolute text-xs text-slate-500 font-mono"
-          style={{ left: `${(i / (years.length - 1)) * 100}%`, transform: 'translateX(-50%)' }}
-        >
+    <div className="flex ml-[240px] border-b border-slate-700 pb-1 mb-2 text-[11px] text-slate-500 font-mono">
+      {years.map((year) => (
+        <div key={year} className="flex-1 text-center">
           {year}
         </div>
       ))}
@@ -152,11 +118,154 @@ function YearAxis({ yearStart, yearEnd }: { yearStart: number; yearEnd: number }
   );
 }
 
+/* ── Version Row ───────────────────────────────────────────────── */
+
+function VersionRow({ lc, yearStart, yearEnd }: { lc: ProductLifecycle; yearStart: number; yearEnd: number }) {
+  const phase = phaseConfig[lc.phase];
+  return (
+    <div className="flex items-center gap-3 h-7">
+      <div className="w-[240px] flex items-center gap-2 shrink-0">
+        <span className={`inline-block w-1.5 h-1.5 rounded-full ${phase.bg}`} />
+        <span className="text-xs text-slate-300 font-medium truncate">{lc.version}</span>
+        <span className="text-[10px] text-slate-500 ml-auto">
+          {new Date(lc.releaseDate).getFullYear()} → {new Date(lc.eolDate).getFullYear()}
+        </span>
+      </div>
+      <GanttBar lc={lc} yearStart={yearStart} yearEnd={yearEnd} />
+    </div>
+  );
+}
+
+/* ── Product Section ───────────────────────────────────────────── */
+
+function ProductSection({ product, yearStart, yearEnd }: { product: Product; yearStart: number; yearEnd: number }) {
+  const [expanded, setExpanded] = useState(true);
+  const lifecycles = product.lifecycles || [];
+
+  // Group lifecycles by osFamily — must be before any conditional return
+  const families = useMemo(() => {
+    const groups: Record<string, ProductLifecycle[]> = {};
+    for (const lc of lifecycles) {
+      const fam = lc.osFamily || 'OTHER';
+      if (!groups[fam]) groups[fam] = [];
+      groups[fam].push(lc);
+    }
+    return groups;
+  }, [lifecycles]);
+
+  if (lifecycles.length === 0) return null;
+
+  return (
+    <div className="mb-4">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2 mb-2 text-left group w-full"
+      >
+        {expanded ? <ChevronDown className="h-3.5 w-3.5 text-slate-500" /> : <ChevronRight className="h-3.5 w-3.5 text-slate-500" />}
+        <h4 className="text-sm font-medium text-slate-200 group-hover:text-cyan-400 transition-colors">{product.name}</h4>
+        <Badge variant="outline" className="text-[10px] h-5">{lifecycles.length} versions</Badge>
+      </button>
+
+      {expanded && (
+        <div className="ml-5 space-y-3">
+          {Object.entries(families).map(([family, lcs]) => {
+            const famCfg = getFamilyLabel(family);
+            return (
+              <div key={family}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${famCfg.color} ${famCfg.bg}`}>
+                    {famCfg.label}
+                  </span>
+                  <span className="text-[10px] text-slate-500">{lcs.length} version{lcs.length > 1 ? 's' : ''}</span>
+                </div>
+                <div className="space-y-1">
+                  {lcs.map((lc) => (
+                    <VersionRow key={lc.id} lc={lc} yearStart={yearStart} yearEnd={yearEnd} />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Category Section ──────────────────────────────────────────── */
+
+function CategorySection({ category, products, yearStart, yearEnd }: { category: string; products: Product[]; yearStart: number; yearEnd: number }) {
+  const [expanded, setExpanded] = useState(true);
+  const totalVersions = products.reduce((sum, p) => sum + (p.lifecycles?.length || 0), 0);
+
+  return (
+    <div className="mb-6">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2 mb-3 text-left group w-full"
+      >
+        {expanded ? <ChevronDown className="h-4 w-4 text-cyan-500" /> : <ChevronRight className="h-4 w-4 text-cyan-500" />}
+        <h3 className="text-sm font-semibold text-cyan-400 uppercase tracking-wide">{category}</h3>
+        <span className="text-[11px] text-slate-500">{products.length} product{products.length > 1 ? 's' : ''} · {totalVersions} version{totalVersions > 1 ? 's' : ''}</span>
+      </button>
+
+      {expanded && (
+        <div className="ml-4">
+          {products.map((product) => (
+            <ProductSection key={product.id} product={product} yearStart={yearStart} yearEnd={yearEnd} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Main Page ─────────────────────────────────────────────────── */
+
 export default function Roadmap() {
   const { data: products, isLoading, error, refetch } = useProducts();
-  const [selectedProduct, setSelectedProduct] = useState('');
-  const [selectedPhase, setSelectedPhase] = useState<LifecyclePhase | ''>('');
-  const [timeRange, setTimeRange] = useState<'1y' | '3y' | '5y' | 'all'>('3y');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedFamily, setSelectedFamily] = useState('');
+  const [timeRange, setTimeRange] = useState<'3y' | '5y' | '10y'>('5y');
+
+  const now = new Date().getFullYear();
+  const rangeMap = { '3y': 3, '5y': 5, '10y': 10 };
+  const yearStart = now - 1;
+  const yearEnd = now + rangeMap[timeRange];
+
+  const allCategories = useMemo(() => {
+    if (!products) return [];
+    return Array.from(new Set(products.map((p) => p.category?.name).filter(Boolean))) as string[];
+  }, [products]);
+
+  const allFamilies = useMemo(() => {
+    if (!products) return [];
+    return Array.from(new Set(
+      products.flatMap((p) => (p.lifecycles || []).map((lc) => lc.osFamily).filter((f): f is string => !!f))
+    ));
+  }, [products]);
+
+  const filtered = useMemo(() => {
+    if (!products) return [];
+    let result = products.filter((p) => (p.lifecycles || []).length > 0);
+    if (selectedCategory) result = result.filter((p) => p.category?.name === selectedCategory);
+    if (selectedFamily) {
+      result = result.filter((p) =>
+        (p.lifecycles || []).some((lc) => lc.osFamily === selectedFamily)
+      );
+    }
+    return result;
+  }, [products, selectedCategory, selectedFamily]);
+
+  const categories = useMemo(() => {
+    const groups: Record<string, Product[]> = {};
+    for (const p of filtered) {
+      const cat = p.category?.name || 'Uncategorized';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(p);
+    }
+    return groups;
+  }, [filtered]);
 
   if (isLoading) {
     return (
@@ -173,59 +282,46 @@ export default function Roadmap() {
   if (error) return <QueryError message="Unable to load roadmap data" onRetry={refetch} />;
   if (!products) return <div className="text-slate-400 text-center py-12">No products available</div>;
 
-  const now = new Date().getFullYear();
-  const rangeMap = { '1y': 1, '3y': 3, '5y': 5, 'all': 10 };
-  const yearStart = now - 1;
-  const yearEnd = now + rangeMap[timeRange];
-
-  let filtered = products.filter((p) => (p.lifecycles || []).length > 0);
-  if (selectedProduct) filtered = filtered.filter((p) => p.id === selectedProduct);
-  if (selectedPhase) {
-    filtered = filtered.filter((p) =>
-      (p.lifecycles || []).some((lc) => lc.phase === selectedPhase)
-    );
-  }
-
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
       <AnimatedSection>
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Product Roadmap</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">Product Lifecycle Roadmap</h1>
           <p className="text-slate-400">Visual timeline of product lifecycles and support phases</p>
         </div>
       </AnimatedSection>
 
       <AnimatedSection delay={100}>
-        <div className="flex flex-wrap gap-3 mb-8 p-4 rounded-xl bg-slate-900/50 border border-slate-800">
+        <div className="flex flex-wrap gap-3 mb-6 p-4 rounded-xl bg-slate-900/50 border border-slate-800">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-slate-400" />
             <span className="text-sm text-slate-400 font-medium">Filters</span>
           </div>
 
           <Select
-            value={selectedProduct}
-            onChange={(e) => setSelectedProduct(e.target.value)}
-            className="min-w-[180px]"
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="min-w-[160px]"
           >
-            <option value="">All Products</option>
-            {products.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+            <option value="">All Categories</option>
+            {allCategories.map((cat) => (
+              <option key={cat} value={cat}>{cat}</option>
             ))}
           </Select>
 
           <Select
-            value={selectedPhase}
-            onChange={(e) => setSelectedPhase(e.target.value as LifecyclePhase)}
-            className="min-w-[160px]"
+            value={selectedFamily}
+            onChange={(e) => setSelectedFamily(e.target.value)}
+            className="min-w-[140px]"
           >
-            <option value="">All Phases</option>
-            {Object.entries(phaseConfig).map(([phase, cfg]) => (
-              <option key={phase} value={phase}>{cfg.label}</option>
+            <option value="">All OS Families</option>
+            {allFamilies.map((fam) => (
+              <option key={fam} value={fam}>{fam}</option>
             ))}
           </Select>
 
           <div className="flex gap-1 ml-auto">
-            {(['1y', '3y', '5y', 'all'] as const).map((range) => (
+            {(['3y', '5y', '10y'] as const).map((range) => (
               <button
                 key={range}
                 onClick={() => setTimeRange(range)}
@@ -235,7 +331,7 @@ export default function Roadmap() {
                     : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
                 }`}
               >
-                {range === 'all' ? 'All' : range}
+                {range === '10y' ? '10y' : range}
               </button>
             ))}
           </div>
@@ -243,40 +339,34 @@ export default function Roadmap() {
       </AnimatedSection>
 
       <AnimatedSection delay={200}>
-        <div className="p-6 rounded-xl bg-slate-900/50 border border-slate-800">
-          <div className="flex items-center gap-4 mb-6 flex-wrap">
-            {Object.entries(phaseConfig).map(([phase, cfg]) => (
-              <div key={phase} className="flex items-center gap-2">
-                <span className={`inline-block w-3 h-3 rounded-sm ${cfg.bg}`} />
-                <span className="text-xs text-slate-400">{cfg.label}</span>
-              </div>
-            ))}
-          </div>
-
-          <YearAxis yearStart={yearStart} yearEnd={yearEnd} />
-
-          {filtered.length === 0 ? (
-            <div className="text-slate-500 text-center py-12">No lifecycles match your filters</div>
-          ) : (
-            filtered.map((product) => (
-              <ProductTimeline key={product.id} product={product} yearStart={yearStart} yearEnd={yearEnd} />
-            ))
-          )}
+        {/* Legend */}
+        <div className="flex flex-wrap gap-4 mb-4 text-xs">
+          {Object.entries(phaseConfig).map(([phase, cfg]) => (
+            <div key={phase} className="flex items-center gap-1.5">
+              <span className={`inline-block w-3 h-3 rounded-sm ${cfg.bg}`} />
+              <span className="text-slate-400">{cfg.label}</span>
+            </div>
+          ))}
         </div>
       </AnimatedSection>
 
       <AnimatedSection delay={300}>
-        <div className="mt-8 p-4 rounded-lg bg-slate-900/30 border border-slate-800/50">
-          <div className="flex items-start gap-3">
-            <Clock className="h-5 w-5 text-slate-500 mt-0.5" />
-            <div>
-              <h4 className="text-sm font-medium text-slate-300">About Lifecycle Phases</h4>
-              <p className="text-sm text-slate-500 mt-1">
-                Each product version follows a standard lifecycle: Released → Normal Support → Extended Support → No Support → End of Life.
-                Upgrade paths are available to migrate between versions with minimal disruption.
-              </p>
-            </div>
-          </div>
+        <div className="p-5 rounded-xl bg-slate-900/50 border border-slate-800">
+          <YearAxis yearStart={yearStart} yearEnd={yearEnd} />
+
+          {Object.keys(categories).length === 0 ? (
+            <div className="text-slate-500 text-center py-12">No lifecycles match your filters</div>
+          ) : (
+            Object.entries(categories).map(([category, catProducts]) => (
+              <CategorySection
+                key={category}
+                category={category}
+                products={catProducts}
+                yearStart={yearStart}
+                yearEnd={yearEnd}
+              />
+            ))
+          )}
         </div>
       </AnimatedSection>
     </div>

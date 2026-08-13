@@ -243,6 +243,7 @@ async function main() {
       extendedSupportEnd: new Date('2028-06-10'),
       eolDate: new Date('2030-06-10'),
       phase: LifecyclePhase.RELEASED,
+      osFamily: 'LINUX',
     },
   });
   const debian11Lifecycle = await prisma.productLifecycle.create({
@@ -254,6 +255,7 @@ async function main() {
       extendedSupportEnd: new Date('2026-08-14'),
       eolDate: new Date('2028-08-14'),
       phase: LifecyclePhase.NORMAL_SUPPORT,
+      osFamily: 'LINUX',
     },
   });
   const windows2022Lifecycle = await prisma.productLifecycle.create({
@@ -265,6 +267,7 @@ async function main() {
       extendedSupportEnd: new Date('2031-10-14'),
       eolDate: new Date('2033-10-14'),
       phase: LifecyclePhase.RELEASED,
+      osFamily: 'WINDOWS',
     },
   });
   const rhel9Lifecycle = await prisma.productLifecycle.create({
@@ -276,6 +279,7 @@ async function main() {
       extendedSupportEnd: new Date('2031-05-31'),
       eolDate: new Date('2033-05-31'),
       phase: LifecyclePhase.RELEASED,
+      osFamily: 'LINUX',
     },
   });
   const vmware8Lifecycle = await prisma.productLifecycle.create({
@@ -287,6 +291,7 @@ async function main() {
       extendedSupportEnd: new Date('2030-10-11'),
       eolDate: new Date('2032-10-11'),
       phase: LifecyclePhase.RELEASED,
+      osFamily: 'HYPERVISOR',
     },
   });
 
