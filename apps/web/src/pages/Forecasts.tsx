@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   useForecasts, useForecastStats, useCreateForecast, useUpdateForecast, useDeleteForecast,
-  useProducts, useApplications, useContinuityLevels, useProductOptions,
+  useProducts,
 } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
