@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
 import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone, Application, ContinuityLevel, ProductLifecycle, ProductOption, UpgradePath, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats } from '@cloudmarket/shared-types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
