@@ -126,7 +126,7 @@ function VersionRow({ lc, yearStart, yearEnd }: { lc: ProductLifecycle; yearStar
     <div className="flex items-center gap-3 h-7">
       <div className="w-[240px] flex items-center gap-2 shrink-0">
         <span className={`inline-block w-1.5 h-1.5 rounded-full ${phase.bg}`} />
-        <span className="text-xs text-slate-300 font-medium truncate">{lc.version}</span>
+        <span className="text-xs text-slate-300 font-medium truncate">{lc.osName || lc.version}</span>
         <span className="text-[10px] text-slate-500 ml-auto">
           {new Date(lc.releaseDate).getFullYear()} → {new Date(lc.eolDate).getFullYear()}
         </span>
