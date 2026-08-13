@@ -18,6 +18,9 @@ node_modules/
 # Docker Compose local overrides (machine-specific)
 docker-compose.override.yml
 
+# Build outputs
+apps/api/dist/
+
 # Local secrets (mount via docker-compose.override.yml)
 .secrets/
 
