@@ -18,6 +18,7 @@ const flavors_1 = require("./routes/flavors");
 const dependencies_1 = require("./routes/dependencies");
 const users_1 = require("./routes/users");
 const admin_1 = require("./routes/admin");
+const availability_zones_1 = require("./routes/availability-zones");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const prisma = new client_1.PrismaClient();
@@ -43,6 +44,7 @@ app.use('/api/forecasts', forecasts_1.forecastRoutes);
 app.use('/api/flavors', flavors_1.flavorRoutes);
 app.use('/api/dependencies', dependencies_1.dependencyRoutes);
 app.use('/api/users', users_1.userRoutes);
+app.use('/api/availability-zones', availability_zones_1.availabilityZoneRoutes);
 // Conditional admin API key protection (active only when ADMIN_API_KEY is set)
 const adminAuth = (req, res, next) => {
     const key = process.env.ADMIN_API_KEY;

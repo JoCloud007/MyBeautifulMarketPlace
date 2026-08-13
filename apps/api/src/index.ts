@@ -13,6 +13,7 @@ import { flavorRoutes } from './routes/flavors';
 import { dependencyRoutes } from './routes/dependencies';
 import { userRoutes } from './routes/users';
 import { adminRoutes } from './routes/admin';
+import { availabilityZoneRoutes } from './routes/availability-zones';
 
 dotenv.config();
 
@@ -42,6 +43,7 @@ app.use('/api/forecasts', forecastRoutes);
 app.use('/api/flavors', flavorRoutes);
 app.use('/api/dependencies', dependencyRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/availability-zones', availabilityZoneRoutes);
 // Conditional admin API key protection (active only when ADMIN_API_KEY is set)
 const adminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const key = process.env.ADMIN_API_KEY;
