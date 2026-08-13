@@ -70,6 +70,7 @@ model ProductLifecycle {
   phase             LifecyclePhase  @default(RELEASED)
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
+  instances         Instance[]
 
   @@unique([productId, version])
 }
@@ -156,8 +157,8 @@ model Forecast {
   updatedAt      DateTime       @updatedAt
   lines          ForecastLine[]
   instances      Instance[]
-  applicationId  String?
-  application    Application?   @relation(fields: [applicationId], references: [id])
+  applicationId  String
+  application    Application   @relation(fields: [applicationId], references: [id])
   environment    Environment    @default(DEV)
 }
 
@@ -318,6 +319,8 @@ model Instance {
   product       Product        @relation(fields: [productId], references: [id])
   flavorId      String
   flavor        Flavor         @relation(fields: [flavorId], references: [id])
+  lifecycleId   String?
+  lifecycle     ProductLifecycle? @relation(fields: [lifecycleId], references: [id], onDelete: SetNull)
   azCode        String
   az            AvailabilityZone @relation(fields: [azCode], references: [code])
   status        InstanceStatus @default(PENDING)

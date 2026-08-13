@@ -20,6 +20,9 @@ import { instanceRoutes } from './routes/instances';
 import { healthCheckRoutes } from './routes/health-checks';
 import { maintenanceWindowRoutes } from './routes/maintenance-windows';
 import { backupRoutes } from './routes/backups';
+import { complianceRoutes } from './routes/compliance';
+import { topologyRoutes } from './routes/topology';
+import { maintenanceOrchestratorRoutes } from './routes/maintenance-orchestrator';
 import { startCronJobs } from './cron';
 
 dotenv.config();
@@ -57,6 +60,9 @@ app.use('/api/instances', instanceRoutes);
 app.use('/api/health-checks', healthCheckRoutes);
 app.use('/api/maintenance-windows', maintenanceWindowRoutes);
 app.use('/api/backups', backupRoutes);
+app.use('/api/compliance', complianceRoutes);
+app.use('/api/topology', topologyRoutes);
+app.use('/api/maintenance-orchestrator', maintenanceOrchestratorRoutes);
 
 // Conditional admin API key protection (fail-closed: requires key if set)
 const adminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -81,6 +87,7 @@ app.use((_req, res) => {
 // Global error handler
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (res.headersSent) {
+    console.error('Unhandled error after headers sent:', err?.message || String(err));
     return;
   }
 

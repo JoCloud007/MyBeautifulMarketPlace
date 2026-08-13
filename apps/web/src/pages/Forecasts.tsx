@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   useForecasts, useForecastStats, useCreateForecast, useUpdateForecast, useDeleteForecast,
-  useProducts,
+  useProducts, useApplications, useContinuityLevels,
 } from '@/hooks/useApi';
+import { TrendChart, StatusDonut, ResourceBarChart, DemandHeatmap } from '@/components/Charts';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -133,10 +134,18 @@ export default function Forecasts() {
   const { data: forecasts, isLoading: forecastsLoading, isError: forecastsError, refetch: refetchForecasts } = useForecasts();
   const { data: stats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useForecastStats();
   const { data: products } = useProducts();
+  const { data: applications } = useApplications();
+  const { data: continuityLevels } = useContinuityLevels();
   const [zones, setZones] = useState<any[] | null>(null);
   useEffect(() => {
-    fetch('/api/availability-zones')
-      .then(r => r.ok ? r.json() : Promise.reject())
+    const url = `${import.meta.env.VITE_API_URL || ''}/api/availability-zones`;
+    fetch(url)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`Failed to load availability zones: ${r.status}`);
+        const contentType = r.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) throw new Error('Invalid response format');
+        return r.json();
+      })
       .then(data => setZones(data))
       .catch(() => setZones([]));
   }, []);
@@ -147,19 +156,24 @@ export default function Forecasts() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ApprovalStatus | 'ALL'>('ALL');
+  const [analyticsDays, setAnalyticsDays] = useState(30);
 
   const [formData, setFormData] = useState({
     requestedBy: '',
     requesterEmail: '',
-    targetDate: '',
+    targetDate: new Date().toISOString().split('T')[0],
     justification: '',
+    applicationId: '',
+    environment: 'DEV' as 'PRD' | 'DEV' | 'STG',
   });
-  const [lines, setLines] = useState<Array<{ productId: string; flavorId: string; azCode: string; quantity: number; osVersion?: string }>>([]);
-  const [draftLine, setDraftLine] = useState({ productId: '', flavorId: '', azSelections: {} as Record<string, number>, osVersion: '' });
+  const [lines, setLines] = useState<Array<{ productId: string; flavorId: string; azCode: string; quantity: number; osVersion?: string; resiliency?: 'STANDARD' | 'HA' | 'MULTI_AZ' }>>([]);
+  const [draftLine, setDraftLine] = useState({ productId: '', flavorId: '', azSelections: {} as Record<string, number>, osVersion: '', resiliency: 'STANDARD' as 'STANDARD' | 'HA' | 'MULTI_AZ' });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const selectedDraftProduct = products?.find((p) => p.id === draftLine.productId);
   const selectedDraftFlavor = selectedDraftProduct?.flavors.find((f: any) => f.id === draftLine.flavorId);
+  const selectedApp = applications?.find((a) => a.id === formData.applicationId);
+  const appContinuityLevel = continuityLevels?.find((cl) => cl.id === selectedApp?.continuityLevelId);
 
   const filteredForecasts = forecasts?.filter((f) => {
     const matchesSearch =
@@ -181,10 +195,11 @@ export default function Forecasts() {
         azCode: l.azCode,
         quantity: typeof l.quantity === 'string' ? parseInt(l.quantity, 10) : l.quantity,
         metadata: l.osVersion ? { osVersion: l.osVersion } : undefined,
+        resiliency: l.resiliency || 'STANDARD',
       })),
     } as any);
     setIsCreateOpen(false);
-    setFormData({ requestedBy: '', requesterEmail: '', targetDate: '', justification: '' });
+    setFormData({ requestedBy: '', requesterEmail: '', targetDate: new Date().toISOString().split('T')[0], justification: '', applicationId: '', environment: 'DEV' });
     setLines([]);
   };
 
@@ -199,9 +214,10 @@ export default function Forecasts() {
       azCode,
       quantity,
       osVersion: draftLine.osVersion || undefined,
+      resiliency: draftLine.resiliency,
     }));
     setLines([...lines, ...newLines]);
-    setDraftLine({ productId: '', flavorId: '', azSelections: {}, osVersion: '' });
+    setDraftLine({ productId: '', flavorId: '', azSelections: {}, osVersion: '', resiliency: 'STANDARD' });
   };
 
   const removeLine = (index: number) => {
@@ -212,7 +228,7 @@ export default function Forecasts() {
     await updateForecast.mutateAsync({
       id,
       status: 'APPROVED' as ApprovalStatus,
-      reviewedBy: 'Admin',
+      reviewedBy: (window as any).__USER_NAME__ || 'System',
     });
   };
 
@@ -307,8 +323,57 @@ export default function Forecasts() {
             </div>
           )}
 
-          {/* Filters */}
+          {/* Analytics Dashboard */}
           <AnimatedSection delay={100}>
+            <Card className="bg-slate-900 border-slate-800">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5 text-blue-500" />
+                    Analytics
+                  </span>
+                  <div className="flex gap-1">
+                    {[7, 30, 90].map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setAnalyticsDays(d)}
+                        className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                          analyticsDays === d
+                            ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                            : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        {d}d
+                      </button>
+                    ))}
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-400 mb-3">Request Trends</h4>
+                    <TrendChart days={analyticsDays} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-400 mb-3">Status Distribution</h4>
+                    <StatusDonut />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-400 mb-3">Resources by Zone</h4>
+                    <ResourceBarChart />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-400 mb-3">Product Demand Heatmap</h4>
+                    <DemandHeatmap />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </AnimatedSection>
+
+          {/* Filters */}
+          <AnimatedSection delay={150}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
@@ -385,6 +450,8 @@ export default function Forecasts() {
                             <th className="pb-3 text-left font-medium text-slate-400">Product</th>
                             <th className="pb-3 text-left font-medium text-slate-400">Flavor</th>
                             <th className="pb-3 text-left font-medium text-slate-400">Qty</th>
+                            <th className="pb-3 text-left font-medium text-slate-400">Application</th>
+                            <th className="pb-3 text-left font-medium text-slate-400">Env</th>
                             <th className="pb-3 text-left font-medium text-slate-400">Requester</th>
                             <th className="pb-3 text-left font-medium text-slate-400">Status</th>
                             <th className="pb-3 text-left font-medium text-slate-400">Justification</th>
@@ -574,38 +641,61 @@ export default function Forecasts() {
                     </div>
                   )}
 
-                  {/* Step 3: OS Version (for VM products) */}
-                  {selectedDraftProduct && selectedDraftProduct.os && (
+                  {/* Step 3: OS Version (from product options) */}
+                  {selectedDraftProduct?.options?.some((opt: any) => opt.type === 'OS_VERSION') && (
                     <div className="space-y-2">
                       <label className="text-xs text-slate-400 uppercase tracking-wide">3. Operating System</label>
                       <div className="grid grid-cols-2 gap-2">
-                        {(selectedDraftProduct.os === 'Linux'
-                          ? ['Debian 12', 'Ubuntu 22.04 LTS', 'Red Hat Enterprise Linux 9', 'CentOS Stream 9']
-                          : selectedDraftProduct.os === 'Windows'
-                          ? ['Windows Server 2022', 'Windows Server 2019']
-                          : []
-                        ).map((os) => (
-                          <button
-                            key={os}
-                            type="button"
-                            onClick={() => setDraftLine({ ...draftLine, osVersion: os })}
-                            className={`p-2 rounded-lg border text-xs font-medium transition-all ${
-                              draftLine.osVersion === os
-                                ? 'border-blue-500 bg-blue-500/10 text-blue-400'
-                                : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-500'
-                            }`}
-                          >
-                            {os}
-                          </button>
-                        ))}
+                        {selectedDraftProduct?.options
+                          ?.filter((opt: any) => opt.type === 'OS_VERSION')
+                          .map((opt: any) => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => setDraftLine({ ...draftLine, osVersion: opt.value })}
+                              className={`p-2 rounded-lg border text-xs font-medium transition-all ${
+                                draftLine.osVersion === opt.value
+                                  ? 'border-blue-500 bg-blue-500/10 text-blue-400'
+                                  : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-500'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
                       </div>
                     </div>
                   )}
 
-                  {/* Step 4: Region & Quantity — MULTIPLE SELECTION */}
+                  {/* Step 4: Resiliency */}
                   {selectedDraftFlavor && (
                     <div className="space-y-2">
-                      <label className="text-xs text-slate-400 uppercase tracking-wide">4. Regions & Quantities</label>
+                      <label className="text-xs text-slate-400 uppercase tracking-wide">4. Resiliency</label>
+                      <div className="flex gap-2">
+                        {(['STANDARD', 'HA', 'MULTI_AZ'] as const).map((r) => (
+                          <button
+                            key={r}
+                            type="button"
+                            onClick={() => setDraftLine({ ...draftLine, resiliency: r })}
+                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                              draftLine.resiliency === r
+                                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
+                            }`}
+                          >
+                            {r === 'STANDARD' ? 'Standard' : r === 'HA' ? 'HA' : 'Multi-AZ'}
+                          </button>
+                        ))}
+                      </div>
+                      {draftLine.resiliency !== 'STANDARD' && (
+                        <p className="text-xs text-amber-400">Requires at least 2 distinct availability zones</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Step 5: Region & Quantity — MULTIPLE SELECTION */}
+                  {selectedDraftFlavor && (
+                    <div className="space-y-2">
+                      <label className="text-xs text-slate-400 uppercase tracking-wide">5. Regions & Quantities</label>
                       <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-3 space-y-2">
                         {zones
                           ?.filter((z) =>
@@ -700,6 +790,20 @@ export default function Forecasts() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
+                      <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Application</label>
+                      <Select
+                        value={formData.applicationId}
+                        onChange={(e) => setFormData({ ...formData, applicationId: e.target.value })}
+                        required
+                        className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+                      >
+                        <option value="">Select application...</option>
+                        {applications?.map((a) => (
+                          <option key={a.id} value={a.id}>{a.name}</option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div>
                       <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Target Date</label>
                       <Input
                         type="date"
@@ -707,6 +811,39 @@ export default function Forecasts() {
                         onChange={(e) => setFormData({ ...formData, targetDate: e.target.value })}
                         className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
                       />
+                    </div>
+                  </div>
+                  {appContinuityLevel && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800">
+                      <span className="text-xs text-slate-500">Continuity:</span>
+                      <Badge variant="outline" className={
+                        appContinuityLevel.color === 'red' ? 'border-red-500/20 text-red-500' :
+                        appContinuityLevel.color === 'orange' ? 'border-orange-500/20 text-orange-500' :
+                        appContinuityLevel.color === 'yellow' ? 'border-yellow-500/20 text-yellow-500' :
+                        'border-green-500/20 text-green-500'
+                      }>
+                        {appContinuityLevel.name}
+                      </Badge>
+                      <span className="text-xs text-slate-500">RTO {appContinuityLevel.rtoMinutes}m · RPO {appContinuityLevel.rpoMinutes}m</span>
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Environment</label>
+                    <div className="flex gap-2">
+                      {(['DEV', 'STG', 'PRD'] as const).map((env) => (
+                        <button
+                          key={env}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, environment: env })}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            formData.environment === env
+                              ? env === 'PRD' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                              : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
+                          }`}
+                        >
+                          {env}
+                        </button>
+                      ))}
                     </div>
                   </div>
                   <div>

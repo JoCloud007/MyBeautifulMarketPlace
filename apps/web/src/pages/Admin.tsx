@@ -32,7 +32,13 @@ import {
   useCreateInstance,
   useUpdateInstance,
   useDeleteInstance,
+  useProductLifecycles,
   useApplications,
+  useCreateApplication,
+  useUpdateApplication,
+  useDeleteApplication,
+  useContinuityLevels,
+  useUpdateContinuityLevel,
   useProducts,
 } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
@@ -70,6 +76,8 @@ import {
   Cpu,
   MapPin,
   Server,
+  Shield,
+  TrendingUp,
 } from 'lucide-react';
 import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Instance, InstanceStatus, Environment } from '@cloudmarket/shared-types';
 
@@ -1267,18 +1275,18 @@ function InstancesSection() {
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Instance | null>(null);
   const [form, setForm] = useState<{
-    name: string; description: string; applicationId: string; productId: string; flavorId: string; azCode: string;
-    status: InstanceStatus; environment: Environment; ipAddress: string; hostname: string;
+    name: string; description: string; applicationId: string; productId: string; flavorId: string; lifecycleId: string; azCode: string;
+    status: InstanceStatus; environment: Environment; ipAddress: string; hostname: string; metadata: { osVersion?: string };
   }>({
-    name: '', description: '', applicationId: '', productId: '', flavorId: '', azCode: '',
-    status: 'PENDING' as InstanceStatus, environment: 'DEV' as Environment, ipAddress: '', hostname: '',
+    name: '', description: '', applicationId: '', productId: '', flavorId: '', lifecycleId: '', azCode: '',
+    status: 'PENDING' as InstanceStatus, environment: 'DEV' as Environment, ipAddress: '', hostname: '', metadata: {},
   });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [searchQuery, setSearchQuery] = useState('');
 
   const resetForm = () => {
-    setForm({ name: '', description: '', applicationId: '', productId: '', flavorId: '', azCode: '',
-      status: 'PENDING' as InstanceStatus, environment: 'DEV' as Environment, ipAddress: '', hostname: '' });
+    setForm({ name: '', description: '', applicationId: '', productId: '', flavorId: '', lifecycleId: '', azCode: '',
+      status: 'PENDING' as InstanceStatus, environment: 'DEV' as Environment, ipAddress: '', hostname: '', metadata: {} });
     setEditing(null);
   };
   const openCreate = () => { resetForm(); setIsOpen(true); };
@@ -1286,15 +1294,16 @@ function InstancesSection() {
     setEditing(instance);
     setForm({
       name: instance.name, description: instance.description || '', applicationId: instance.applicationId,
-      productId: instance.productId, flavorId: instance.flavorId, azCode: instance.azCode,
+      productId: instance.productId, flavorId: instance.flavorId, lifecycleId: instance.lifecycleId || '', azCode: instance.azCode,
       status: instance.status, environment: instance.environment, ipAddress: instance.ipAddress || '',
-      hostname: instance.hostname || '',
+      hostname: instance.hostname || '', metadata: (instance.metadata as { osVersion?: string }) || {},
     });
     setIsOpen(true);
   };
 
   const selectedProduct = products?.find((p) => p.id === form.productId);
   const availableFlavors = selectedProduct?.flavors || [];
+  const { data: lifecycles } = useProductLifecycles(form.productId || '');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1327,7 +1336,7 @@ function InstancesSection() {
       <div className="flex items-start justify-between">
         <div>
           <p className="font-medium text-white">{instance.name}</p>
-          <p className="text-sm text-slate-400">{instance.product?.name} · {instance.flavor?.name}</p>
+          <p className="text-sm text-slate-400">{instance.product?.name} {instance.lifecycle?.version ? `(${instance.lifecycle.version})` : ''} · {instance.flavor?.name}</p>
         </div>
         <Badge variant="outline" className={instanceStatusConfig[instance.status].color}>
           {instanceStatusConfig[instance.status].label}
@@ -1355,12 +1364,13 @@ function InstancesSection() {
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Name', 'Application', 'Product', 'Flavor', 'AZ', 'Status', 'Env']} isLoading={isLoading} emptyMessage="No instances" mobileCards={mobileCards}>
+          <ResponsiveTable headers={['Name', 'Application', 'Product', 'Version', 'Flavor', 'AZ', 'Status', 'Env']} isLoading={isLoading} emptyMessage="No instances" mobileCards={mobileCards}>
             {filtered?.map((instance) => (
               <tr key={instance.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{instance.name}</td>
                 <td className="py-3 text-slate-400">{instance.application?.name}</td>
                 <td className="py-3 text-slate-400">{instance.product?.name}</td>
+                <td className="py-3 text-slate-400">{instance.lifecycle?.version || '—'}</td>
                 <td className="py-3 text-slate-400">{instance.flavor?.name}</td>
                 <td className="py-3 text-slate-400">{instance.az?.code}</td>
                 <td className="py-3">
@@ -1418,6 +1428,13 @@ function InstancesSection() {
                 </Select>
               </div>
               <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Lifecycle Version</label>
+                <Select value={form.lifecycleId} onChange={(e) => setForm({ ...form, lifecycleId: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="">None</option>
+                  {lifecycles?.map((lc) => <option key={lc.id} value={lc.id}>{lc.version} ({lc.phase})</option>)}
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300">Availability Zone</label>
                 <Select value={form.azCode} onChange={(e) => setForm({ ...form, azCode: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                   <option value="">Select...</option>
@@ -1431,7 +1448,7 @@ function InstancesSection() {
                   <option value="PROVISIONING">Provisioning</option>
                   <option value="RUNNING">Running</option>
                   <option value="STOPPED">Stopped</option>
-                  <option value="TERMINATED">Terminated</option>
+                  {editing && <option value="TERMINATED">Terminated</option>}
                 </Select>
               </div>
               <div className="space-y-2">
@@ -1446,6 +1463,10 @@ function InstancesSection() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2"><label className="text-sm font-medium text-slate-300">IP Address</label><Input value={form.ipAddress} onChange={(e) => setForm({ ...form, ipAddress: e.target.value })} placeholder="10.0.0.1" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
               <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Hostname</label><Input value={form.hostname} onChange={(e) => setForm({ ...form, hostname: e.target.value })} placeholder="host.cloudmarket.local" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">OS Version</label>
+              <Input value={form.metadata?.osVersion || ''} onChange={(e) => setForm({ ...form, metadata: { ...form.metadata, osVersion: e.target.value } })} placeholder="e.g. Debian 12" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
             </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
@@ -1469,6 +1490,211 @@ function InstancesSection() {
   );
 }
 
+// ============ APPLICATIONS SECTION ============
+function ApplicationsSection() {
+  const { data: applications, isLoading, isError, refetch } = useApplications();
+  const { data: continuityLevels } = useContinuityLevels();
+  const createApplication = useCreateApplication();
+  const updateApplication = useUpdateApplication();
+  const deleteApplication = useDeleteApplication();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [form, setForm] = useState({ name: '', description: '', continuityLevelId: '', owner: '' });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+
+  const resetForm = () => { setForm({ name: '', description: '', continuityLevelId: '', owner: '' }); setEditing(null); };
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (app: any) => { setEditing(app); setForm({ name: app.name, description: app.description || '', continuityLevelId: app.continuityLevelId, owner: app.owner }); setIsOpen(true); };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editing) await updateApplication.mutateAsync({ id: editing.id, ...form });
+    else await createApplication.mutateAsync(form);
+    setIsOpen(false); resetForm();
+  };
+
+  const handleDelete = async () => {
+    if (confirmDelete.id) await deleteApplication.mutateAsync(confirmDelete.id);
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  if (isError) return <QueryError message="Unable to load applications." onRetry={refetch} />;
+
+  const clMap = new Map(continuityLevels?.map((cl) => [cl.id, cl]) ?? []);
+
+  const mobileCards = applications?.map((app) => (
+    <MobileCard key={app.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{app.name}</p>
+          <p className="text-sm text-slate-400">{app.owner}</p>
+        </div>
+        <Badge variant="outline" className={clMap.get(app.continuityLevelId)?.color === 'red' ? 'border-red-500/20 text-red-500' : clMap.get(app.continuityLevelId)?.color === 'orange' ? 'border-orange-500/20 text-orange-500' : clMap.get(app.continuityLevelId)?.color === 'yellow' ? 'border-yellow-500/20 text-yellow-500' : 'border-green-500/20 text-green-500'}>
+          {clMap.get(app.continuityLevelId)?.name || '—'}
+        </Badge>
+      </div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openEdit(app)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ open: true, id: app.id })} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add</Button>
+      </div>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable headers={['Name', 'Owner', 'Continuity', 'Description']} isLoading={isLoading} emptyMessage="No applications" mobileCards={mobileCards}>
+            {applications?.map((app) => (
+              <tr key={app.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{app.name}</td>
+                <td className="py-3 text-slate-400">{app.owner}</td>
+                <td className="py-3">
+                  <Badge variant="outline" className={clMap.get(app.continuityLevelId)?.color === 'red' ? 'border-red-500/20 text-red-500' : clMap.get(app.continuityLevelId)?.color === 'orange' ? 'border-orange-500/20 text-orange-500' : clMap.get(app.continuityLevelId)?.color === 'yellow' ? 'border-yellow-500/20 text-yellow-500' : 'border-green-500/20 text-green-500'}>
+                    {clMap.get(app.continuityLevelId)?.name || '—'}
+                  </Badge>
+                </td>
+                <td className="py-3 text-slate-400">{app.description || '—'}</td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(app)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ open: true, id: app.id })} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit application' : 'New application'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Owner</label><Input value={form.owner} onChange={(e) => setForm({ ...form, owner: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Continuity Level</label>
+              <Select value={form.continuityLevelId} onChange={(e) => setForm({ ...form, continuityLevelId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="">Select...</option>
+                {continuityLevels?.map((cl) => <option key={cl.id} value={cl.id}>{cl.name} (RTO {cl.rtoMinutes}m)</option>)}
+              </Select>
+            </div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="bg-slate-950 border-slate-700 text-white" /></div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog open={confirmDelete.open} onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })} title="Delete Application" description="Are you sure you want to delete this application? This action cannot be undone." onConfirm={handleDelete} confirmLabel="Delete" cancelLabel="Cancel" variant="destructive" />
+    </div>
+  );
+}
+
+// ============ CONTINUITY LEVELS SECTION ============
+function ContinuityLevelsSection() {
+  const { data: levels, isLoading, isError, refetch } = useContinuityLevels();
+  const updateLevel = useUpdateContinuityLevel();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [form, setForm] = useState({ rtoMinutes: 0, rpoMinutes: 0, description: '', color: '' });
+
+  const resetForm = () => { setForm({ rtoMinutes: 0, rpoMinutes: 0, description: '', color: '' }); setEditing(null); };
+  const openEdit = (cl: any) => { setEditing(cl); setForm({ rtoMinutes: cl.rtoMinutes, rpoMinutes: cl.rpoMinutes, description: cl.description || '', color: cl.color || '' }); setIsOpen(true); };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editing) await updateLevel.mutateAsync({ id: editing.id, ...form });
+    setIsOpen(false); resetForm();
+  };
+
+  if (isError) return <QueryError message="Unable to load continuity levels." onRetry={refetch} />;
+
+  const colorMap: Record<string, string> = {
+    green: 'bg-green-500/10 text-green-500 border-green-500/20',
+    yellow: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+    orange: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+    red: 'bg-red-500/10 text-red-500 border-red-500/20',
+  };
+
+  const mobileCards = levels?.map((cl) => (
+    <MobileCard key={cl.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{cl.name}</p>
+          <p className="text-sm text-slate-400">RTO {cl.rtoMinutes}m · RPO {cl.rpoMinutes}m</p>
+        </div>
+        <Badge variant="outline" className={colorMap[cl.color] || 'bg-slate-500/10 text-slate-400 border-slate-500/20'}>{cl.name}</Badge>
+      </div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openEdit(cl)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable headers={['Name', 'RTO', 'RPO', 'Description', 'Color']} isLoading={isLoading} emptyMessage="No continuity levels" mobileCards={mobileCards}>
+            {levels?.map((cl) => (
+              <tr key={cl.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{cl.name}</td>
+                <td className="py-3 text-slate-400">{cl.rtoMinutes}m</td>
+                <td className="py-3 text-slate-400">{cl.rpoMinutes}m</td>
+                <td className="py-3 text-slate-400">{cl.description || '—'}</td>
+                <td className="py-3">
+                  <Badge variant="outline" className={colorMap[cl.color] || 'bg-slate-500/10 text-slate-400 border-slate-500/20'}>
+                    {cl.color}
+                  </Badge>
+                </td>
+                <td className="py-3 text-right">
+                  <Button size="sm" variant="ghost" onClick={() => openEdit(cl)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
+          <DialogHeader><DialogTitle className="text-white">Edit continuity level</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">RTO (minutes)</label><Input type="number" value={form.rtoMinutes} onChange={(e) => setForm({ ...form, rtoMinutes: parseInt(e.target.value) || 0 })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">RPO (minutes)</label><Input type="number" value={form.rpoMinutes} onChange={(e) => setForm({ ...form, rpoMinutes: parseInt(e.target.value) || 0 })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            </div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Color</label>
+              <Select value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="">Select...</option>
+                <option value="green">Green</option>
+                <option value="yellow">Yellow</option>
+                <option value="orange">Orange</option>
+                <option value="red">Red</option>
+              </Select>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">Save</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // ============ MAIN ADMIN PAGE ============
 export default function Admin() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -1479,6 +1705,8 @@ export default function Admin() {
     { value: 'categories', label: 'Categories', icon: Layers },
     { value: 'flavors', label: 'Flavors', icon: Cpu },
     { value: 'dependencies', label: 'Dependencies', icon: Link2 },
+    { value: 'applications', label: 'Applications', icon: Shield },
+    { value: 'continuity-levels', label: 'Continuity', icon: TrendingUp },
     { value: 'forecasts', label: 'Forecasts', icon: Activity },
     { value: 'users', label: 'Users', icon: UserCog },
     { value: 'availability-zones', label: 'Availability Zones', icon: MapPin },
@@ -1515,6 +1743,8 @@ export default function Admin() {
         <TabsContent value="categories" className="animate-fade-in"><CategoriesSection /></TabsContent>
         <TabsContent value="flavors" className="animate-fade-in"><FlavorsSection /></TabsContent>
         <TabsContent value="dependencies" className="animate-fade-in"><DependenciesSection /></TabsContent>
+        <TabsContent value="applications" className="animate-fade-in"><ApplicationsSection /></TabsContent>
+        <TabsContent value="continuity-levels" className="animate-fade-in"><ContinuityLevelsSection /></TabsContent>
         <TabsContent value="forecasts" className="animate-fade-in"><ForecastsAdminSection /></TabsContent>
         <TabsContent value="users" className="animate-fade-in"><UsersSection /></TabsContent>
         <TabsContent value="availability-zones" className="animate-fade-in"><AvailabilityZonesSection /></TabsContent>

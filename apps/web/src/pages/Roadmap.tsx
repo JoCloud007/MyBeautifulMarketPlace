@@ -31,18 +31,25 @@ function AnimatedSection({ children, className, delay = 0 }: { children: React.R
 
 function LifecycleBar({ lifecycle, yearStart, yearEnd }: { lifecycle: ProductLifecycle; yearStart: number; yearEnd: number }) {
   const totalYears = yearEnd - yearStart;
-  const releaseYear = new Date(lifecycle.releaseDate).getFullYear();
-  const eolYear = new Date(lifecycle.eolDate).getFullYear();
+  const releaseDate = new Date(lifecycle.releaseDate);
+  const eolDate = new Date(lifecycle.eolDate);
+  const releaseYear = releaseDate.getFullYear();
+  const eolYear = eolDate.getFullYear();
 
-  const leftPercent = ((releaseYear - yearStart) / totalYears) * 100;
-  const widthPercent = Math.max(((eolYear - releaseYear) / totalYears) * 100, 3);
+  if (isNaN(releaseYear) || isNaN(eolYear) || totalYears <= 0) {
+    return null;
+  }
+
+  const leftPercent = Math.max(0, Math.min(100, ((releaseYear - yearStart) / totalYears) * 100));
+  const rawWidth = ((eolYear - releaseYear) / totalYears) * 100;
+  const widthPercent = isNaN(rawWidth) ? 3 : Math.max(3, Math.min(100 - leftPercent, rawWidth));
   const phase = phaseConfig[lifecycle.phase];
 
   return (
     <div
       className={`absolute h-7 rounded-md flex items-center px-2 text-xs font-medium whitespace-nowrap overflow-hidden ${phase.bg} ${phase.color} border border-white/10`}
       style={{ left: `${leftPercent}%`, width: `${widthPercent}%`, minWidth: '60px' }}
-      title={`${lifecycle.version}: ${new Date(lifecycle.releaseDate).toLocaleDateString()} → ${new Date(lifecycle.eolDate).toLocaleDateString()}`}
+      title={`${lifecycle.version}: ${releaseDate.toLocaleDateString()} → ${eolDate.toLocaleDateString()}`}
     >
       <span className="truncate">{lifecycle.version}</span>
     </div>

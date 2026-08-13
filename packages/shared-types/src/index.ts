@@ -197,6 +197,8 @@ export interface Instance {
   product: Product;
   flavorId: string;
   flavor: Flavor;
+  lifecycleId: string | null;
+  lifecycle: ProductLifecycle | null;
   azCode: string;
   az: AvailabilityZone;
   status: InstanceStatus;
@@ -340,4 +342,145 @@ export interface ProductDemand {
   productName: string;
   azCode: string;
   count: number;
+}
+
+export type ComplianceSeverity = 'CRITICAL' | 'WARNING' | 'INFO';
+export type ComplianceCategory = 'INSTANCE_COUNT' | 'AZ_DISTRIBUTION' | 'RESILIENCY' | 'HEALTH' | 'ENVIRONMENT';
+export type ComplianceStatus = 'COMPLIANT' | 'AT_RISK' | 'NON_COMPLIANT';
+
+export interface ComplianceGap {
+  id: string;
+  applicationId: string;
+  severity: ComplianceSeverity;
+  category: ComplianceCategory;
+  message: string;
+  recommendation: string;
+}
+
+export interface ComplianceMetrics {
+  totalInstances: number;
+  runningInstances: number;
+  uniqueAZs: number;
+  maxResiliency: ResiliencyLevel | null;
+  unhealthyInstances: number;
+  degradedInstances: number;
+  prdInstances: number;
+}
+
+export interface ApplicationCompliance {
+  applicationId: string;
+  applicationName: string;
+  continuityLevel: ContinuityLevel;
+  score: number;
+  status: ComplianceStatus;
+  gaps: ComplianceGap[];
+  metrics: ComplianceMetrics;
+}
+
+export type TopologyNodeType = 'APPLICATION' | 'PRODUCT';
+
+export interface TopologyNode {
+  id: string;
+  name: string;
+  type: TopologyNodeType;
+  category?: string;
+  continuityLevel?: string;
+  continuityColor?: string;
+  instanceCount?: number;
+}
+
+export type TopologyEdgeType = 'INSTANCE' | 'DEPENDENCY' | 'RELATED';
+
+export interface TopologyEdge {
+  id: string;
+  source: string;
+  target: string;
+  type: TopologyEdgeType;
+  label?: string;
+}
+
+export interface TopologyData {
+  nodes: TopologyNode[];
+  edges: TopologyEdge[];
+}
+
+// ── Maintenance Orchestrator ──
+
+export type AlertSeverity = 'CRITICAL' | 'WARNING' | 'INFO';
+export type AlertCategory = 'LIFECYCLE' | 'COMPLIANCE' | 'HEALTH' | 'SCHEDULING' | 'MAINTENANCE';
+
+export interface MaintenanceAlert {
+  id: string;
+  severity: AlertSeverity;
+  category: AlertCategory;
+  title: string;
+  message: string;
+  affectedResource: {
+    type: 'APPLICATION' | 'INSTANCE' | 'PRODUCT' | 'MAINTENANCE_WINDOW';
+    id: string;
+    name: string;
+  };
+  suggestedAction: string;
+  createdAt: string;
+  expiresAt?: string;
+}
+
+export interface MaintenanceRecommendation {
+  id: string;
+  priority: number;
+  title: string;
+  description: string;
+  category: AlertCategory;
+  affectedApplicationId: string;
+  affectedApplicationName: string;
+  suggestedWindow: {
+    startTime: string;
+    endTime: string;
+    durationHours: number;
+    reason: string;
+  };
+  rationale: string[];
+  estimatedImpact: 'LOW' | 'MEDIUM' | 'HIGH';
+}
+
+export interface MaintenanceImpact {
+  canProceed: boolean;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  affectedApplications: {
+    applicationId: string;
+    applicationName: string;
+    continuityLevel: string;
+    runningInstances: number;
+    impact: string;
+  }[];
+  complianceImpact: {
+    currentScore: number;
+    projectedScore: number;
+    gapsCreated: string[];
+  };
+  conflictingWindows: {
+    id: string;
+    title: string;
+    startTime: string;
+    endTime: string;
+  }[];
+  lifecycleWarnings: {
+    productId: string;
+    productName: string;
+    phase: LifecyclePhase;
+    warning: string;
+  }[];
+  recommendations: string[];
+}
+
+export interface OrchestratorStats {
+  totalAlerts: number;
+  criticalAlerts: number;
+  warningAlerts: number;
+  infoAlerts: number;
+  recommendations: number;
+  upcomingMaintenanceWindows: number;
+  overdueWindows: number;
+  lifecycleTransitions30Days: number;
+  unhealthyInstances: number;
 }

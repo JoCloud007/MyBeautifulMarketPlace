@@ -65,9 +65,22 @@ export default function Marketplace() {
     let cancelled = false;
     setLoading(true);
     setError(false);
+    const apiBase = import.meta.env.VITE_API_URL || '';
     Promise.all([
-      fetch('/api/products').then(r => r.ok ? r.json() : Promise.reject(new Error('products failed'))),
-      fetch('/api/categories').then(r => r.ok ? r.json() : Promise.reject(new Error('categories failed')))
+      fetch(`${apiBase}/api/products`).then(async (r) => {
+        if (!r.ok) {
+          const text = await r.text().catch(() => '');
+          throw new Error(`Products request failed: ${r.status} ${r.statusText}${text ? ' - ' + text.slice(0, 100) : ''}`);
+        }
+        return r.json();
+      }),
+      fetch(`${apiBase}/api/categories`).then(async (r) => {
+        if (!r.ok) {
+          const text = await r.text().catch(() => '');
+          throw new Error(`Categories request failed: ${r.status} ${r.statusText}${text ? ' - ' + text.slice(0, 100) : ''}`);
+        }
+        return r.json();
+      }),
     ])
       .then(([productsData, categoriesData]) => {
         if (!cancelled) {
@@ -76,8 +89,9 @@ export default function Marketplace() {
           setLoading(false);
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (!cancelled) {
+          console.error('Marketplace load error:', err);
           setError(true);
           setLoading(false);
         }
@@ -107,16 +121,30 @@ export default function Marketplace() {
   const refetch = () => {
     setLoading(true);
     setError(false);
+    const apiBase = import.meta.env.VITE_API_URL || '';
     Promise.all([
-      fetch('/api/products').then(r => r.ok ? r.json() : Promise.reject(new Error('products failed'))),
-      fetch('/api/categories').then(r => r.ok ? r.json() : Promise.reject(new Error('categories failed')))
+      fetch(`${apiBase}/api/products`).then(async (r) => {
+        if (!r.ok) {
+          const text = await r.text().catch(() => '');
+          throw new Error(`Products request failed: ${r.status} ${r.statusText}${text ? ' - ' + text.slice(0, 100) : ''}`);
+        }
+        return r.json();
+      }),
+      fetch(`${apiBase}/api/categories`).then(async (r) => {
+        if (!r.ok) {
+          const text = await r.text().catch(() => '');
+          throw new Error(`Categories request failed: ${r.status} ${r.statusText}${text ? ' - ' + text.slice(0, 100) : ''}`);
+        }
+        return r.json();
+      }),
     ])
       .then(([productsData, categoriesData]) => {
         setProducts(productsData);
         setCategories(categoriesData);
         setLoading(false);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error('Marketplace load error:', err);
         setError(true);
         setLoading(false);
       });

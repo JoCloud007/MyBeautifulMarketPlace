@@ -5,7 +5,10 @@ import { adminRoutes } from '../routes/admin';
 var prismaMock: any = {};
 
 jest.mock('@prisma/client', () => ({
-  PrismaClient: jest.fn().mockImplementation(() => prismaMock),
+  PrismaClient: jest.fn().mockImplementation(() => {
+    console.log('DEBUG mock factory called, prismaMock keys:', Object.keys(prismaMock));
+    return prismaMock;
+  }),
 }));
 
 function createApp() {
@@ -39,6 +42,7 @@ const AZ1 = '66666666-6666-6666-6666-666666666666';
 
 describe('Admin Routes', () => {
   beforeEach(() => {
+    console.log('DEBUG beforeEach: prismaMock keys before =', Object.keys(prismaMock));
     prismaMock.product = {
       count: jest.fn(),
       findMany: jest.fn(),
@@ -86,6 +90,20 @@ describe('Admin Routes', () => {
     prismaMock.productAvailabilityZone = {
       deleteMany: jest.fn(),
     };
+    prismaMock.application = {
+      count: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    };
+    prismaMock.continuityLevel = {
+      count: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
+    };
     prismaMock.$transaction = jest.fn(async (fn: any) => fn(prismaMock));
     jest.clearAllMocks();
   });
@@ -105,7 +123,7 @@ describe('Admin Routes', () => {
       const res = await request(app).get('/api/admin/dashboard');
 
       expect(res.status).toBe(200);
-      expect(res.body.counts).toEqual({ products: 8, categories: 4, forecasts: 3, users: 2, availabilityZones: 5 });
+      expect(res.body.counts).toEqual({ products: 8, categories: 4, forecasts: 3, users: 2, availabilityZones: 5, applications: 0, continuityLevels: 0 });
       expect(res.body.recentForecasts).toHaveLength(1);
     });
   });
@@ -119,6 +137,7 @@ describe('Admin Routes', () => {
 
       const app = createApp();
       const res = await request(app).get('/api/admin/products');
+      console.log('DEBUG products response:', res.status, res.body);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual(products);

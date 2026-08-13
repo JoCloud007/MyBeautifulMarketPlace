@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { UserRole } from '@prisma/client';
 import { z } from 'zod';
-import { prisma } from '../index';
+import { prisma } from '../db';
 
 const router = Router();
 

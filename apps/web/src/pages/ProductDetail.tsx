@@ -46,7 +46,9 @@ const regionColors: Record<string, string> = {
 };
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('fr-FR', {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return 'Invalid date';
+  return d.toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'long',
     day: 'numeric',

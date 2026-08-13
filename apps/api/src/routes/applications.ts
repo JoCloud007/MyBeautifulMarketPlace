@@ -76,6 +76,18 @@ router.patch('/:id', async (req, res, next) => {
     idParamSchema.parse(id);
     const data = updateApplicationSchema.parse(req.body);
 
+    const existing = await prisma.application.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Application not found' });
+    }
+
+    if (data.continuityLevelId) {
+      const level = await prisma.continuityLevel.findUnique({ where: { id: data.continuityLevelId } });
+      if (!level) {
+        return res.status(404).json({ error: `Continuity level not found: ${data.continuityLevelId}` });
+      }
+    }
+
     const application = await prisma.application.update({
       where: { id },
       data,

@@ -5,6 +5,12 @@ import { prisma } from '../db';
 
 const router = Router();
 
+const ipSchema = z.string().regex(/^(\d{1,3}\.){3}\d{1,3}$|^([0-9a-fA-F:]+)$/, 'Invalid IP address').optional();
+const hostnameSchema = z.string().regex(/^[a-zA-Z0-9][-a-zA-Z0-9.]*[a-zA-Z0-9]$/, 'Invalid hostname').max(253, 'Hostname too long').optional();
+const metadataSchema = z.object({
+  osVersion: z.string().optional(),
+}).catchall(z.unknown()).optional();
+
 const createInstanceSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
@@ -12,12 +18,13 @@ const createInstanceSchema = z.object({
   applicationId: z.string().uuid(),
   productId: z.string().uuid(),
   flavorId: z.string().uuid(),
+  lifecycleId: z.string().uuid().optional(),
   azCode: z.string().min(1),
-  status: z.enum(['PENDING', 'PROVISIONING', 'RUNNING', 'STOPPED', 'TERMINATED']).default('PENDING'),
+  status: z.enum(['PENDING', 'PROVISIONING', 'RUNNING', 'STOPPED']).default('PENDING'),
   environment: z.enum(['PRD', 'DEV', 'STG']).default('DEV'),
-  ipAddress: z.string().optional(),
-  hostname: z.string().optional(),
-  metadata: z.record(z.any()).optional(),
+  ipAddress: ipSchema,
+  hostname: hostnameSchema,
+  metadata: metadataSchema,
 });
 
 const updateInstanceSchema = z.object({
@@ -25,32 +32,53 @@ const updateInstanceSchema = z.object({
   description: z.string().optional(),
   status: z.enum(['PENDING', 'PROVISIONING', 'RUNNING', 'STOPPED', 'TERMINATED']).optional(),
   environment: z.enum(['PRD', 'DEV', 'STG']).optional(),
-  ipAddress: z.string().optional(),
-  hostname: z.string().optional(),
-  metadata: z.record(z.any()).optional(),
+  lifecycleId: z.string().uuid().optional().nullable(),
+  ipAddress: ipSchema,
+  hostname: hostnameSchema,
+  startedAt: z.coerce.date().optional(),
+  stoppedAt: z.coerce.date().optional(),
+  terminatedAt: z.coerce.date().optional(),
+  metadata: metadataSchema,
+}).refine((data) => {
+  if (data.terminatedAt && data.status !== 'TERMINATED') {
+    return false;
+  }
+  return true;
+}, {
+  message: 'terminatedAt can only be set when status is TERMINATED',
+  path: ['terminatedAt'],
 });
 
 const idParamSchema = z.string().uuid();
 
+const instanceInclude = {
+  application: { include: { continuityLevel: true } },
+  product: { include: { category: true } },
+  flavor: true,
+  lifecycle: true,
+  az: true,
+  forecast: true,
+} as const;
+
 // GET /api/instances
 router.get('/', async (req, res, next) => {
   try {
-    const { applicationId, productId, status, environment } = req.query;
+    const querySchema = z.object({
+      applicationId: z.string().uuid().optional(),
+      productId: z.string().uuid().optional(),
+      status: z.enum(['PENDING', 'PROVISIONING', 'RUNNING', 'STOPPED', 'TERMINATED']).optional(),
+      environment: z.enum(['PRD', 'DEV', 'STG']).optional(),
+    });
+    const parsed = querySchema.parse(req.query);
     const where: any = {};
-    if (applicationId) where.applicationId = String(applicationId);
-    if (productId) where.productId = String(productId);
-    if (status) where.status = String(status);
-    if (environment) where.environment = String(environment);
+    if (parsed.applicationId) where.applicationId = parsed.applicationId;
+    if (parsed.productId) where.productId = parsed.productId;
+    if (parsed.status) where.status = parsed.status;
+    if (parsed.environment) where.environment = parsed.environment;
 
     const instances = await prisma.instance.findMany({
       where,
-      include: {
-        application: { include: { continuityLevel: true } },
-        product: { include: { category: true } },
-        flavor: true,
-        az: true,
-        forecast: true,
-      },
+      include: instanceInclude,
       orderBy: { createdAt: 'desc' },
     });
     res.json(instances);
@@ -84,13 +112,7 @@ router.get('/:id', async (req, res, next) => {
     idParamSchema.parse(id);
     const instance = await prisma.instance.findUnique({
       where: { id },
-      include: {
-        application: { include: { continuityLevel: true } },
-        product: { include: { category: true } },
-        flavor: true,
-        az: true,
-        forecast: true,
-      },
+      include: instanceInclude,
     });
     if (!instance) {
       return res.status(404).json({ error: 'Instance not found' });
@@ -106,55 +128,63 @@ router.post('/', async (req, res, next) => {
   try {
     const data = createInstanceSchema.parse(req.body);
 
-    // Validate relations
-    const application = await prisma.application.findUnique({ where: { id: data.applicationId } });
-    if (!application) {
-      return res.status(404).json({ error: `Application not found: ${data.applicationId}` });
-    }
-    const product = await prisma.product.findUnique({ where: { id: data.productId } });
-    if (!product) {
-      return res.status(404).json({ error: `Product not found: ${data.productId}` });
-    }
-    const flavor = await prisma.flavor.findUnique({ where: { id: data.flavorId } });
-    if (!flavor) {
-      return res.status(404).json({ error: `Flavor not found: ${data.flavorId}` });
-    }
-    if (flavor.productId !== data.productId) {
-      return res.status(409).json({ error: `Flavor ${data.flavorId} does not belong to product ${data.productId}` });
-    }
-    const az = await prisma.availabilityZone.findUnique({ where: { code: data.azCode } });
-    if (!az) {
-      return res.status(404).json({ error: `Availability zone not found: ${data.azCode}` });
-    }
-    if (data.forecastId) {
-      const forecast = await prisma.forecast.findUnique({ where: { id: data.forecastId } });
-      if (!forecast) {
-        return res.status(404).json({ error: `Forecast not found: ${data.forecastId}` });
+    const instance = await prisma.$transaction(async (tx) => {
+      // Validate relations
+      const application = await tx.application.findUnique({ where: { id: data.applicationId } });
+      if (!application) {
+        throw Object.assign(new Error(`Application not found: ${data.applicationId}`), { status: 404 });
       }
-    }
+      const product = await tx.product.findUnique({ where: { id: data.productId } });
+      if (!product) {
+        throw Object.assign(new Error(`Product not found: ${data.productId}`), { status: 404 });
+      }
+      const flavor = await tx.flavor.findUnique({ where: { id: data.flavorId } });
+      if (!flavor) {
+        throw Object.assign(new Error(`Flavor not found: ${data.flavorId}`), { status: 404 });
+      }
+      if (flavor.productId !== data.productId) {
+        throw Object.assign(new Error(`Flavor ${data.flavorId} does not belong to product ${data.productId}`), { status: 409 });
+      }
+      const az = await tx.availabilityZone.findUnique({ where: { code: data.azCode } });
+      if (!az) {
+        throw Object.assign(new Error(`Availability zone not found: ${data.azCode}`), { status: 404 });
+      }
+      if (data.forecastId) {
+        const forecast = await tx.forecast.findUnique({ where: { id: data.forecastId } });
+        if (!forecast) {
+          throw Object.assign(new Error(`Forecast not found: ${data.forecastId}`), { status: 404 });
+        }
+      }
+      if (data.lifecycleId) {
+        const lifecycle = await tx.productLifecycle.findUnique({ where: { id: data.lifecycleId } });
+        if (!lifecycle) {
+          throw Object.assign(new Error(`Lifecycle not found: ${data.lifecycleId}`), { status: 404 });
+        }
+        if (lifecycle.productId !== data.productId) {
+          throw Object.assign(new Error(`Lifecycle ${data.lifecycleId} does not belong to product ${data.productId}`), { status: 409 });
+        }
+      }
 
-    const instance = await prisma.instance.create({
-      data: {
+      const createData: any = {
         name: data.name,
         description: data.description,
         forecastId: data.forecastId,
         applicationId: data.applicationId,
         productId: data.productId,
         flavorId: data.flavorId,
+        lifecycleId: data.lifecycleId,
         azCode: data.azCode,
         status: data.status,
         environment: data.environment,
         ipAddress: data.ipAddress,
         hostname: data.hostname,
-        metadata: data.metadata,
-      },
-      include: {
-        application: { include: { continuityLevel: true } },
-        product: { include: { category: true } },
-        flavor: true,
-        az: true,
-        forecast: true,
-      },
+        metadata: data.metadata as any,
+      };
+
+      return tx.instance.create({
+        data: createData,
+        include: instanceInclude,
+      });
     });
     res.status(201).json(instance);
   } catch (err) {
@@ -169,19 +199,32 @@ router.patch('/:id', async (req, res, next) => {
     idParamSchema.parse(id);
     const data = updateInstanceSchema.parse(req.body);
 
-    const instance = await prisma.instance.update({
+    const existing = await prisma.instance.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Instance not found' });
+    }
+
+    if (data.lifecycleId) {
+      const lifecycle = await prisma.productLifecycle.findUnique({ where: { id: data.lifecycleId } });
+      if (!lifecycle) {
+        return res.status(404).json({ error: `Lifecycle not found: ${data.lifecycleId}` });
+      }
+      if (lifecycle.productId !== existing.productId) {
+        return res.status(409).json({ error: `Lifecycle ${data.lifecycleId} does not belong to product ${existing.productId}` });
+      }
+    }
+
+    const updatePayload: any = { ...data };
+    if (updatePayload.metadata) {
+      updatePayload.metadata = updatePayload.metadata as any;
+    }
+    const updated = await prisma.instance.update({
       where: { id },
-      data,
-      include: {
-        application: { include: { continuityLevel: true } },
-        product: { include: { category: true } },
-        flavor: true,
-        az: true,
-        forecast: true,
-      },
+      data: updatePayload,
+      include: instanceInclude,
     });
 
-    res.json(instance);
+    res.json(updated);
   } catch (err) {
     next(err);
   }
@@ -192,6 +235,10 @@ router.delete('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     idParamSchema.parse(id);
+    const existing = await prisma.instance.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Instance not found' });
+    }
     await prisma.instance.delete({ where: { id } });
     res.status(204).send();
   } catch (err) {
