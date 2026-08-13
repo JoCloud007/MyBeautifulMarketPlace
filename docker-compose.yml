@@ -2,16 +2,18 @@ services:
   db:
     image: postgres:16-alpine
     container_name: cloudmarket-db
+    env_file:
+      - .env
     environment:
-      POSTGRES_USER: cloudmarket
-      POSTGRES_PASSWORD: cloudmarket_secret
-      POSTGRES_DB: cloudmarket
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cloudmarket -d cloudmarket"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -22,11 +24,25 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      args:
+        REPO_URL: ${REPO_URL:-}
+        IMAGE: ${API_IMAGE:-node}
+        TAG: ${API_TAG:-20-bookworm}
+        HTTP_PROXY: ${COMPOSE_HTTP_PROXY:-}
+        HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
+        NO_PROXY: ${COMPOSE_NO_PROXY:-}
+        NODE_TLS_REJECT_UNAUTHORIZED: ${COMPOSE_NODE_TLS_REJECT_UNAUTHORIZED:-1}
     container_name: cloudmarket-api
+    env_file:
+      - .env
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgresql://cloudmarket:cloudmarket_secret@db:5432/cloudmarket?schema=public
-      PORT: 3001
+      DATABASE_URL: ${DATABASE_URL}
+      PORT: ${PORT}
+      HTTP_PROXY: ${COMPOSE_HTTP_PROXY:-}
+      HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
+      NO_PROXY: ${COMPOSE_NO_PROXY:-}
+      NODE_TLS_REJECT_UNAUTHORIZED: ${COMPOSE_NODE_TLS_REJECT_UNAUTHORIZED:-1}
     ports:
       - "3001:3001"
     command: ["npx", "tsx", "src/index.ts"]
@@ -51,9 +67,23 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        REPO_URL: ${REPO_URL:-}
+        IMAGE: ${WEB_IMAGE:-node}
+        TAG: ${WEB_TAG:-20-alpine}
+        HTTP_PROXY: ${COMPOSE_HTTP_PROXY:-}
+        HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
+        NO_PROXY: ${COMPOSE_NO_PROXY:-}
+        NODE_TLS_REJECT_UNAUTHORIZED: ${COMPOSE_NODE_TLS_REJECT_UNAUTHORIZED:-1}
     container_name: cloudmarket-web
+    env_file:
+      - .env
     environment:
-      VITE_API_URL: http://localhost:3001
+      VITE_API_URL: ${VITE_API_URL}
+      HTTP_PROXY: ${COMPOSE_HTTP_PROXY:-}
+      HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
+      NO_PROXY: ${COMPOSE_NO_PROXY:-}
+      NODE_TLS_REJECT_UNAUTHORIZED: ${COMPOSE_NODE_TLS_REJECT_UNAUTHORIZED:-1}
     ports:
       - "5192:5192"
     depends_on:

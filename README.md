@@ -113,7 +113,10 @@ cd cloudmarket
 # Launch the full stack
 docker compose up --build
 
-# In another terminal, seed the database
+# Push the Prisma schema to the database (required on first run / fresh clone)
+docker compose exec api npx prisma db push
+
+# Seed the database with sample data
 docker compose exec api npx tsx prisma/seed.ts
 ```
 
@@ -130,17 +133,19 @@ docker compose exec api npx tsx prisma/seed.ts
 # 1. Install dependencies
 npm install
 
-# 2. Start PostgreSQL
+# 2. Start PostgreSQL (load .env first)
+set -a && source .env && set +a
 docker run -d \
   --name cloudmarket-db \
-  -e POSTGRES_USER=cloudmarket \
-  -e POSTGRES_PASSWORD=cloudmarket_secret \
-  -e POSTGRES_DB=cloudmarket \
+  -e POSTGRES_USER="$POSTGRES_USER" \
+  -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+  -e POSTGRES_DB="$POSTGRES_DB" \
   -p 5432:5432 \
   postgres:16-alpine
 
 # 3. Set up the database
 cd apps/api
+set -a && source ../../.env && set +a
 npx prisma db push
 npx tsx prisma/seed.ts
 
@@ -381,6 +386,35 @@ cd apps/api && npx prisma generate
 ```bash
 npm run build -w packages/shared-types
 ```
+
+### 🏢 Corporate Environment
+
+**Custom Docker registry / air-gapped environment**
+
+Both Dockerfiles support custom base images via `REPO_URL`, `IMAGE` and `TAG`:
+
+```bash
+# Set in .env
+REPO_URL=registry.company.com
+API_IMAGE=node
+API_TAG=20-bookworm
+WEB_IMAGE=node
+WEB_TAG=20-alpine
+
+# Then build normally
+docker compose build
+```
+
+**Prisma binary download blocked (`binaries.prisma.sh` unreachable)**
+
+The API Dockerfile runs `npx prisma generate` during the build, which downloads the correct Linux engine binary directly into the container:
+
+```bash
+# Just build — Prisma is generated inside the container
+docker compose build api
+```
+
+> The `binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]` setting in `schema.prisma` ensures the Linux binary is available. If your corporate proxy blocks `binaries.prisma.sh`, set `HTTP_PROXY` / `HTTPS_PROXY` in your `.env` so the container can reach it.
 
 ## 📄 License
 

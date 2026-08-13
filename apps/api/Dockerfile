@@ -1,4 +1,24 @@
-FROM node:20-bullseye AS base
+ARG REPO_URL=""
+ARG IMAGE=node
+ARG TAG=20-bookworm
+ARG FULL_IMAGE=${REPO_URL:+$REPO_URL/}${IMAGE}:${TAG}
+FROM ${FULL_IMAGE} AS base
+
+# Optional proxy configuration
+ARG HTTP_PROXY=""
+ARG HTTPS_PROXY=""
+ARG NO_PROXY=""
+ARG NODE_TLS_REJECT_UNAUTHORIZED="1"
+
+ENV HTTP_PROXY=${HTTP_PROXY}
+ENV HTTPS_PROXY=${HTTPS_PROXY}
+ENV NO_PROXY=${NO_PROXY}
+ENV NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED}
+
+# Configure npm proxy if set
+RUN if [ -n "$HTTP_PROXY" ]; then npm config set proxy "$HTTP_PROXY"; fi
+RUN if [ -n "$HTTPS_PROXY" ]; then npm config set https-proxy "$HTTPS_PROXY"; fi
+RUN if [ "$NODE_TLS_REJECT_UNAUTHORIZED" = "0" ]; then npm config set strict-ssl false; fi
 
 WORKDIR /app
 
@@ -12,8 +32,11 @@ RUN npm install
 # Copy source
 COPY . .
 
-# Force clean Prisma generation (avoid cached engines from different base images)
-RUN rm -rf node_modules/.prisma node_modules/@prisma/client
+# Re-install dependencies after COPY (COPY . . may have overwritten node_modules
+# with an empty one from the build context since .dockerignore excludes it)
+RUN npm install
+
+# Generate Prisma client with locally installed packages (no npx cache symlinks)
 RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
 
 # Build shared types
