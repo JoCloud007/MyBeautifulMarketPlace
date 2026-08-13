@@ -93,6 +93,7 @@ model ForecastLine {
   azCode     String
   az         AvailabilityZone @relation(fields: [azCode], references: [code])
   quantity   Int              @default(1)
+  metadata   Json?
 }
 
 model AvailabilityZone {

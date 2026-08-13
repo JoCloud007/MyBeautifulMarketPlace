@@ -11,6 +11,7 @@ const forecastLineSchema = z.object({
   flavorId: z.string().uuid(),
   azCode: z.string().min(1),
   quantity: z.number().int().min(1),
+  metadata: z.record(z.any()).optional(),
 });
 
 const createForecastSchema = z.object({
@@ -103,6 +104,7 @@ router.post('/', requireAdminAuth, async (req, res, next) => {
             flavorId: line.flavorId,
             azCode: line.azCode,
             quantity: line.quantity,
+            metadata: line.metadata || undefined,
           })),
         },
       },

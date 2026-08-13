@@ -70,6 +70,7 @@ export interface ForecastLine {
   flavor: Flavor;
   azCode: string;
   quantity: number;
+  metadata?: any;
 }
 
 export interface Forecast {
