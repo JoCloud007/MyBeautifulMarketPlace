@@ -33,6 +33,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -263,6 +264,7 @@ function ProductsSection() {
   const [form, setForm] = useState({
     name: '', slug: '', description: '', categoryId: '', os: '', documentation: '', roadmap: '', isActive: true,
   });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const resetForm = () => {
     setForm({ name: '', slug: '', description: '', categoryId: '', os: '', documentation: '', roadmap: '', isActive: true });
@@ -288,8 +290,14 @@ function ProductsSection() {
     setIsOpen(false); resetForm();
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Delete this product?')) await deleteProduct.mutateAsync(id);
+  const handleDelete = (id: string) => {
+    setConfirmDelete({ open: true, id });
+  };
+  const handleConfirmDelete = async () => {
+    if (confirmDelete.id) {
+      await deleteProduct.mutateAsync(confirmDelete.id);
+    }
+    setConfirmDelete({ open: false, id: null });
   };
 
   if (isError) return <QueryError message="Unable to load products." onRetry={refetch} />;
@@ -412,6 +420,17 @@ function ProductsSection() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete Product"
+        description="Are you sure you want to delete this product? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 }
@@ -426,6 +445,7 @@ function CategoriesSection() {
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
   const [form, setForm] = useState({ name: '', slug: '', description: '', icon: '' });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const resetForm = () => { setForm({ name: '', slug: '', description: '', icon: '' }); setEditing(null); };
   const openCreate = () => { resetForm(); setIsOpen(true); };
@@ -439,8 +459,14 @@ function CategoriesSection() {
     setIsOpen(false); resetForm();
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Delete this category?')) await deleteCategory.mutateAsync(id);
+  const handleDelete = (id: string) => {
+    setConfirmDelete({ open: true, id });
+  };
+  const handleConfirmDelete = async () => {
+    if (confirmDelete.id) {
+      await deleteCategory.mutateAsync(confirmDelete.id);
+    }
+    setConfirmDelete({ open: false, id: null });
   };
 
   if (isError) return <QueryError message="Unable to load categories." onRetry={refetch} />;
@@ -502,6 +528,17 @@ function CategoriesSection() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete Category"
+        description="Are you sure you want to delete this category? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 }
@@ -517,6 +554,7 @@ function FlavorsSection() {
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Flavor | null>(null);
   const [form, setForm] = useState({ name: '', productId: '', vcpu: 0, ramGb: 0, description: '' });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const resetForm = () => { setForm({ name: '', productId: '', vcpu: 0, ramGb: 0, description: '' }); setEditing(null); };
   const openCreate = () => { resetForm(); setIsOpen(true); };
@@ -529,8 +567,14 @@ function FlavorsSection() {
     setIsOpen(false); resetForm();
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Delete this flavor?')) await deleteFlavor.mutateAsync(id);
+  const handleDelete = (id: string) => {
+    setConfirmDelete({ open: true, id });
+  };
+  const handleConfirmDelete = async () => {
+    if (confirmDelete.id) {
+      await deleteFlavor.mutateAsync(confirmDelete.id);
+    }
+    setConfirmDelete({ open: false, id: null });
   };
 
   if (isError) return <QueryError message="Unable to load flavors." onRetry={refetch} />;
@@ -603,6 +647,17 @@ function FlavorsSection() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete Flavor"
+        description="Are you sure you want to delete this flavor? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 }
@@ -618,6 +673,7 @@ function DependenciesSection() {
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Dependency | null>(null);
   const [form, setForm] = useState({ productId: '', dependsOnId: '', type: 'REQUIRED' as 'REQUIRED' | 'RECOMMENDED', description: '' });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const resetForm = () => { setForm({ productId: '', dependsOnId: '', type: 'REQUIRED', description: '' }); setEditing(null); };
   const openCreate = () => { resetForm(); setIsOpen(true); };
@@ -630,8 +686,14 @@ function DependenciesSection() {
     setIsOpen(false); resetForm();
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Delete this dependency?')) await deleteDependency.mutateAsync(id);
+  const handleDelete = (id: string) => {
+    setConfirmDelete({ open: true, id });
+  };
+  const handleConfirmDelete = async () => {
+    if (confirmDelete.id) {
+      await deleteDependency.mutateAsync(confirmDelete.id);
+    }
+    setConfirmDelete({ open: false, id: null });
   };
 
   if (isError) return <QueryError message="Unable to load dependencies." onRetry={refetch} />;
@@ -714,6 +776,17 @@ function DependenciesSection() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete Dependency"
+        description="Are you sure you want to delete this dependency? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 }
@@ -725,6 +798,7 @@ function ForecastsAdminSection() {
   const deleteForecast = useDeleteForecast();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ApprovalStatus | 'ALL'>('ALL');
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const filtered = forecasts?.filter((f) => {
     const matchesSearch = !searchQuery || f.lines?.[0]?.product?.name?.toLowerCase().includes(searchQuery.toLowerCase()) || f.requestedBy?.toLowerCase().includes(searchQuery.toLowerCase());
@@ -740,8 +814,14 @@ function ForecastsAdminSection() {
     await updateForecast.mutateAsync({ id, status: 'REJECTED' as Forecast['status'], reviewedBy: 'Admin', rejectionReason: 'Rejected via admin' });
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Delete this request?')) await deleteForecast.mutateAsync(id);
+  const handleDelete = (id: string) => {
+    setConfirmDelete({ open: true, id });
+  };
+  const handleConfirmDelete = async () => {
+    if (confirmDelete.id) {
+      await deleteForecast.mutateAsync(confirmDelete.id);
+    }
+    setConfirmDelete({ open: false, id: null });
   };
 
   if (isError) return <QueryError message="Unable to load forecasts." onRetry={refetch} />;
@@ -847,6 +927,17 @@ function ForecastsAdminSection() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete Forecast Request"
+        description="Are you sure you want to delete this forecast request? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 }
@@ -861,6 +952,7 @@ function UsersSection() {
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
   const [form, setForm] = useState({ email: '', name: '', role: 'USER' as 'ADMIN' | 'USER' });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const resetForm = () => { setForm({ email: '', name: '', role: 'USER' }); setEditing(null); };
   const openCreate = () => { resetForm(); setIsOpen(true); };
@@ -873,8 +965,14 @@ function UsersSection() {
     setIsOpen(false); resetForm();
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Delete this user?')) await deleteUser.mutateAsync(id);
+  const handleDelete = (id: string) => {
+    setConfirmDelete({ open: true, id });
+  };
+  const handleConfirmDelete = async () => {
+    if (confirmDelete.id) {
+      await deleteUser.mutateAsync(confirmDelete.id);
+    }
+    setConfirmDelete({ open: false, id: null });
   };
 
   if (isError) return <QueryError message="Unable to load users." onRetry={refetch} />;
@@ -947,6 +1045,17 @@ function UsersSection() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete User"
+        description="Are you sure you want to delete this user? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 }

@@ -16,7 +16,12 @@ const forecastLineSchema = z.object({
 const createForecastSchema = z.object({
   requestedBy: z.string().min(1),
   requesterEmail: z.string().email(),
-  targetDate: z.preprocess((val) => (val === '' ? undefined : val), z.string().datetime().optional()),
+  targetDate: z.preprocess((val) => {
+    if (val === '' || val === undefined || val === null) return undefined;
+    // Accept YYYY-MM-DD from HTML date input — append time to make it ISO datetime
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val + 'T00:00:00Z';
+    return val;
+  }, z.string().datetime().optional()),
   lines: z.array(forecastLineSchema).min(1),
   justification: z.string().optional(),
 });

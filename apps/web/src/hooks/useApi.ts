@@ -20,6 +20,9 @@ api.interceptors.response.use(
     // Don't toast on 404s for normal queries — handled per-query
     if (error.response?.status !== 404) {
       console.error('API Error:', message);
+      if (error.response?.data?.details) {
+        console.error('Validation details:', JSON.stringify(error.response.data.details, null, 2));
+      }
     }
     return Promise.reject(error);
   }
