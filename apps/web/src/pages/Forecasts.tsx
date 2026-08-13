@@ -91,8 +91,8 @@ function ForecastCard({ forecast, onApprove, onReject, onDelete }: {
     <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4 sm:hidden">
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-white truncate">{forecast.product?.name}</p>
-          <p className="text-sm text-slate-400">{forecast.flavor?.name} × {forecast.quantity}</p>
+          <p className="font-medium text-white truncate">{forecast.lines?.[0]?.product?.name}</p>
+          <p className="text-sm text-slate-400">{forecast.lines?.[0]?.flavor?.name} × {forecast.lines?.[0]?.quantity}</p>
         </div>
         <Badge variant="outline" className={`gap-1 shrink-0 ml-2 ${status.color}`}>
           <StatusIcon className="h-3 w-3" />
@@ -129,6 +129,13 @@ export default function Forecasts() {
   const { data: forecasts, isLoading: forecastsLoading, isError: forecastsError, refetch: refetchForecasts } = useForecasts();
   const { data: stats, isLoading: statsLoading, isError: statsError, refetch: refetchStats } = useForecastStats();
   const { data: products } = useProducts();
+  const [zones, setZones] = useState<any[] | null>(null);
+  useEffect(() => {
+    fetch('/api/availability-zones')
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(data => setZones(data))
+      .catch(() => setZones([]));
+  }, []);
   const createForecast = useCreateForecast();
   const updateForecast = useUpdateForecast();
   const deleteForecast = useDeleteForecast();
@@ -138,20 +145,21 @@ export default function Forecasts() {
   const [statusFilter, setStatusFilter] = useState<ApprovalStatus | 'ALL'>('ALL');
 
   const [formData, setFormData] = useState({
-    productId: '',
-    flavorId: '',
     requestedBy: '',
     requesterEmail: '',
-    quantity: 1,
+    targetDate: '',
     justification: '',
   });
+  const [lines, setLines] = useState<Array<{ productId: string; flavorId: string; azCode: string; quantity: number; osVersion?: string }>>([]);
+  const [draftLine, setDraftLine] = useState({ productId: '', flavorId: '', azSelections: {} as Record<string, number>, osVersion: '' });
 
-  const selectedProduct = products?.find((p) => p.id === formData.productId);
+  const selectedDraftProduct = products?.find((p) => p.id === draftLine.productId);
+  const selectedDraftFlavor = selectedDraftProduct?.flavors.find((f: any) => f.id === draftLine.flavorId);
 
   const filteredForecasts = forecasts?.filter((f) => {
     const matchesSearch =
       !searchQuery ||
-      f.product?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      f.lines?.some((l) => l.product?.name?.toLowerCase().includes(searchQuery.toLowerCase())) ||
       f.requestedBy?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       f.requesterEmail?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'ALL' || f.status === statusFilter;
@@ -160,16 +168,39 @@ export default function Forecasts() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    await createForecast.mutateAsync(formData);
+    await createForecast.mutateAsync({
+      ...formData,
+      lines: lines.map((l) => ({
+        productId: l.productId,
+        flavorId: l.flavorId,
+        azCode: l.azCode,
+        quantity: l.quantity,
+        metadata: l.osVersion ? { osVersion: l.osVersion } : undefined,
+      })),
+    } as any);
     setIsCreateOpen(false);
-    setFormData({
-      productId: '',
-      flavorId: '',
-      requestedBy: '',
-      requesterEmail: '',
-      quantity: 1,
-      justification: '',
-    });
+    setFormData({ requestedBy: '', requesterEmail: '', targetDate: '', justification: '' });
+    setLines([]);
+  };
+
+  const addLine = () => {
+    if (!draftLine.productId || !draftLine.flavorId || Object.keys(draftLine.azSelections).length === 0) return;
+    const p = products?.find((pr) => pr.id === draftLine.productId);
+    const f = p?.flavors.find((fl: any) => fl.id === draftLine.flavorId);
+    if (!p || !f) return;
+    const newLines = Object.entries(draftLine.azSelections).map(([azCode, quantity]) => ({
+      productId: draftLine.productId,
+      flavorId: draftLine.flavorId,
+      azCode,
+      quantity,
+      osVersion: draftLine.osVersion || undefined,
+    }));
+    setLines([...lines, ...newLines]);
+    setDraftLine({ productId: '', flavorId: '', azSelections: {}, osVersion: '' });
+  };
+
+  const removeLine = (index: number) => {
+    setLines(lines.filter((_, i) => i !== index));
   };
 
   const handleApprove = async (id: string) => {
@@ -357,9 +388,9 @@ export default function Forecasts() {
                             const StatusIcon = status.icon;
                             return (
                               <tr key={forecast.id} className="hover:bg-slate-800/50 transition-colors">
-                                <td className="py-3 font-medium text-white">{forecast.product?.name}</td>
-                                <td className="py-3 text-slate-400">{forecast.flavor?.name}</td>
-                                <td className="py-3 text-slate-400">{forecast.quantity}</td>
+                                <td className="py-3 font-medium text-white">{forecast.lines?.[0]?.product?.name}</td>
+                                <td className="py-3 text-slate-400">{forecast.lines?.[0]?.flavor?.name}</td>
+                                <td className="py-3 text-slate-400">{forecast.lines?.[0]?.quantity}</td>
                                 <td className="py-3 text-slate-400">
                                   <div>{forecast.requestedBy}</div>
                                   <div className="text-xs text-slate-600">{forecast.requesterEmail}</div>
@@ -421,117 +452,322 @@ export default function Forecasts() {
 
       {/* Create Forecast Dialog */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-white">New request</DialogTitle>
-            <DialogDescription className="text-slate-400">
-              Create a provisioning request for a product.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Product</label>
-              <Select
-                value={formData.productId}
-                onChange={(e) =>
-                  setFormData({ ...formData, productId: e.target.value, flavorId: '' })
-                }
-                required
-                className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
-              >
-                <option value="">Choose a product...</option>
-                {products?.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-4xl max-h-[90vh] overflow-y-auto p-0">
+          <div className="grid grid-cols-1 lg:grid-cols-3">
+            {/* LEFT: Form */}
+            <div className="lg:col-span-2 p-6 space-y-6">
+              <DialogHeader className="pb-2">
+                <DialogTitle className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">New Provisioning Request</DialogTitle>
+                <DialogDescription className="text-slate-400">
+                  Add one or more lines to your forecast request
+                </DialogDescription>
+              </DialogHeader>
+
+              <form onSubmit={handleCreate} className="space-y-5">
+                {/* Lines Table */}
+                {lines.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-200">Lines ({lines.length})</label>
+                    <div className="bg-slate-950 border border-slate-700 rounded-xl overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-700">
+                            <th className="text-left py-2 px-3 text-xs text-slate-500">Product</th>
+                            <th className="text-left py-2 px-3 text-xs text-slate-500">Flavor</th>
+                            <th className="text-left py-2 px-3 text-xs text-slate-500">Region</th>
+                            <th className="text-center py-2 px-3 text-xs text-slate-500">Qty</th>
+                            <th className="text-right py-2 px-3 text-xs text-slate-500"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lines.map((line, idx) => {
+                            const p = products?.find((pr) => pr.id === line.productId);
+                            const f = p?.flavors.find((fl: any) => fl.id === line.flavorId);
+                            return (
+                              <tr key={idx} className="border-b border-slate-800 last:border-0">
+                                <td className="py-2 px-3 text-white">{p?.name}</td>
+                                <td className="py-2 px-3 text-slate-400">{f?.name}</td>
+                                <td className="py-2 px-3 text-slate-400">{line.azCode}</td>
+                                <td className="py-2 px-3 text-center text-white">{line.quantity}</td>
+                                <td className="py-2 px-3 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeLine(idx)}
+                                    className="text-slate-500 hover:text-red-400 transition-colors"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Add Line Wizard */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-sm font-bold">+</div>
+                    <label className="text-sm font-semibold text-slate-200">Add Line</label>
+                  </div>
+
+                  {/* Step 1: Product */}
+                  <div className="space-y-2">
+                    <label className="text-xs text-slate-400 uppercase tracking-wide">1. Product</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {products?.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setDraftLine({ ...draftLine, productId: p.id, flavorId: '', azSelections: {} })}
+                          className={`p-3 rounded-xl border text-left transition-all ${
+                            draftLine.productId === p.id
+                              ? 'border-blue-500 bg-blue-500/10'
+                              : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center text-lg">💻</div>
+                            <div>
+                              <div className="text-sm font-semibold text-white">{p.name}</div>
+                              <div className="text-xs text-slate-400">{p.category?.name} · {p.os || 'N/A'}</div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Step 2: Flavor */}
+                  {selectedDraftProduct && (
+                    <div className="space-y-2">
+                      <label className="text-xs text-slate-400 uppercase tracking-wide">2. Flavor</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {selectedDraftProduct.flavors.map((f: any) => (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => setDraftLine({ ...draftLine, flavorId: f.id, azSelections: {} })}
+                            className={`p-3 rounded-xl border text-center transition-all ${
+                              draftLine.flavorId === f.id
+                                ? 'border-blue-500 bg-blue-500/10'
+                                : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
+                            }`}
+                          >
+                            <div className="text-sm font-bold text-white">{f.name}</div>
+                            <div className="text-xs text-slate-400 mt-1">{f.vcpu} vCPU · {f.ramGb} GB</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Step 3: OS Version (for VM products) */}
+                  {selectedDraftProduct && selectedDraftProduct.os && (
+                    <div className="space-y-2">
+                      <label className="text-xs text-slate-400 uppercase tracking-wide">3. Operating System</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(selectedDraftProduct.os === 'Linux'
+                          ? ['Debian 12', 'Ubuntu 22.04 LTS', 'Red Hat Enterprise Linux 9', 'CentOS Stream 9']
+                          : selectedDraftProduct.os === 'Windows'
+                          ? ['Windows Server 2022', 'Windows Server 2019']
+                          : []
+                        ).map((os) => (
+                          <button
+                            key={os}
+                            type="button"
+                            onClick={() => setDraftLine({ ...draftLine, osVersion: os })}
+                            className={`p-2 rounded-lg border text-xs font-medium transition-all ${
+                              draftLine.osVersion === os
+                                ? 'border-blue-500 bg-blue-500/10 text-blue-400'
+                                : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-500'
+                            }`}
+                          >
+                            {os}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Step 4: Region & Quantity — MULTIPLE SELECTION */}
+                  {selectedDraftFlavor && (
+                    <div className="space-y-2">
+                      <label className="text-xs text-slate-400 uppercase tracking-wide">4. Regions & Quantities</label>
+                      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-3 space-y-2">
+                        {zones
+                          ?.filter((z) =>
+                            selectedDraftProduct?.availabilityZones?.some(
+                              (az: any) => az.availabilityZone?.code === z.code || az.code === z.code
+                            )
+                          )
+                          .map((z) => {
+                            const isSelected = draftLine.azSelections[z.code] !== undefined;
+                            return (
+                              <div key={z.id} className="flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newSelections = { ...draftLine.azSelections };
+                                    if (isSelected) {
+                                      delete newSelections[z.code];
+                                    } else {
+                                      newSelections[z.code] = 1;
+                                    }
+                                    setDraftLine({ ...draftLine, azSelections: newSelections });
+                                  }}
+                                  className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left ${
+                                    isSelected
+                                      ? 'bg-blue-500/20 border border-blue-500 text-blue-400'
+                                      : 'bg-slate-800 border border-slate-700 text-slate-400 hover:border-slate-500'
+                                  }`}
+                                >
+                                  {isSelected ? '✓ ' : ''}{z.name}
+                                </button>
+                                {isSelected && (
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    value={draftLine.azSelections[z.code]}
+                                    onChange={(e) => {
+                                      const qty = parseInt(e.target.value) || 1;
+                                      setDraftLine({
+                                        ...draftLine,
+                                        azSelections: { ...draftLine.azSelections, [z.code]: qty },
+                                      });
+                                    }}
+                                    className="w-20 bg-slate-950 border-slate-700 text-white text-center text-sm h-9 px-1"
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
+
+                  <Button
+                    type="button"
+                    onClick={addLine}
+                    disabled={!draftLine.productId || !draftLine.flavorId || Object.keys(draftLine.azSelections).length === 0}
+                    className="bg-blue-600 hover:bg-blue-700 text-white w-full min-h-[44px]"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Line
+                  </Button>
+                </div>
+
+                {/* Request Details */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-sm font-bold">i</div>
+                    <label className="text-sm font-semibold text-slate-200">Request Info</label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Requester</label>
+                      <Input
+                        value={formData.requestedBy}
+                        onChange={(e) => setFormData({ ...formData, requestedBy: e.target.value })}
+                        placeholder="Name"
+                        required
+                        className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 min-h-[44px]"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Email</label>
+                      <Input
+                        type="email"
+                        value={formData.requesterEmail}
+                        onChange={(e) => setFormData({ ...formData, requesterEmail: e.target.value })}
+                        placeholder="email@example.com"
+                        required
+                        className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 min-h-[44px]"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Target Date</label>
+                      <Input
+                        type="date"
+                        value={formData.targetDate}
+                        onChange={(e) => setFormData({ ...formData, targetDate: e.target.value })}
+                        className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Justification</label>
+                    <Textarea
+                      value={formData.justification}
+                      onChange={(e) => setFormData({ ...formData, justification: e.target.value })}
+                      placeholder="Why do you need this?"
+                      rows={3}
+                      className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600"
+                    />
+                  </div>
+                </div>
+
+                <DialogFooter className="flex-col sm:flex-row gap-2 pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsCreateOpen(false)}
+                    className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white w-full sm:w-auto min-h-[44px]"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={createForecast.isPending || lines.length === 0}
+                    className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]"
+                  >
+                    {createForecast.isPending ? 'Creating...' : 'Create Request'}
+                  </Button>
+                </DialogFooter>
+              </form>
             </div>
 
-            {selectedProduct && selectedProduct.flavors.length > 0 && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Flavor</label>
-                <Select
-                  value={formData.flavorId}
-                  onChange={(e) => setFormData({ ...formData, flavorId: e.target.value })}
-                  required
-                  className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
-                >
-                  <option value="">Choose a flavor...</option>
-                  {selectedProduct.flavors.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name} ({f.vcpu} vCPU, {f.ramGb} GB)
-                    </option>
-                  ))}
-                </Select>
+            {/* RIGHT: Summary */}
+            <div className="hidden lg:block bg-slate-800/30 border-l border-slate-800 p-6">
+              <div className="sticky top-6 space-y-4">
+                <h3 className="text-sm font-semibold text-slate-200">Request Summary</h3>
+                <div className="space-y-3">
+                  {lines.length === 0 && (
+                    <p className="text-sm text-slate-500">Add lines to see the summary</p>
+                  )}
+                  {lines.map((line, idx) => {
+                    const p = products?.find((pr) => pr.id === line.productId);
+                    const f = p?.flavors.find((fl: any) => fl.id === line.flavorId);
+                    return (
+                      <div key={idx} className="space-y-1">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-white font-medium">{p?.name}</span>
+                          <span className="text-slate-400">x{line.quantity}</span>
+                        </div>
+                        <div className="text-xs text-slate-400">{f?.name} · {line.azCode}</div>
+                        <div className="text-xs text-slate-500">{f ? `${f.vcpu * line.quantity} vCPU · ${f.ramGb * line.quantity} GB` : ''}</div>
+                        {idx < lines.length - 1 && <div className="h-px bg-slate-700 my-2" />}
+                      </div>
+                    );
+                  })}
+                  {lines.length > 0 && (
+                    <>
+                      <div className="h-px bg-slate-700" />
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-semibold text-slate-200">Total</span>
+                        <span className="text-lg font-bold text-blue-400">{lines.reduce((sum, l) => sum + l.quantity, 0)} instances</span>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Requester</label>
-                <Input
-                  value={formData.requestedBy}
-                  onChange={(e) => setFormData({ ...formData, requestedBy: e.target.value })}
-                  placeholder="Name"
-                  required
-                  className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 min-h-[44px]"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Email</label>
-                <Input
-                  type="email"
-                  value={formData.requesterEmail}
-                  onChange={(e) => setFormData({ ...formData, requesterEmail: e.target.value })}
-                  placeholder="email@example.com"
-                  required
-                  className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 min-h-[44px]"
-                />
-              </div>
             </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Quantity</label>
-              <Input
-                type="number"
-                min={1}
-                value={formData.quantity}
-                onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
-                required
-                className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Justification</label>
-              <Textarea
-                value={formData.justification}
-                onChange={(e) => setFormData({ ...formData, justification: e.target.value })}
-                placeholder="Why do you need this product?"
-                rows={3}
-                className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600"
-              />
-            </div>
-
-            <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsCreateOpen(false)}
-                className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white w-full sm:w-auto min-h-[44px]"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={createForecast.isPending}
-                className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]"
-              >
-                {createForecast.isPending ? 'Creating...' : 'Create request'}
-              </Button>
-            </DialogFooter>
-          </form>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

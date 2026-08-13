@@ -29,12 +29,22 @@ export interface Product {
   flavors: Flavor[];
   dependencies: Dependency[];
   dependentProducts: Dependency[];
+  availabilityZones: ProductAvailabilityZone[];
   documentation: string | null;
   roadmap: string | null;
   os: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProductAvailabilityZone {
+  id: string;
+  productId: string;
+  availabilityZoneId: string;
+  availabilityZone: any;
+  code?: string;
+  createdAt: string;
 }
 
 export interface Flavor {
@@ -60,15 +70,24 @@ export interface Dependency {
   updatedAt: string;
 }
 
-export interface Forecast {
+export interface ForecastLine {
   id: string;
+  forecastId: string;
   productId: string;
   product: Product;
   flavorId: string;
   flavor: Flavor;
+  azCode: string;
+  quantity: number;
+  metadata?: any;
+}
+
+export interface Forecast {
+  id: string;
   requestedBy: string;
   requesterEmail: string;
-  quantity: number;
+  targetDate?: string;
+  lines: ForecastLine[];
   status: ApprovalStatus;
   justification: string | null;
   reviewedBy: string | null;

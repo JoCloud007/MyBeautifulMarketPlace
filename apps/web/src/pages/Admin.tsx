@@ -157,10 +157,10 @@ function DashboardSection() {
   const { data: dashboard, isLoading, isError, refetch } = useAdminDashboard();
 
   const countCards = [
-    { label: 'Products', value: dashboard?.counts.products ?? 0, icon: Package, color: 'text-blue-400' },
-    { label: 'Categories', value: dashboard?.counts.categories ?? 0, icon: Layers, color: 'text-purple-400' },
-    { label: 'Forecasts', value: dashboard?.counts.forecasts ?? 0, icon: BarChart3, color: 'text-amber-400' },
-    { label: 'Users', value: dashboard?.counts.users ?? 0, icon: Users, color: 'text-emerald-400' },
+    { label: 'Products', value: (dashboard as any)?.counts.products ?? 0, icon: Package, color: 'text-blue-400' },
+    { label: 'Categories', value: (dashboard as any)?.counts.categories ?? 0, icon: Layers, color: 'text-purple-400' },
+    { label: 'Forecasts', value: (dashboard as any)?.counts.forecasts ?? 0, icon: BarChart3, color: 'text-amber-400' },
+    { label: 'Users', value: (dashboard as any)?.counts.users ?? 0, icon: Users, color: 'text-emerald-400' },
   ];
 
   if (isError) {
@@ -210,7 +210,7 @@ function DashboardSection() {
                 <Skeleton key={i} className="h-12 rounded-lg bg-slate-800" />
               ))}
             </div>
-          ) : dashboard?.recentForecasts?.length === 0 ? (
+          ) : (dashboard as any)?.recentForecasts?.length === 0 ? (
             <p className="text-center text-slate-500 py-8">No recent activity.</p>
           ) : (
             <div className="overflow-x-auto">
@@ -225,11 +225,11 @@ function DashboardSection() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
-                  {dashboard?.recentForecasts?.map((forecast: Forecast) => (
+                  {(dashboard as any)?.recentForecasts?.map((forecast: Forecast) => (
                     <tr key={forecast.id} className="hover:bg-slate-800/50 transition-colors">
-                      <td className="py-3 font-medium text-white">{forecast.product?.name}</td>
-                      <td className="py-3 text-slate-400">{forecast.flavor?.name}</td>
-                      <td className="py-3 text-slate-400">{forecast.quantity}</td>
+                      <td className="py-3 font-medium text-white">{forecast.lines?.[0]?.product?.name}</td>
+                      <td className="py-3 text-slate-400">{forecast.lines?.[0]?.flavor?.name}</td>
+                      <td className="py-3 text-slate-400">{forecast.lines?.[0]?.quantity}</td>
                       <td className="py-3">
                         <Badge variant="outline" className={statusConfig[forecast.status].color}>
                           {statusConfig[forecast.status].label}
@@ -727,7 +727,7 @@ function ForecastsAdminSection() {
   const [statusFilter, setStatusFilter] = useState<ApprovalStatus | 'ALL'>('ALL');
 
   const filtered = forecasts?.filter((f) => {
-    const matchesSearch = !searchQuery || f.product?.name?.toLowerCase().includes(searchQuery.toLowerCase()) || f.requestedBy?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = !searchQuery || f.lines?.[0]?.product?.name?.toLowerCase().includes(searchQuery.toLowerCase()) || f.requestedBy?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'ALL' || f.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -750,8 +750,8 @@ function ForecastsAdminSection() {
     <MobileCard key={forecast.id}>
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-white truncate">{forecast.product?.name}</p>
-          <p className="text-sm text-slate-400">{forecast.flavor?.name} × {forecast.quantity}</p>
+          <p className="font-medium text-white truncate">{forecast.lines?.[0]?.product?.name}</p>
+          <p className="text-sm text-slate-400">{forecast.lines?.[0]?.flavor?.name} × {forecast.lines?.[0]?.quantity}</p>
         </div>
         <Badge variant="outline" className={statusConfig[forecast.status].color + ' shrink-0 ml-2'}>
           {statusConfig[forecast.status].label}
@@ -817,9 +817,9 @@ function ForecastsAdminSection() {
                   <tbody className="divide-y divide-slate-800">
                     {filtered?.map((forecast) => (
                       <tr key={forecast.id} className="hover:bg-slate-800/50 transition-colors">
-                        <td className="py-3 font-medium text-white">{forecast.product?.name}</td>
-                        <td className="py-3 text-slate-400">{forecast.flavor?.name}</td>
-                        <td className="py-3 text-slate-400">{forecast.quantity}</td>
+                        <td className="py-3 font-medium text-white">{forecast.lines?.[0]?.product?.name}</td>
+                        <td className="py-3 text-slate-400">{forecast.lines?.[0]?.flavor?.name}</td>
+                        <td className="py-3 text-slate-400">{forecast.lines?.[0]?.quantity}</td>
                         <td className="py-3 text-slate-400">{forecast.requestedBy}</td>
                         <td className="py-3">
                           <Badge variant="outline" className={statusConfig[forecast.status].color}>
