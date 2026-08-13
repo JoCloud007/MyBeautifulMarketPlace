@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { useForecasts, useForecastStats, useCreateForecast, useUpdateForecast, useDeleteForecast, useProducts } from '@/hooks/useApi';
+import {
+  useForecasts, useForecastStats, useCreateForecast, useUpdateForecast, useDeleteForecast,
+  useProducts, useApplications, useContinuityLevels, useProductOptions,
+} from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

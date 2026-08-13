@@ -9,13 +9,6 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  ComposableMap,
-  Geographies,
-  Geography,
-  Marker,
-  ZoomableGroup,
-} from 'react-simple-maps';
-import {
   Cpu,
   Database,
   Server,
@@ -408,6 +401,9 @@ export default function ProductDetail() {
             <TabsTrigger value="overview" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Overview</TabsTrigger>
             <TabsTrigger value="documentation" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Documentation</TabsTrigger>
             <TabsTrigger value="roadmap" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Roadmap</TabsTrigger>
+            <TabsTrigger value="lifecycles" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Lifecycles</TabsTrigger>
+            <TabsTrigger value="options" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Options</TabsTrigger>
+            <TabsTrigger value="upgrade-paths" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Upgrade Paths</TabsTrigger>
             <TabsTrigger value="dependencies" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Dependencies</TabsTrigger>
             <TabsTrigger value="availability" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Availability</TabsTrigger>
           </TabsList>
@@ -504,6 +500,126 @@ export default function ProductDetail() {
                   <div className="text-center py-12">
                     <Map className="mx-auto h-10 w-10 text-slate-700" />
                     <p className="mt-3 text-slate-500">No roadmap available for this product.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Lifecycles */}
+          <TabsContent value="lifecycles" className="mt-4 animate-fade-in">
+            <Card className="bg-slate-900 border-slate-800">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-white">
+                  <Calendar className="h-5 w-5 text-blue-500" />
+                  Lifecycle Phases
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {product.lifecycles && product.lifecycles.length > 0 ? (
+                  <div className="space-y-3">
+                    {product.lifecycles.map((lc: any) => (
+                      <div key={lc.id} className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 px-4 py-3">
+                        <span className={`inline-block w-2 h-2 rounded-full ${
+                          lc.phase === 'RELEASED' ? 'bg-emerald-500' :
+                          lc.phase === 'NORMAL_SUPPORT' ? 'bg-blue-500' :
+                          lc.phase === 'EXTENDED_SUPPORT' ? 'bg-amber-500' :
+                          lc.phase === 'NO_SUPPORT' ? 'bg-orange-500' :
+                          'bg-red-500'
+                        }`} />
+                        <span className="font-medium text-white w-20">{lc.version}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {lc.phase.replace('_', ' ')}
+                        </Badge>
+                        <span className="text-slate-500 text-sm ml-auto">
+                          {new Date(lc.releaseDate).toLocaleDateString()} → {new Date(lc.eolDate).toLocaleDateString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Calendar className="mx-auto h-10 w-10 text-slate-700" />
+                    <p className="mt-3 text-slate-500">No lifecycle data available for this product.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Options */}
+          <TabsContent value="options" className="mt-4 animate-fade-in">
+            <Card className="bg-slate-900 border-slate-800">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-white">
+                  <Layers className="h-5 w-5 text-blue-500" />
+                  Product Options
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {product.options && product.options.length > 0 ? (
+                  <div className="space-y-3">
+                    {product.options.map((opt: any) => (
+                      <div key={opt.id} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <Badge variant="outline" className="text-xs text-slate-400 border-slate-700">{opt.type}</Badge>
+                          <span className="font-medium text-white">{opt.label}</span>
+                        </div>
+                        {opt.isDefault && (
+                          <Badge variant="secondary" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/20">Default</Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Layers className="mx-auto h-10 w-10 text-slate-700" />
+                    <p className="mt-3 text-slate-500">No options available for this product.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Upgrade Paths */}
+          <TabsContent value="upgrade-paths" className="mt-4 animate-fade-in">
+            <Card className="bg-slate-900 border-slate-800">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-white">
+                  <ArrowUpRight className="h-5 w-5 text-blue-500" />
+                  Upgrade Paths
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {((product as any).upgradeFrom?.length > 0 || (product as any).upgradeTo?.length > 0) ? (
+                  <div className="space-y-3">
+                    {(product as any).upgradeFrom?.map((up: any) => (
+                      <div key={up.id} className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 px-4 py-3">
+                        <span className="text-slate-400 text-sm">{up.fromVersion}</span>
+                        <ArrowRight className="h-4 w-4 text-cyan-500" />
+                        <span className="text-white font-medium text-sm">{up.toVersion}</span>
+                        <Badge variant="outline" className="text-xs text-slate-400 border-slate-700 ml-2">{up.migrationType}</Badge>
+                        {up.toProduct && up.toProduct.id !== product.id && (
+                          <Link to={`/products/${up.toProduct.slug}`} className="ml-auto text-xs text-blue-400 hover:underline">{up.toProduct.name}</Link>
+                        )}
+                      </div>
+                    ))}
+                    {(product as any).upgradeTo?.map((up: any) => (
+                      <div key={up.id} className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 px-4 py-3">
+                        <span className="text-slate-400 text-sm">{up.fromVersion}</span>
+                        <ArrowRight className="h-4 w-4 text-cyan-500" />
+                        <span className="text-white font-medium text-sm">{up.toVersion}</span>
+                        <Badge variant="outline" className="text-xs text-slate-400 border-slate-700 ml-2">{up.migrationType}</Badge>
+                        {up.fromProduct && up.fromProduct.id !== product.id && (
+                          <span className="ml-auto text-xs text-slate-500">from {up.fromProduct.name}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <ArrowUpRight className="mx-auto h-10 w-10 text-slate-700" />
+                    <p className="mt-3 text-slate-500">No upgrade paths declared for this product.</p>
                   </div>
                 )}
               </CardContent>
@@ -654,43 +770,18 @@ export default function ProductDetail() {
                 </CardHeader>
                 <CardContent className="p-0">
                   {productAzs.length > 0 ? (
-                    <div className="relative h-[300px] w-full bg-slate-950">
-                      <ComposableMap
-                        projection="geoMercator"
-                        projectionConfig={{ scale: 120 }}
-                        style={{ width: '100%', height: '100%' }}
-                      >
-                        <ZoomableGroup center={mapCenter} zoom={1}>
-                          <Geographies geography={geoUrl}>
-                            {({ geographies }) =>
-                              geographies.map((geo) => (
-                                <Geography
-                                  key={geo.rsmKey}
-                                  geography={geo}
-                                  fill="#1e293b"
-                                  stroke="#334155"
-                                  strokeWidth={0.5}
-                                  style={{
-                                    default: { outline: 'none' },
-                                    hover: { fill: '#334155', outline: 'none' },
-                                    pressed: { outline: 'none' },
-                                  }}
-                                />
-                              ))
-                            }
-                          </Geographies>
+                    <div className="relative h-[300px] w-full bg-slate-950 flex items-center justify-center">
+                      <div className="text-center">
+                        <Globe className="mx-auto h-12 w-12 text-slate-700" />
+                        <p className="mt-3 text-sm text-slate-500">{productAzs.length} availability zones</p>
+                        <div className="mt-2 flex flex-wrap gap-2 justify-center">
                           {productAzs.map((az) => (
-                            <Marker key={az.id} coordinates={[az.longitude, az.latitude]}>
-                              <circle
-                                r={6}
-                                fill={regionColors[az.region] || '#64748b'}
-                                stroke="#0f172a"
-                                strokeWidth={2}
-                              />
-                            </Marker>
+                            <span key={az.id} className="text-xs px-2 py-1 rounded bg-slate-900 text-slate-400 border border-slate-800">
+                              {az.code}
+                            </span>
                           ))}
-                        </ZoomableGroup>
-                      </ComposableMap>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-center py-12">

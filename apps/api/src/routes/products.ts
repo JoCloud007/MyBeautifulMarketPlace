@@ -38,6 +38,21 @@ const updateProductSchema = z.object({
   availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
 });
 
+const createOptionSchema = z.object({
+  type: z.enum(['OS_VERSION', 'EDITION', 'FEATURE']),
+  value: z.string().min(1),
+  label: z.string().min(1),
+  isDefault: z.boolean().optional(),
+});
+
+const createLifecycleSchema = z.object({
+  version: z.string().min(1),
+  releaseDate: z.string().datetime(),
+  normalSupportEnd: z.string().datetime(),
+  extendedSupportEnd: z.string().datetime(),
+  eolDate: z.string().datetime(),
+});
+
 // GET /api/products
 router.get('/', async (req, res, next) => {
   try {
@@ -85,6 +100,8 @@ router.get('/', async (req, res, next) => {
         dependentProducts: {
           include: { product: { include: { category: true } } },
         },
+        options: true,
+        lifecycles: { orderBy: { releaseDate: 'desc' } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -101,13 +118,11 @@ router.post('/', async (req, res, next) => {
     const data = createProductSchema.parse(req.body);
     const { availabilityZoneIds, ...productData } = data;
 
-    // Check for duplicate slug
     const existing = await prisma.product.findUnique({ where: { slug: data.slug } });
     if (existing) {
       return res.status(409).json({ error: 'A product with this slug already exists' });
     }
 
-    // Validate availabilityZoneIds exist
     if (availabilityZoneIds && availabilityZoneIds.length > 0) {
       const zones = await prisma.availabilityZone.findMany({ where: { id: { in: availabilityZoneIds } } });
       if (zones.length !== availabilityZoneIds.length) {
@@ -134,6 +149,8 @@ router.post('/', async (req, res, next) => {
         dependentProducts: {
           include: { product: { include: { category: true } } },
         },
+        options: true,
+        lifecycles: true,
       },
     });
 
@@ -161,6 +178,10 @@ router.get('/:slug', async (req, res, next) => {
         dependentProducts: {
           include: { product: { include: { category: true, flavors: true } } },
         },
+        options: true,
+        lifecycles: { orderBy: { releaseDate: 'desc' } },
+        upgradeFrom: { include: { toProduct: { select: { id: true, name: true, slug: true } } } },
+        upgradeTo: { include: { fromProduct: { select: { id: true, name: true, slug: true } } } },
       },
     });
 
@@ -182,7 +203,6 @@ router.patch('/:id', async (req, res, next) => {
     const data = updateProductSchema.parse(req.body);
     const { availabilityZoneIds, ...productData } = data;
 
-    // Check for duplicate slug if updating slug
     if (data.slug) {
       const existing = await prisma.product.findUnique({ where: { slug: data.slug } });
       if (existing && existing.id !== id) {
@@ -191,7 +211,6 @@ router.patch('/:id', async (req, res, next) => {
     }
 
     if (availabilityZoneIds) {
-      // Validate new availabilityZoneIds exist before deleting old ones
       if (availabilityZoneIds.length > 0) {
         const zones = await prisma.availabilityZone.findMany({ where: { id: { in: availabilityZoneIds } } });
         if (zones.length !== availabilityZoneIds.length) {
@@ -224,6 +243,8 @@ router.patch('/:id', async (req, res, next) => {
           dependentProducts: {
             include: { product: { include: { category: true } } },
           },
+          options: true,
+          lifecycles: true,
         },
       });
     });
@@ -240,7 +261,6 @@ router.delete('/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
 
-    // Check for related records that would block deletion
     const product = await prisma.product.findUnique({
       where: { id },
       include: {
@@ -285,6 +305,248 @@ router.get('/:slug/forecasts', async (req, res, next) => {
     });
 
     res.json(forecasts);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ===== OPTIONS =====
+
+// GET /api/products/:id/options
+router.get('/:id/options', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    idParamSchema.parse(id);
+    const options = await prisma.productOption.findMany({
+      where: { productId: id },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(options);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/products/:id/options
+router.post('/:id/options', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    idParamSchema.parse(id);
+    const data = createOptionSchema.parse(req.body);
+
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const option = await prisma.productOption.create({
+      data: { ...data, productId: id },
+    });
+    res.status(201).json(option);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/products/:id/options/:optionId
+router.delete('/:id/options/:optionId', async (req, res, next) => {
+  try {
+    const { id, optionId } = req.params;
+    idParamSchema.parse(id);
+    idParamSchema.parse(optionId);
+
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const option = await prisma.productOption.findFirst({
+      where: { id: optionId, productId: id },
+    });
+    if (!option) {
+      return res.status(404).json({ error: 'Option not found for this product' });
+    }
+
+    await prisma.productOption.delete({ where: { id: optionId } });
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ===== LIFECYCLES =====
+
+// GET /api/products/:id/lifecycles
+router.get('/:id/lifecycles', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    idParamSchema.parse(id);
+    const lifecycles = await prisma.productLifecycle.findMany({
+      where: { productId: id },
+      orderBy: { releaseDate: 'desc' },
+    });
+    res.json(lifecycles);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/products/:id/lifecycles
+router.post('/:id/lifecycles', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    idParamSchema.parse(id);
+    const data = createLifecycleSchema.parse(req.body);
+
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const lifecycle = await prisma.productLifecycle.create({
+      data: {
+        productId: id,
+        version: data.version,
+        releaseDate: new Date(data.releaseDate),
+        normalSupportEnd: new Date(data.normalSupportEnd),
+        extendedSupportEnd: new Date(data.extendedSupportEnd),
+        eolDate: new Date(data.eolDate),
+      },
+    });
+    res.status(201).json(lifecycle);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/products/:id/lifecycles/:lifecycleId
+router.patch('/:id/lifecycles/:lifecycleId', async (req, res, next) => {
+  try {
+    const { id, lifecycleId } = req.params;
+    idParamSchema.parse(id);
+    idParamSchema.parse(lifecycleId);
+    const data = z.object({
+      version: z.string().optional(),
+      releaseDate: z.string().datetime().optional(),
+      normalSupportEnd: z.string().datetime().optional(),
+      extendedSupportEnd: z.string().datetime().optional(),
+      eolDate: z.string().datetime().optional(),
+      phase: z.enum(['RELEASED', 'NORMAL_SUPPORT', 'EXTENDED_SUPPORT', 'NO_SUPPORT', 'EOL']).optional(),
+    }).parse(req.body);
+
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const lifecycle = await prisma.productLifecycle.update({
+      where: { id: lifecycleId },
+      data: {
+        ...data,
+        releaseDate: data.releaseDate ? new Date(data.releaseDate) : undefined,
+        normalSupportEnd: data.normalSupportEnd ? new Date(data.normalSupportEnd) : undefined,
+        extendedSupportEnd: data.extendedSupportEnd ? new Date(data.extendedSupportEnd) : undefined,
+        eolDate: data.eolDate ? new Date(data.eolDate) : undefined,
+      },
+    });
+    res.json(lifecycle);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/products/:id/lifecycles/:lifecycleId
+router.delete('/:id/lifecycles/:lifecycleId', async (req, res, next) => {
+  try {
+    const { id, lifecycleId } = req.params;
+    idParamSchema.parse(id);
+    idParamSchema.parse(lifecycleId);
+
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const lifecycle = await prisma.productLifecycle.findFirst({
+      where: { id: lifecycleId, productId: id },
+    });
+    if (!lifecycle) {
+      return res.status(404).json({ error: 'Lifecycle not found for this product' });
+    }
+
+    await prisma.productLifecycle.delete({ where: { id: lifecycleId } });
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ===== UPGRADE PATHS =====
+
+// GET /api/products/:id/upgrade-paths
+router.get('/:id/upgrade-paths', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    idParamSchema.parse(id);
+    const paths = await prisma.upgradePath.findMany({
+      where: { fromProductId: id },
+      include: { toProduct: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(paths);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/products/:id/upgrade-paths
+router.post('/:id/upgrade-paths', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    idParamSchema.parse(id);
+    const data = z.object({
+      toProductId: z.string().uuid(),
+      fromVersion: z.string().min(1),
+      toVersion: z.string().min(1),
+      migrationType: z.enum(['IN_PLACE', 'REBUILD', 'BLUE_GREEN', 'SNAPSHOT']),
+      notes: z.string().optional(),
+    }).parse(req.body);
+
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const path = await prisma.upgradePath.create({
+      data: { ...data, fromProductId: id },
+    });
+    res.status(201).json(path);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/products/:id/upgrade-paths/:pathId
+router.delete('/:id/upgrade-paths/:pathId', async (req, res, next) => {
+  try {
+    const { id, pathId } = req.params;
+    idParamSchema.parse(id);
+    idParamSchema.parse(pathId);
+
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const path = await prisma.upgradePath.findFirst({
+      where: { id: pathId, fromProductId: id },
+    });
+    if (!path) {
+      return res.status(404).json({ error: 'Upgrade path not found for this product' });
+    }
+
+    await prisma.upgradePath.delete({ where: { id: pathId } });
+    res.status(204).send();
   } catch (err) {
     next(err);
   }

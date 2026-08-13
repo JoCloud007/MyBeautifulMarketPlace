@@ -19,7 +19,7 @@ describe('NotFound', () => {
         <NotFound />
       </MemoryRouter>
     );
-    expect(screen.getByText(/page introuvable/i)).toBeInTheDocument();
+    expect(screen.getByText(/page not found/i)).toBeInTheDocument();
   });
 
   it('renders description text', () => {
@@ -28,7 +28,7 @@ describe('NotFound', () => {
         <NotFound />
       </MemoryRouter>
     );
-    expect(screen.getByText(/la page que vous recherchez n'existe pas/i)).toBeInTheDocument();
+    expect(screen.getByText(/the page you are looking for does not exist/i)).toBeInTheDocument();
   });
 
   it('has link to home page', () => {
@@ -37,7 +37,7 @@ describe('NotFound', () => {
         <NotFound />
       </MemoryRouter>
     );
-    const homeLink = screen.getByRole('link', { name: /retour à l'accueil/i });
+    const homeLink = screen.getByRole('link', { name: /back to home/i });
     expect(homeLink).toHaveAttribute('href', '/');
   });
 
@@ -47,7 +47,7 @@ describe('NotFound', () => {
         <NotFound />
       </MemoryRouter>
     );
-    const marketplaceLink = screen.getByRole('link', { name: /explorer le catalogue/i });
+    const marketplaceLink = screen.getByRole('link', { name: /explore catalog/i });
     expect(marketplaceLink).toHaveAttribute('href', '/marketplace');
   });
 

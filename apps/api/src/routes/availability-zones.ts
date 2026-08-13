@@ -121,19 +121,24 @@ router.delete('/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
 
-    // Check for linked products
+    // Check for linked products, instances, and forecast lines
     const zone = await prisma.availabilityZone.findUnique({
       where: { id },
-      include: { _count: { select: { productAvailabilities: true } } },
+      include: { _count: { select: { productAvailabilities: true, instances: true, forecastLines: true } } },
     });
 
     if (!zone) {
       return res.status(404).json({ error: 'Availability zone not found' });
     }
 
-    if (zone._count.productAvailabilities > 0) {
+    const blocks: string[] = [];
+    if (zone._count.productAvailabilities > 0) blocks.push('linked products');
+    if (zone._count.instances > 0) blocks.push('instances');
+    if (zone._count.forecastLines > 0) blocks.push('forecast lines');
+
+    if (blocks.length > 0) {
       return res.status(409).json({
-        error: 'Cannot delete availability zone with linked products. Please remove product associations first.',
+        error: `Cannot delete availability zone with ${blocks.join(', ')}. Please remove them first.`,
       });
     }
 

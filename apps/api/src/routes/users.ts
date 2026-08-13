@@ -16,7 +16,7 @@ const createUserSchema = z.object({
 const updateUserSchema = z.object({
   email: z.string().email().optional(),
   name: z.string().min(1).optional(),
-  role: z.enum([UserRole.ADMIN, UserRole.USER]).optional(),
+  role: z.enum([UserRole.USER]).optional(),
 });
 
 // GET /api/users
@@ -53,6 +53,7 @@ router.post('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
     const user = await prisma.user.findUnique({ where: { id } });
 
     if (!user) {
