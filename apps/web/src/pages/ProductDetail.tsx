@@ -54,7 +54,7 @@ const regionColors: Record<string, string> = {
 const geoUrl = '/world-110m.json';
 
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString('fr-FR', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',

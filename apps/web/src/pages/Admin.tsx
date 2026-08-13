@@ -241,14 +241,14 @@ function DashboardSection() {
                     <tr key={forecast.id} className="hover:bg-slate-800/50 transition-colors">
                       <td className="py-3 font-medium text-white">{forecast.product?.name}</td>
                       <td className="py-3 text-slate-400">{forecast.flavor?.name}</td>
-                      <td className="py-3 text-slate-400">{forecast.quantity}</td>
+                      <td className="py-3 text-slate-400">{forecast.azDetails?.reduce((s, d) => s + d.quantity, 0) || 0}</td>
                       <td className="py-3">
                         <Badge variant="outline" className={statusConfig[forecast.status].color}>
                           {statusConfig[forecast.status].label}
                         </Badge>
                       </td>
                       <td className="py-3 text-slate-500">
-                        {new Date(forecast.createdAt).toLocaleDateString('en-US')}
+                        {new Date(forecast.createdAt).toLocaleDateString('fr-FR')}
                       </td>
                     </tr>
                   ))}
@@ -835,7 +835,7 @@ function ForecastsAdminSection() {
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <p className="font-medium text-white truncate">{forecast.product?.name}</p>
-          <p className="text-sm text-slate-400">{forecast.flavor?.name} × {forecast.quantity}</p>
+          <p className="text-sm text-slate-400">{forecast.flavor?.name} × {forecast.azDetails?.reduce((s, d) => s + d.quantity, 0) || 0}</p>
         </div>
         <Badge variant="outline" className={statusConfig[forecast.status].color + ' shrink-0 ml-2'}>
           {statusConfig[forecast.status].label}
@@ -843,7 +843,7 @@ function ForecastsAdminSection() {
       </div>
       <div className="mt-2 text-sm text-slate-400">
         <p>{forecast.requestedBy}</p>
-        <p className="text-xs text-slate-600">{new Date(forecast.createdAt).toLocaleDateString('en-US')}</p>
+        <p className="text-xs text-slate-600">{new Date(forecast.createdAt).toLocaleDateString('fr-FR')}</p>
       </div>
       <div className="mt-3 flex justify-end gap-1">
         {forecast.status === 'PENDING' && (
@@ -903,14 +903,14 @@ function ForecastsAdminSection() {
                       <tr key={forecast.id} className="hover:bg-slate-800/50 transition-colors">
                         <td className="py-3 font-medium text-white">{forecast.product?.name}</td>
                         <td className="py-3 text-slate-400">{forecast.flavor?.name}</td>
-                        <td className="py-3 text-slate-400">{forecast.quantity}</td>
+                        <td className="py-3 text-slate-400">{forecast.azDetails?.reduce((s, d) => s + d.quantity, 0) || 0}</td>
                         <td className="py-3 text-slate-400">{forecast.requestedBy}</td>
                         <td className="py-3">
                           <Badge variant="outline" className={statusConfig[forecast.status].color}>
                             {statusConfig[forecast.status].label}
                           </Badge>
                         </td>
-                        <td className="py-3 text-slate-500">{new Date(forecast.createdAt).toLocaleDateString('en-US')}</td>
+                        <td className="py-3 text-slate-500">{new Date(forecast.createdAt).toLocaleDateString('fr-FR')}</td>
                         <td className="py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
                             {forecast.status === 'PENDING' && (
@@ -983,7 +983,7 @@ function UsersSection() {
           {u.role}
         </Badge>
       </div>
-      <p className="mt-2 text-xs text-slate-500">{new Date(u.createdAt).toLocaleDateString('en-US')}</p>
+      <p className="mt-2 text-xs text-slate-500">{new Date(u.createdAt).toLocaleDateString('fr-FR')}</p>
       <div className="mt-3 flex justify-end gap-1">
         <Button size="sm" variant="ghost" onClick={() => openEdit(u)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
         <Button size="sm" variant="ghost" onClick={() => handleDelete(u.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
@@ -1008,7 +1008,7 @@ function UsersSection() {
                     {u.role}
                   </Badge>
                 </td>
-                <td className="py-3 text-slate-400">{new Date(u.createdAt).toLocaleDateString('en-US')}</td>
+                <td className="py-3 text-slate-400">{new Date(u.createdAt).toLocaleDateString('fr-FR')}</td>
                 <td className="py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button size="sm" variant="ghost" onClick={() => openEdit(u)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>

@@ -94,7 +94,7 @@ function ForecastCard({ forecast, onApprove, onReject, onDelete }: {
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <p className="font-medium text-white truncate">{forecast.product?.name}</p>
-          <p className="text-sm text-slate-400">{forecast.flavor?.name} × {forecast.quantity}</p>
+          <p className="text-sm text-slate-400">{forecast.flavor?.name} × {forecast.azDetails?.reduce((s, d) => s + d.quantity, 0) || 0}</p>
         </div>
         <Badge variant="outline" className={`gap-1 shrink-0 ml-2 ${status.color}`}>
           <StatusIcon className="h-3 w-3" />
@@ -174,9 +174,8 @@ export default function Forecasts() {
     flavorId: '',
     requestedBy: '',
     requesterEmail: '',
-    quantity: 1,
     targetDate: '',
-    availabilityZones: [] as string[],
+    azQuantities: {} as Record<string, number>,
     justification: '',
   });
 
@@ -195,16 +194,27 @@ export default function Forecasts() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    await createForecast.mutateAsync(formData);
+    const azDetails = Object.entries(formData.azQuantities)
+      .filter(([, qty]) => qty > 0)
+      .map(([azCode, quantity]) => ({ azCode, quantity }));
+    await createForecast.mutateAsync({
+      productId: formData.productId,
+      flavorId: formData.flavorId,
+      requestedBy: formData.requestedBy,
+      requesterEmail: formData.requesterEmail,
+      targetDate: formData.targetDate,
+      availabilityZones: Object.keys(formData.azQuantities).filter((code) => formData.azQuantities[code] > 0),
+      azDetails,
+      justification: formData.justification,
+    } as any);
     setIsCreateOpen(false);
     setFormData({
       productId: '',
       flavorId: '',
       requestedBy: '',
       requesterEmail: '',
-      quantity: 1,
       targetDate: '',
-      availabilityZones: [],
+      azQuantities: {},
       justification: '',
     });
   };
@@ -393,7 +403,7 @@ export default function Forecasts() {
                               <tr key={forecast.id} className="hover:bg-slate-800/50 transition-colors">
                                 <td className="py-3 font-medium text-white">{forecast.product?.name}</td>
                                 <td className="py-3 text-slate-400">{forecast.flavor?.name}</td>
-                                <td className="py-3 text-slate-400">{forecast.quantity}</td>
+                                <td className="py-3 text-slate-400">{forecast.azDetails?.reduce((s, d) => s + d.quantity, 0) || 0}</td>
                                 <td className="py-3 text-slate-400">
                                   <div>{forecast.requestedBy}</div>
                                   <div className="text-xs text-slate-600">{forecast.requesterEmail}</div>
@@ -534,26 +544,42 @@ export default function Forecasts() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs text-slate-400 uppercase tracking-wide mb-2 block">Availability Zones</label>
-                      <div className="flex flex-wrap gap-1.5">
+                      <div className="space-y-1.5">
                         {zones?.map((z) => (
-                          <button
-                            key={z.id}
-                            type="button"
-                            onClick={() => {
-                              const codes = formData.availabilityZones;
-                              const newCodes = codes.includes(z.code)
-                                ? codes.filter((c) => c !== z.code)
-                                : [...codes, z.code];
-                              setFormData({ ...formData, availabilityZones: newCodes });
-                            }}
-                            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                              formData.availabilityZones.includes(z.code)
-                                ? 'bg-blue-500/20 border border-blue-500 text-blue-400'
-                                : 'bg-slate-800 border border-slate-700 text-slate-400 hover:border-slate-500'
-                            }`}
-                          >
-                            {formData.availabilityZones.includes(z.code) ? '✓ ' : ''}{z.name}
-                          </button>
+                          <div key={z.id} className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const qty = formData.azQuantities[z.code] || 0;
+                                setFormData({
+                                  ...formData,
+                                  azQuantities: { ...formData.azQuantities, [z.code]: qty > 0 ? 0 : 1 },
+                                });
+                              }}
+                              className={`flex-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all text-left ${
+                                (formData.azQuantities[z.code] || 0) > 0
+                                  ? 'bg-blue-500/20 border border-blue-500 text-blue-400'
+                                  : 'bg-slate-800 border border-slate-700 text-slate-400 hover:border-slate-500'
+                              }`}
+                            >
+                              {(formData.azQuantities[z.code] || 0) > 0 ? '✓ ' : ''}{z.name}
+                            </button>
+                            {(formData.azQuantities[z.code] || 0) > 0 && (
+                              <Input
+                                type="number"
+                                min={1}
+                                value={formData.azQuantities[z.code]}
+                                onChange={(e) => {
+                                  const qty = parseInt(e.target.value) || 1;
+                                  setFormData({
+                                    ...formData,
+                                    azQuantities: { ...formData.azQuantities, [z.code]: qty },
+                                  });
+                                }}
+                                className="w-16 bg-slate-950 border-slate-700 text-white text-center text-xs h-8 px-1"
+                              />
+                            )}
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -576,17 +602,6 @@ export default function Forecasts() {
                     <label className="text-sm font-semibold text-slate-200">Request Details</label>
                   </div>
                   <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Quantity</label>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={formData.quantity}
-                        onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
-                        required
-                        className="bg-slate-950 border-slate-700 text-white min-h-[44px] text-center"
-                      />
-                    </div>
                     <div>
                       <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Requester</label>
                       <Input
@@ -632,7 +647,7 @@ export default function Forecasts() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={createForecast.isPending || !formData.productId || !formData.flavorId}
+                    disabled={createForecast.isPending || !formData.productId || !formData.flavorId || Object.values(formData.azQuantities).filter((q) => q > 0).length === 0}
                     className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]"
                   >
                     {createForecast.isPending ? 'Creating...' : 'Create Request'}
@@ -671,12 +686,18 @@ export default function Forecasts() {
                     </>
                   )}
 
-                  {formData.availabilityZones.length > 0 && (
+                  {Object.entries(formData.azQuantities).filter(([, q]) => q > 0).length > 0 && (
                     <>
                       <div className="h-px bg-slate-700" />
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-400">Regions</span>
-                        <span className="font-medium text-white text-right">{formData.availabilityZones.join(', ')}</span>
+                      <div className="space-y-1">
+                        {Object.entries(formData.azQuantities)
+                          .filter(([, q]) => q > 0)
+                          .map(([code, qty]) => (
+                            <div key={code} className="flex justify-between text-sm">
+                              <span className="text-slate-400">{zones?.find((z) => z.code === code)?.name || code}</span>
+                              <span className="font-medium text-white">{qty} instances</span>
+                            </div>
+                          ))}
                       </div>
                     </>
                   )}
@@ -684,24 +705,17 @@ export default function Forecasts() {
                   {formData.targetDate && (
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-400">Target Date</span>
-                      <span className="font-medium text-white">{new Date(formData.targetDate).toLocaleDateString()}</span>
+                      <span className="font-medium text-white">{new Date(formData.targetDate).toLocaleDateString('fr-FR')}</span>
                     </div>
                   )}
 
-                  {formData.quantity > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-400">Quantity</span>
-                      <span className="font-medium text-white">{formData.quantity} instances</span>
-                    </div>
-                  )}
-
-                  {selectedFlavor && formData.quantity > 0 && (
+                  {selectedFlavor && Object.values(formData.azQuantities).filter((q) => q > 0).length > 0 && (
                     <>
                       <div className="h-px bg-slate-700" />
                       <div className="flex justify-between items-center">
                         <span className="text-sm font-semibold text-slate-200">Total Resources</span>
                         <span className="text-lg font-bold text-blue-400">
-                          {selectedFlavor.vcpu * formData.quantity} vCPU · {selectedFlavor.ramGb * formData.quantity} GB
+                          {selectedFlavor.vcpu * Object.values(formData.azQuantities).reduce((a, b) => a + b, 0)} vCPU · {selectedFlavor.ramGb * Object.values(formData.azQuantities).reduce((a, b) => a + b, 0)} GB
                         </span>
                       </div>
                     </>

@@ -11,9 +11,12 @@ const createForecastSchema = z.object({
   flavorId: z.string().uuid(),
   requestedBy: z.string().min(1),
   requesterEmail: z.string().email(),
-  quantity: z.number().int().min(1),
   targetDate: z.string().datetime().optional(),
   availabilityZones: z.array(z.string()).optional(),
+  azDetails: z.array(z.object({
+    azCode: z.string().min(1),
+    quantity: z.number().int().min(1),
+  })).optional(),
   justification: z.string().optional(),
 });
 
@@ -37,7 +40,7 @@ const updateForecastSchema = z.object({
 router.get('/', async (_req, res, next) => {
   try {
     const forecasts = await prisma.forecast.findMany({
-      include: { product: { include: { category: true } }, flavor: true },
+      include: { product: { include: { category: true } }, flavor: true, azDetails: true },
       orderBy: { createdAt: 'desc' },
     });
     res.json(forecasts);
@@ -82,12 +85,17 @@ router.post('/', requireAdminAuth, async (req, res, next) => {
         flavorId: data.flavorId,
         requestedBy: data.requestedBy,
         requesterEmail: data.requesterEmail,
-        quantity: data.quantity,
         targetDate: data.targetDate ? new Date(data.targetDate) : null,
         availabilityZones: data.availabilityZones || [],
         justification: data.justification,
+        azDetails: {
+          create: data.azDetails?.map((d) => ({
+            azCode: d.azCode,
+            quantity: d.quantity,
+          })) || [],
+        },
       },
-      include: { product: true, flavor: true },
+      include: { product: true, flavor: true, azDetails: true },
     });
     res.status(201).json(forecast);
   } catch (err) {

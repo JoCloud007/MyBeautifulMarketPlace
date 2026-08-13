@@ -67,24 +67,34 @@ model Dependency {
 }
 
 model Forecast {
-  id                String         @id @default(uuid())
+  id                String                       @id @default(uuid())
   productId         String
-  product           Product        @relation(fields: [productId], references: [id])
+  product           Product                      @relation(fields: [productId], references: [id])
   flavorId          String
-  flavor            Flavor         @relation(fields: [flavorId], references: [id])
+  flavor            Flavor                       @relation(fields: [flavorId], references: [id])
   requestedBy       String
   requesterEmail    String
-  quantity          Int
   targetDate        DateTime?
   availabilityZones String[]
-  status            ApprovalStatus @default(PENDING)
+  status            ApprovalStatus               @default(PENDING)
   justification     String?
   reviewedBy        String?
   reviewedAt        DateTime?
   rejectionReason   String?
-  requestedAt       DateTime       @default(now())
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  requestedAt       DateTime                     @default(now())
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+  azDetails         ForecastAvailabilityZone[]
+}
+
+model ForecastAvailabilityZone {
+  id         String   @id @default(uuid())
+  forecastId String
+  forecast   Forecast @relation(fields: [forecastId], references: [id], onDelete: Cascade)
+  azCode     String
+  quantity   Int      @default(1)
+
+  @@unique([forecastId, azCode])
 }
 
 model AvailabilityZone {
