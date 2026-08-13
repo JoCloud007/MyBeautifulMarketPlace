@@ -1,6 +1,6 @@
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -20,22 +20,23 @@ model Category {
 }
 
 model Product {
-  id                String       @id @default(uuid())
+  id                String                      @id @default(uuid())
   name              String
-  slug              String       @unique
+  slug              String                      @unique
   description       String?
   categoryId        String
-  category          Category     @relation(fields: [categoryId], references: [id])
+  category          Category                    @relation(fields: [categoryId], references: [id])
   flavors           Flavor[]
-  dependencies      Dependency[] @relation("ProductDependencies")
-  dependentProducts Dependency[] @relation("ProductDependents")
-  forecasts         Forecast[]
+  dependencies      Dependency[]                @relation("ProductDependencies")
+  dependentProducts Dependency[]                @relation("ProductDependents")
+  forecastLines     ForecastLine[]
+  availabilityZones ProductAvailabilityZone[]
   documentation     String?
   roadmap           String?
   os                String?
-  isActive          Boolean      @default(true)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  isActive          Boolean                     @default(true)
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
 }
 
 model Flavor {
@@ -46,7 +47,7 @@ model Flavor {
   description String?
   productId   String
   product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  forecasts   Forecast[]
+  forecastLines ForecastLine[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -66,22 +67,60 @@ model Dependency {
 }
 
 model Forecast {
-  id              String         @id @default(uuid())
-  productId       String
-  product         Product        @relation(fields: [productId], references: [id])
-  flavorId        String
-  flavor          Flavor         @relation(fields: [flavorId], references: [id])
-  requestedBy     String
-  requesterEmail  String
-  quantity        Int
-  status          ApprovalStatus @default(PENDING)
-  justification   String?
-  reviewedBy      String?
-  reviewedAt      DateTime?
+  id             String         @id @default(uuid())
+  requestedBy    String
+  requesterEmail String
+  targetDate     DateTime?
+  status         ApprovalStatus @default(PENDING)
+  justification  String?
+  reviewedBy     String?
+  reviewedAt     DateTime?
   rejectionReason String?
-  requestedAt     DateTime       @default(now())
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  requestedAt    DateTime       @default(now())
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  lines          ForecastLine[]
+}
+
+model ForecastLine {
+  id         String           @id @default(uuid())
+  forecastId String
+  forecast   Forecast         @relation(fields: [forecastId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product          @relation(fields: [productId], references: [id])
+  flavorId   String
+  flavor     Flavor           @relation(fields: [flavorId], references: [id])
+  azCode     String
+  az         AvailabilityZone @relation(fields: [azCode], references: [code])
+  quantity   Int              @default(1)
+  metadata   Json?
+}
+
+model AvailabilityZone {
+  id                    String                      @id @default(uuid())
+  code                  String                      @unique
+  name                  String
+  city                  String
+  country               String
+  region                String
+  latitude              Float
+  longitude             Float
+  isActive              Boolean                     @default(true)
+  productAvailabilities ProductAvailabilityZone[]
+  forecastLines         ForecastLine[]
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+}
+
+model ProductAvailabilityZone {
+  id                 String           @id @default(uuid())
+  productId          String
+  product            Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  availabilityZoneId String
+  availabilityZone   AvailabilityZone @relation(fields: [availabilityZoneId], references: [id], onDelete: Cascade)
+  createdAt          DateTime         @default(now())
+
+  @@unique([productId, availabilityZoneId])
 }
 
 model User {

@@ -16,7 +16,7 @@ const forecastLineSchema = z.object({
 const createForecastSchema = z.object({
   requestedBy: z.string().min(1),
   requesterEmail: z.string().email(),
-  targetDate: z.string().datetime().optional(),
+  targetDate: z.preprocess((val) => (val === '' ? undefined : val), z.string().datetime().optional()),
   lines: z.array(forecastLineSchema).min(1),
   justification: z.string().optional(),
 });
