@@ -3,8 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
 import dotenv from 'dotenv';
+import { PrismaClient } from '@prisma/client';
 import { ZodError } from 'zod';
-import { prisma } from './db';
 
 import { productRoutes } from './routes/products';
 import { categoryRoutes } from './routes/categories';
@@ -12,19 +12,19 @@ import { forecastRoutes } from './routes/forecasts';
 import { flavorRoutes } from './routes/flavors';
 import { dependencyRoutes } from './routes/dependencies';
 import { userRoutes } from './routes/users';
-import { availabilityZoneRoutes } from './routes/availability-zones';
 import { adminRoutes } from './routes/admin';
 
 dotenv.config();
 
 const app = express();
+const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5192' }));
+app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
 app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], connectSrc: ["'self'", "http://localhost:3001", "http://127.0.0.1:3001"] } } }));
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
 }));
@@ -42,13 +42,10 @@ app.use('/api/forecasts', forecastRoutes);
 app.use('/api/flavors', flavorRoutes);
 app.use('/api/dependencies', dependencyRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/availability-zones', availabilityZoneRoutes);
-// Admin API key protection — fail closed when key is missing
+// Conditional admin API key protection (active only when ADMIN_API_KEY is set)
 const adminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const key = process.env.ADMIN_API_KEY;
-  if (!key) {
-    return res.status(401).json({ error: 'Admin API key not configured' });
-  }
+  if (!key) return next();
   const provided = req.headers['x-admin-api-key'];
   if (provided !== key) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -65,7 +62,6 @@ app.use((_req, res) => {
 // Global error handler
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (res.headersSent) {
-    console.error('Late error after headers sent:', err);
     return;
   }
 
@@ -84,11 +80,10 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 
   // Prisma unique constraint errors
   if (err.code === 'P2002') {
-    const target = err.meta?.target;
-    const targetStr = Array.isArray(target) ? target.join(', ') : (typeof target === 'string' ? target : 'field');
+    const target = err.meta?.target ? err.meta.target.join(', ') : 'field';
     return res.status(409).json({
       error: 'Conflict',
-      message: `A record with this ${targetStr} already exists`,
+      message: `A record with this ${target} already exists`,
     });
   }
 
@@ -109,7 +104,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   }
 
   const statusCode = err.status || 500;
-  const message = statusCode >= 500 ? 'Internal Server Error' : 'Request failed';
+  const message = statusCode >= 500 ? 'Internal Server Error' : (err.message || 'Internal Server Error');
   res.status(statusCode).json({
     error: message,
   });

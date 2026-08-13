@@ -38,6 +38,15 @@ export interface Product {
   updatedAt: string;
 }
 
+export interface ProductAvailabilityZone {
+  id: string;
+  productId: string;
+  availabilityZoneId: string;
+  availabilityZone: any;
+  code?: string;
+  createdAt: string;
+}
+
 export interface Flavor {
   id: string;
   name: string;

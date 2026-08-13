@@ -1,22 +1,15 @@
 import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
-import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AdminDashboard, AvailabilityZone } from '@cloudmarket/shared-types';
+import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User } from '@cloudmarket/shared-types';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: `${API_URL}/api`,
   headers: {
     'Content-Type': 'application/json',
   },
-});
-
-// Attach admin API key when present
-api.interceptors.request.use((config) => {
-  const adminKey = localStorage.getItem('adminApiKey') || import.meta.env.VITE_ADMIN_API_KEY || 'test-admin-key';
-  if (adminKey) {
-    config.headers['x-admin-api-key'] = adminKey;
-  }
-  return config;
 });
 
 // Global API error handler
@@ -42,26 +35,14 @@ async function fetchJson<T>(url: string, params?: Record<string, any>): Promise<
     });
     if (searchParams.toString()) fullUrl += '?' + searchParams.toString();
   }
-  const headers: Record<string, string> = {};
-  const adminKey = localStorage.getItem('adminApiKey') || 'test-admin-key';
-  if (adminKey) headers['x-admin-api-key'] = adminKey;
-  const res = await fetch(fullUrl, { headers });
+  const res = await fetch(fullUrl);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  const contentType = res.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    const text = await res.text();
-    throw new Error(`Expected JSON but got ${contentType}: ${text.slice(0, 200)}`);
-  }
-  try {
-    return await res.json();
-  } catch (err: any) {
-    throw new Error(`Invalid JSON response: ${err.message}`);
-  }
+  return res.json();
 }
 
 // ========== PRODUCTS ==========
 
-export function useProducts(filters?: { category?: string; os?: string; search?: string; availabilityZoneIds?: string }) {
+export function useProducts(filters?: { category?: string; os?: string; search?: string }) {
   return useQuery<Product[]>({
     queryKey: ['products', filters],
     queryFn: () => fetchJson('/products', filters),
@@ -75,7 +56,8 @@ export function useProduct(slug: string) {
     queryKey: ['product', slug],
     queryFn: () => fetchJson(`/products/${slug}`),
     enabled: !!slug,
-    retry: false,
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 
@@ -375,15 +357,15 @@ export function useCreateForecast() {
 export function useUpdateForecast() {
   const queryClient = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
-  return useMutation<Forecast, Error, { id: string } & Partial<Forecast>>({
-    mutationFn: async ({ id, ...payload }) => {
-      const { data } = await api.patch<Forecast>(`/forecasts/${id}`, payload);
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & Partial<Forecast>) => {
+      const { data } = await api.patch(`/forecasts/${id}`, payload);
       return data;
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['forecasts'] });
       queryClient.invalidateQueries({ queryKey: ['forecast-stats'] });
-      const status = variables.status;
+      const status = (variables as any).status;
       if (status === 'APPROVED') addToast('Request approved', 'success');
       else if (status === 'REJECTED') addToast('Request rejected', 'warning');
       else addToast('Request updated', 'success');
@@ -476,89 +458,10 @@ export function useDeleteUser() {
   });
 }
 
-// ========== AVAILABILITY ZONES ==========
-
-export function useAvailabilityZones() {
-  return useQuery<AvailabilityZone[]>({
-    queryKey: ['availability-zones'],
-    queryFn: () => fetchJson('/availability-zones'),
-    retry: 3,
-    retryDelay: 2000,
-  });
-}
-
-export function useAvailabilityZone(id: string) {
-  return useQuery<AvailabilityZone>({
-    queryKey: ['availability-zone', id],
-    queryFn: () => fetchJson(`/availability-zones/${id}`),
-    enabled: !!id,
-    retry: false,
-  });
-}
-
-export function useCreateAvailabilityZone() {
-  const queryClient = useQueryClient();
-  const addToast = useToastStore((s) => s.addToast);
-  return useMutation({
-    mutationFn: async (payload: Partial<AvailabilityZone>) => {
-      const { data } = await api.post('/availability-zones', payload);
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['availability-zones'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-availability-zones'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
-      addToast('Availability zone created successfully', 'success');
-    },
-    onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Error creating availability zone', 'error');
-    },
-  });
-}
-
-export function useUpdateAvailabilityZone() {
-  const queryClient = useQueryClient();
-  const addToast = useToastStore((s) => s.addToast);
-  return useMutation({
-    mutationFn: async ({ id, ...payload }: { id: string } & Partial<AvailabilityZone>) => {
-      const { data } = await api.patch(`/availability-zones/${id}`, payload);
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['availability-zones'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-availability-zones'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
-      addToast('Availability zone updated', 'success');
-    },
-    onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Error during update', 'error');
-    },
-  });
-}
-
-export function useDeleteAvailabilityZone() {
-  const queryClient = useQueryClient();
-  const addToast = useToastStore((s) => s.addToast);
-  return useMutation({
-    mutationFn: async (id: string) => {
-      await api.delete(`/availability-zones/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['availability-zones'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-availability-zones'] });
-      queryClient.invalidateQueries({ queryKey: ['admin-dashboard'] });
-      addToast('Availability zone deleted', 'success');
-    },
-    onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Unable to delete this availability zone', 'error');
-    },
-  });
-}
-
 // ========== ADMIN ==========
 
 export function useAdminDashboard() {
-  return useQuery<AdminDashboard>({
+  return useQuery({
     queryKey: ['admin-dashboard'],
     queryFn: () => fetchJson('/admin/dashboard'),
     retry: 3,
@@ -615,15 +518,6 @@ export function useAdminUsers() {
   return useQuery<User[]>({
     queryKey: ['admin-users'],
     queryFn: () => fetchJson('/admin/users'),
-    retry: 3,
-    retryDelay: 2000,
-  });
-}
-
-export function useAdminAvailabilityZones() {
-  return useQuery<AvailabilityZone[]>({
-    queryKey: ['admin-availability-zones'],
-    queryFn: () => fetchJson('/availability-zones'),
     retry: 3,
     retryDelay: 2000,
   });

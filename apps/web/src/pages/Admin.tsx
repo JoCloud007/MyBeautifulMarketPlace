@@ -7,10 +7,6 @@ import {
   useAdminDependencies,
   useAdminForecasts,
   useAdminUsers,
-  useAdminAvailabilityZones,
-  useCreateAvailabilityZone,
-  useUpdateAvailabilityZone,
-  useDeleteAvailabilityZone,
   useCreateProduct,
   useUpdateProduct,
   useDeleteProduct,
@@ -58,24 +54,16 @@ import {
   CheckCircle,
   XCircle,
   Search,
-  Eye,
   Link2,
   UserCog,
   Cpu,
-  Globe,
 } from 'lucide-react';
-import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone } from '@cloudmarket/shared-types';
+import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ApprovalStatus, { label: string; color: string }> = {
   PENDING: { label: 'Pending', color: 'border-amber-500/20 text-amber-500' },
   APPROVED: { label: 'Approved', color: 'border-emerald-500/20 text-emerald-500' },
   REJECTED: { label: 'Rejected', color: 'border-red-500/20 text-red-500' },
-};
-
-const azRegionColors: Record<string, string> = {
-  Europe: '#3b82f6',
-  'North America': '#10b981',
-  'Asia-Pacific': '#f59e0b',
 };
 
 function cn(...inputs: (string | undefined | false | null)[]) {
@@ -132,7 +120,7 @@ function ResponsiveTable({
     );
   }
 
-  if (!children || (Array.isArray(children) && children.length === 0)) {
+  if (!children) {
     return (
       <div className="text-center py-12">
         <p className="text-lg font-medium text-slate-400">{emptyMessage}</p>
@@ -169,11 +157,10 @@ function DashboardSection() {
   const { data: dashboard, isLoading, isError, refetch } = useAdminDashboard();
 
   const countCards = [
-    { label: 'Products', value: dashboard?.counts.products ?? 0, icon: Package, color: 'text-blue-400' },
-    { label: 'Categories', value: dashboard?.counts.categories ?? 0, icon: Layers, color: 'text-purple-400' },
-    { label: 'Forecasts', value: dashboard?.counts.forecasts ?? 0, icon: BarChart3, color: 'text-amber-400' },
-    { label: 'Users', value: dashboard?.counts.users ?? 0, icon: Users, color: 'text-emerald-400' },
-    { label: 'Regions', value: dashboard?.counts.availabilityZones ?? 0, icon: Globe, color: 'text-cyan-400' },
+    { label: 'Products', value: (dashboard as any)?.counts.products ?? 0, icon: Package, color: 'text-blue-400' },
+    { label: 'Categories', value: (dashboard as any)?.counts.categories ?? 0, icon: Layers, color: 'text-purple-400' },
+    { label: 'Forecasts', value: (dashboard as any)?.counts.forecasts ?? 0, icon: BarChart3, color: 'text-amber-400' },
+    { label: 'Users', value: (dashboard as any)?.counts.users ?? 0, icon: Users, color: 'text-emerald-400' },
   ];
 
   if (isError) {
@@ -183,13 +170,13 @@ function DashboardSection() {
   return (
     <div className="space-y-6">
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, i) => (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-28 rounded-lg bg-slate-800 animate-pulse-soft" />
           ))}
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {countCards.map((card, i) => {
             const Icon = card.icon;
             return (
@@ -223,7 +210,7 @@ function DashboardSection() {
                 <Skeleton key={i} className="h-12 rounded-lg bg-slate-800" />
               ))}
             </div>
-          ) : dashboard?.recentForecasts?.length === 0 ? (
+          ) : (dashboard as any)?.recentForecasts?.length === 0 ? (
             <p className="text-center text-slate-500 py-8">No recent activity.</p>
           ) : (
             <div className="overflow-x-auto">
@@ -238,24 +225,18 @@ function DashboardSection() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
-                  {dashboard?.recentForecasts?.map((forecast: Forecast) => (
+                  {(dashboard as any)?.recentForecasts?.map((forecast: Forecast) => (
                     <tr key={forecast.id} className="hover:bg-slate-800/50 transition-colors">
-                      <td className="py-3 font-medium text-white">
-                        {forecast.lines?.[0]?.product?.name}
-                        {forecast.lines && forecast.lines.length > 1 ? ` (+${forecast.lines.length - 1} more)` : ''}
-                      </td>
-                      <td className="py-3 text-slate-400">
-                        {forecast.lines?.[0]?.flavor?.name}
-                        {forecast.lines && forecast.lines.length > 1 ? ` (+${forecast.lines.length - 1} more)` : ''}
-                      </td>
-                      <td className="py-3 text-slate-400">{forecast.lines?.reduce((s, l) => s + l.quantity, 0) || 0}</td>
+                      <td className="py-3 font-medium text-white">{forecast.lines?.[0]?.product?.name}</td>
+                      <td className="py-3 text-slate-400">{forecast.lines?.[0]?.flavor?.name}</td>
+                      <td className="py-3 text-slate-400">{forecast.lines?.[0]?.quantity}</td>
                       <td className="py-3">
                         <Badge variant="outline" className={statusConfig[forecast.status].color}>
                           {statusConfig[forecast.status].label}
                         </Badge>
                       </td>
                       <td className="py-3 text-slate-500">
-                        {new Date(forecast.createdAt).toLocaleDateString('fr-FR')}
+                        {new Date(forecast.createdAt).toLocaleDateString('en-US')}
                       </td>
                     </tr>
                   ))}
@@ -273,7 +254,6 @@ function DashboardSection() {
 function ProductsSection() {
   const { data: products, isLoading, isError, refetch } = useAdminProducts();
   const { data: categories } = useAdminCategories();
-  const { data: availabilityZones } = useAdminAvailabilityZones();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
@@ -281,11 +261,11 @@ function ProductsSection() {
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState({
-    name: '', slug: '', description: '', categoryId: '', os: '', documentation: '', roadmap: '', isActive: true, availabilityZoneIds: [] as string[],
+    name: '', slug: '', description: '', categoryId: '', os: '', documentation: '', roadmap: '', isActive: true,
   });
 
   const resetForm = () => {
-    setForm({ name: '', slug: '', description: '', categoryId: '', os: '', documentation: '', roadmap: '', isActive: true, availabilityZoneIds: [] });
+    setForm({ name: '', slug: '', description: '', categoryId: '', os: '', documentation: '', roadmap: '', isActive: true });
     setEditing(null);
   };
 
@@ -296,35 +276,25 @@ function ProductsSection() {
       name: product.name, slug: product.slug, description: product.description || '',
       categoryId: product.categoryId, os: product.os || '', documentation: product.documentation || '',
       roadmap: product.roadmap || '', isActive: product.isActive,
-      availabilityZoneIds: product.availabilityZones?.map((az) => az.availabilityZoneId) || [],
     });
     setIsOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const payload = { ...form, slug: form.slug || form.name.toLowerCase().replace(/\s+/g, '-') };
-      if (editing) await updateProduct.mutateAsync({ id: editing.id, ...payload });
-      else await createProduct.mutateAsync(payload);
-      setIsOpen(false); resetForm();
-    } catch {
-      // error already toasted by mutation
-    }
+    const payload = { ...form, slug: form.slug || form.name.toLowerCase().replace(/\s+/g, '-') };
+    if (editing) await updateProduct.mutateAsync({ id: editing.id, ...payload });
+    else await createProduct.mutateAsync(payload);
+    setIsOpen(false); resetForm();
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this product?')) return;
-    try {
-      await deleteProduct.mutateAsync(id);
-    } catch {
-      // error already toasted by mutation
-    }
+    if (confirm('Delete this product?')) await deleteProduct.mutateAsync(id);
   };
 
   if (isError) return <QueryError message="Unable to load products." onRetry={refetch} />;
 
-  const mobileCards = products?.map((product: Product) => (
+  const mobileCards = products?.map((product) => (
     <MobileCard key={product.id}>
       <div className="flex items-start justify-between">
         <div>
@@ -365,7 +335,7 @@ function ProductsSection() {
             emptyMessage="No products"
             mobileCards={mobileCards}
           >
-            {products?.map((product: Product) => (
+            {products?.map((product) => (
               <tr key={product.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{product.name}</td>
                 <td className="py-3 text-slate-400">{product.category?.name}</td>
@@ -410,7 +380,7 @@ function ProductsSection() {
               <label className="text-sm font-medium text-slate-300">Category</label>
               <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                 <option value="">Choose...</option>
-                {categories?.map((c: Category) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
             </div>
             <div className="space-y-2">
@@ -428,27 +398,6 @@ function ProductsSection() {
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-300">Roadmap</label>
               <Textarea value={form.roadmap} onChange={(e) => setForm({ ...form, roadmap: e.target.value })} rows={3} className="bg-slate-950 border-slate-700 text-white" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Availability Zones</label>
-              <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto rounded-md border border-slate-700 bg-slate-950 p-2">
-                {availabilityZones?.map((az: AvailabilityZone) => (
-                  <label key={az.id} className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.availabilityZoneIds.includes(az.id)}
-                      onChange={(e) => {
-                        const ids = new Set(form.availabilityZoneIds);
-                        if (e.target.checked) ids.add(az.id);
-                        else ids.delete(az.id);
-                        setForm({ ...form, availabilityZoneIds: Array.from(ids) });
-                      }}
-                      className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600"
-                    />
-                    <span className="truncate">{az.name}</span>
-                  </label>
-                ))}
-              </div>
             </div>
             <div className="flex items-center gap-2">
               <input type="checkbox" id="isActive" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
@@ -484,28 +433,19 @@ function CategoriesSection() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const payload = { ...form, slug: form.slug || form.name.toLowerCase().replace(/\s+/g, '-'), icon: form.icon || undefined };
-      if (editing) await updateCategory.mutateAsync({ id: editing.id, ...payload });
-      else await createCategory.mutateAsync(payload);
-      setIsOpen(false); resetForm();
-    } catch {
-      // error already toasted by mutation
-    }
+    const payload = { ...form, slug: form.slug || form.name.toLowerCase().replace(/\s+/g, '-'), icon: form.icon || undefined };
+    if (editing) await updateCategory.mutateAsync({ id: editing.id, ...payload });
+    else await createCategory.mutateAsync(payload);
+    setIsOpen(false); resetForm();
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this category?')) return;
-    try {
-      await deleteCategory.mutateAsync(id);
-    } catch {
-      // error already toasted by mutation
-    }
+    if (confirm('Delete this category?')) await deleteCategory.mutateAsync(id);
   };
 
   if (isError) return <QueryError message="Unable to load categories." onRetry={refetch} />;
 
-  const mobileCards = categories?.map((cat: Category) => (
+  const mobileCards = categories?.map((cat) => (
     <MobileCard key={cat.id}>
       <div className="flex items-start justify-between">
         <div>
@@ -529,7 +469,7 @@ function CategoriesSection() {
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable headers={['Name', 'Slug', 'Description', 'Products']} isLoading={isLoading} emptyMessage="No categories" mobileCards={mobileCards}>
-            {categories?.map((cat: Category) => (
+            {categories?.map((cat) => (
               <tr key={cat.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{cat.name}</td>
                 <td className="py-3 text-slate-400">{cat.slug}</td>
@@ -584,27 +524,18 @@ function FlavorsSection() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      if (editing) await updateFlavor.mutateAsync({ id: editing.id, ...form });
-      else await createFlavor.mutateAsync(form);
-      setIsOpen(false); resetForm();
-    } catch {
-      // error already toasted by mutation
-    }
+    if (editing) await updateFlavor.mutateAsync({ id: editing.id, ...form });
+    else await createFlavor.mutateAsync(form);
+    setIsOpen(false); resetForm();
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this flavor?')) return;
-    try {
-      await deleteFlavor.mutateAsync(id);
-    } catch {
-      // error already toasted by mutation
-    }
+    if (confirm('Delete this flavor?')) await deleteFlavor.mutateAsync(id);
   };
 
   if (isError) return <QueryError message="Unable to load flavors." onRetry={refetch} />;
 
-  const mobileCards = flavors?.map((flavor: Flavor) => (
+  const mobileCards = flavors?.map((flavor) => (
     <MobileCard key={flavor.id}>
       <div className="flex items-start justify-between">
         <div>
@@ -630,7 +561,7 @@ function FlavorsSection() {
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable headers={['Name', 'Product', 'vCPU', 'RAM', 'Description']} isLoading={isLoading} emptyMessage="No flavors" mobileCards={mobileCards}>
-            {flavors?.map((flavor: Flavor) => (
+            {flavors?.map((flavor) => (
               <tr key={flavor.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{flavor.name}</td>
                 <td className="py-3 text-slate-400">{(flavor as any).product?.name}</td>
@@ -657,7 +588,7 @@ function FlavorsSection() {
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Product</label>
               <Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                 <option value="">Choose...</option>
-                {products?.map((p: Product) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -694,27 +625,18 @@ function DependenciesSection() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      if (editing) await updateDependency.mutateAsync({ id: editing.id, ...form, type: form.type as Dependency['type'] });
-      else await createDependency.mutateAsync({ ...form, type: form.type as Dependency['type'] });
-      setIsOpen(false); resetForm();
-    } catch {
-      // error already toasted by mutation
-    }
+    if (editing) await updateDependency.mutateAsync({ id: editing.id, ...form, type: form.type as Dependency['type'] });
+    else await createDependency.mutateAsync({ ...form, type: form.type as Dependency['type'] });
+    setIsOpen(false); resetForm();
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this dependency?')) return;
-    try {
-      await deleteDependency.mutateAsync(id);
-    } catch {
-      // error already toasted by mutation
-    }
+    if (confirm('Delete this dependency?')) await deleteDependency.mutateAsync(id);
   };
 
   if (isError) return <QueryError message="Unable to load dependencies." onRetry={refetch} />;
 
-  const mobileCards = dependencies?.map((dep: Dependency) => (
+  const mobileCards = dependencies?.map((dep) => (
     <MobileCard key={dep.id}>
       <div className="flex items-start justify-between">
         <div>
@@ -740,7 +662,7 @@ function DependenciesSection() {
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable headers={['Product', 'Depends on', 'Type', 'Description']} isLoading={isLoading} emptyMessage="No dependencies" mobileCards={mobileCards}>
-            {dependencies?.map((dep: Dependency) => (
+            {dependencies?.map((dep) => (
               <tr key={dep.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{dep.product?.name}</td>
                 <td className="py-3 text-slate-400">{dep.dependsOn?.name}</td>
@@ -769,13 +691,13 @@ function DependenciesSection() {
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Product</label>
               <Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                 <option value="">Choose...</option>
-                {products?.map((p: Product) => (<option key={p.id} value={p.id}>{p.name}</option>))}
+                {products?.map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
               </Select>
             </div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Depends on</label>
               <Select value={form.dependsOnId} onChange={(e) => setForm({ ...form, dependsOnId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                 <option value="">Choose...</option>
-                {products?.filter((p: Product) => p.id !== form.productId).map((p: Product) => (<option key={p.id} value={p.id}>{p.name}</option>))}
+                {products?.filter(p => p.id !== form.productId).map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
               </Select>
             </div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Type</label>
@@ -803,51 +725,33 @@ function ForecastsAdminSection() {
   const deleteForecast = useDeleteForecast();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ApprovalStatus | 'ALL'>('ALL');
-  const [detailForecast, setDetailForecast] = useState<Forecast | null>(null);
 
-  const filtered = forecasts?.filter((f: Forecast) => {
-    const matchesSearch = !searchQuery || f.lines?.some((l) => l.product?.name?.toLowerCase().includes(searchQuery.toLowerCase())) || f.requestedBy?.toLowerCase().includes(searchQuery.toLowerCase());
+  const filtered = forecasts?.filter((f) => {
+    const matchesSearch = !searchQuery || f.lines?.[0]?.product?.name?.toLowerCase().includes(searchQuery.toLowerCase()) || f.requestedBy?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'ALL' || f.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const handleApprove = async (id: string) => {
-    try {
-      await updateForecast.mutateAsync({ id, status: 'APPROVED' as Forecast['status'], reviewedBy: 'Admin' });
-    } catch {
-      // error already toasted by mutation
-    }
+    await updateForecast.mutateAsync({ id, status: 'APPROVED' as Forecast['status'], reviewedBy: 'Admin' });
   };
 
   const handleReject = async (id: string) => {
-    try {
-      await updateForecast.mutateAsync({ id, status: 'REJECTED' as Forecast['status'], reviewedBy: 'Admin', rejectionReason: 'Rejected via admin' });
-    } catch {
-      // error already toasted by mutation
-    }
+    await updateForecast.mutateAsync({ id, status: 'REJECTED' as Forecast['status'], reviewedBy: 'Admin', rejectionReason: 'Rejected via admin' });
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this request?')) return;
-    try {
-      await deleteForecast.mutateAsync(id);
-    } catch {
-      // error already toasted by mutation
-    }
+    if (confirm('Delete this request?')) await deleteForecast.mutateAsync(id);
   };
 
   if (isError) return <QueryError message="Unable to load forecasts." onRetry={refetch} />;
 
-  const mobileCards = filtered?.map((forecast: Forecast) => (
+  const mobileCards = filtered?.map((forecast) => (
     <MobileCard key={forecast.id}>
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-white truncate">
-            {forecast.lines?.length === 1 ? forecast.lines[0].product?.name : `${forecast.lines?.length ?? 0} products`}
-          </p>
-          <p className="text-sm text-slate-400">
-            {forecast.lines?.map((l) => `${l.flavor?.name} × ${l.quantity}`).join(', ')}
-          </p>
+          <p className="font-medium text-white truncate">{forecast.lines?.[0]?.product?.name}</p>
+          <p className="text-sm text-slate-400">{forecast.lines?.[0]?.flavor?.name} × {forecast.lines?.[0]?.quantity}</p>
         </div>
         <Badge variant="outline" className={statusConfig[forecast.status].color + ' shrink-0 ml-2'}>
           {statusConfig[forecast.status].label}
@@ -855,12 +759,9 @@ function ForecastsAdminSection() {
       </div>
       <div className="mt-2 text-sm text-slate-400">
         <p>{forecast.requestedBy}</p>
-        <p className="text-xs text-slate-600">{new Date(forecast.createdAt).toLocaleDateString('fr-FR')}</p>
+        <p className="text-xs text-slate-600">{new Date(forecast.createdAt).toLocaleDateString('en-US')}</p>
       </div>
       <div className="mt-3 flex justify-end gap-1">
-        <Button size="sm" variant="ghost" onClick={() => setDetailForecast(forecast)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
-          <Eye className="h-4 w-4" />
-        </Button>
         {forecast.status === 'PENDING' && (
           <>
             <Button size="sm" variant="ghost" onClick={() => handleApprove(forecast.id)} className="h-8 w-8 p-0 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10"><CheckCircle className="h-4 w-4" /></Button>
@@ -914,33 +815,30 @@ function ForecastsAdminSection() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {filtered?.map((forecast: Forecast, forecastIndex: number) => (
-                      forecast.lines?.map((line, lineIndex) => (
-                        <tr key={line.id} className={cn('hover:bg-slate-800/50 transition-colors', forecastIndex > 0 && lineIndex === 0 && 'border-t-2 border-slate-700')}>
-                          <td className="py-3 font-medium text-white">{line.product?.name}</td>
-                          <td className="py-3 text-slate-400">{line.flavor?.name}</td>
-                          <td className="py-3 text-slate-400">{line.quantity}</td>
-                          <td className="py-3 text-slate-400">{lineIndex === 0 ? forecast.requestedBy : ''}</td>
-                          <td className="py-3">{lineIndex === 0 ? <Badge variant="outline" className={statusConfig[forecast.status].color}>{statusConfig[forecast.status].label}</Badge> : ''}</td>
-                          <td className="py-3 text-slate-500">{lineIndex === 0 ? new Date(forecast.createdAt).toLocaleDateString('fr-FR') : ''}</td>
-                          <td className="py-3 text-right">
-                            {lineIndex === 0 && (
-                              <div className="flex items-center justify-end gap-1">
-                                <Button size="sm" variant="ghost" onClick={() => setDetailForecast(forecast)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                                {forecast.status === 'PENDING' && (
-                                  <>
-                                    <Button size="sm" variant="ghost" onClick={() => handleApprove(forecast.id)} className="h-8 w-8 p-0 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10"><CheckCircle className="h-4 w-4" /></Button>
-                                    <Button size="sm" variant="ghost" onClick={() => handleReject(forecast.id)} className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-500/10"><XCircle className="h-4 w-4" /></Button>
-                                  </>
-                                )}
-                                <Button size="sm" variant="ghost" onClick={() => handleDelete(forecast.id)} className="h-8 w-8 p-0 text-slate-500 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
-                              </div>
+                    {filtered?.map((forecast) => (
+                      <tr key={forecast.id} className="hover:bg-slate-800/50 transition-colors">
+                        <td className="py-3 font-medium text-white">{forecast.lines?.[0]?.product?.name}</td>
+                        <td className="py-3 text-slate-400">{forecast.lines?.[0]?.flavor?.name}</td>
+                        <td className="py-3 text-slate-400">{forecast.lines?.[0]?.quantity}</td>
+                        <td className="py-3 text-slate-400">{forecast.requestedBy}</td>
+                        <td className="py-3">
+                          <Badge variant="outline" className={statusConfig[forecast.status].color}>
+                            {statusConfig[forecast.status].label}
+                          </Badge>
+                        </td>
+                        <td className="py-3 text-slate-500">{new Date(forecast.createdAt).toLocaleDateString('en-US')}</td>
+                        <td className="py-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {forecast.status === 'PENDING' && (
+                              <>
+                                <Button size="sm" variant="ghost" onClick={() => handleApprove(forecast.id)} className="h-8 w-8 p-0 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10"><CheckCircle className="h-4 w-4" /></Button>
+                                <Button size="sm" variant="ghost" onClick={() => handleReject(forecast.id)} className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-500/10"><XCircle className="h-4 w-4" /></Button>
+                              </>
                             )}
-                          </td>
-                        </tr>
-                      ))
+                            <Button size="sm" variant="ghost" onClick={() => handleDelete(forecast.id)} className="h-8 w-8 p-0 text-slate-500 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                          </div>
+                        </td>
+                      </tr>
                     ))}
                   </tbody>
                 </table>
@@ -949,58 +847,6 @@ function ForecastsAdminSection() {
           )}
         </CardContent>
       </Card>
-
-      <Dialog open={!!detailForecast} onOpenChange={() => setDetailForecast(null)}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-white">Forecast details</DialogTitle>
-          </DialogHeader>
-          {detailForecast && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><span className="text-slate-400">Requester:</span> <span className="text-white">{detailForecast.requestedBy}</span></div>
-                <div><span className="text-slate-400">Email:</span> <span className="text-white">{detailForecast.requesterEmail}</span></div>
-                <div><span className="text-slate-400">Status:</span> <Badge variant="outline" className={statusConfig[detailForecast.status].color}>{statusConfig[detailForecast.status].label}</Badge></div>
-                <div><span className="text-slate-400">Date:</span> <span className="text-white">{new Date(detailForecast.createdAt).toLocaleDateString('fr-FR')}</span></div>
-                {detailForecast.targetDate && (
-                  <div><span className="text-slate-400">Target date:</span> <span className="text-white">{new Date(detailForecast.targetDate).toLocaleDateString('fr-FR')}</span></div>
-                )}
-              </div>
-              {detailForecast.justification && (
-                <div className="text-sm">
-                  <span className="text-slate-400">Justification:</span>
-                  <p className="mt-1 text-white">{detailForecast.justification}</p>
-                </div>
-              )}
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-800">
-                      <th className="pb-2 text-left font-medium text-slate-400">Product</th>
-                      <th className="pb-2 text-left font-medium text-slate-400">Flavor</th>
-                      <th className="pb-2 text-left font-medium text-slate-400">AZ</th>
-                      <th className="pb-2 text-right font-medium text-slate-400">Qty</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800">
-                    {detailForecast.lines?.map((line) => (
-                      <tr key={line.id}>
-                        <td className="py-2 font-medium text-white">{line.product?.name}</td>
-                        <td className="py-2 text-slate-400">{line.flavor?.name}</td>
-                        <td className="py-2 text-slate-400">{line.azCode}</td>
-                        <td className="py-2 text-right text-slate-400">{line.quantity}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <DialogFooter className="flex-col sm:flex-row gap-2">
-                <Button type="button" variant="outline" onClick={() => setDetailForecast(null)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Close</Button>
-              </DialogFooter>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -1022,27 +868,18 @@ function UsersSection() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      if (editing) await updateUser.mutateAsync({ id: editing.id, ...form });
-      else await createUser.mutateAsync(form);
-      setIsOpen(false); resetForm();
-    } catch {
-      // error already toasted by mutation
-    }
+    if (editing) await updateUser.mutateAsync({ id: editing.id, ...form });
+    else await createUser.mutateAsync(form);
+    setIsOpen(false); resetForm();
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this user?')) return;
-    try {
-      await deleteUser.mutateAsync(id);
-    } catch {
-      // error already toasted by mutation
-    }
+    if (confirm('Delete this user?')) await deleteUser.mutateAsync(id);
   };
 
   if (isError) return <QueryError message="Unable to load users." onRetry={refetch} />;
 
-  const mobileCards = users?.map((u: User) => (
+  const mobileCards = users?.map((u) => (
     <MobileCard key={u.id}>
       <div className="flex items-start justify-between">
         <div>
@@ -1053,7 +890,7 @@ function UsersSection() {
           {u.role}
         </Badge>
       </div>
-      <p className="mt-2 text-xs text-slate-500">{new Date(u.createdAt).toLocaleDateString('fr-FR')}</p>
+      <p className="mt-2 text-xs text-slate-500">{new Date(u.createdAt).toLocaleDateString('en-US')}</p>
       <div className="mt-3 flex justify-end gap-1">
         <Button size="sm" variant="ghost" onClick={() => openEdit(u)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
         <Button size="sm" variant="ghost" onClick={() => handleDelete(u.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
@@ -1069,7 +906,7 @@ function UsersSection() {
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable headers={['Name', 'Email', 'Role', 'Date']} isLoading={isLoading} emptyMessage="No users" mobileCards={mobileCards}>
-            {users?.map((u: User) => (
+            {users?.map((u) => (
               <tr key={u.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{u.name}</td>
                 <td className="py-3 text-slate-400">{u.email}</td>
@@ -1078,7 +915,7 @@ function UsersSection() {
                     {u.role}
                   </Badge>
                 </td>
-                <td className="py-3 text-slate-400">{new Date(u.createdAt).toLocaleDateString('fr-FR')}</td>
+                <td className="py-3 text-slate-400">{new Date(u.createdAt).toLocaleDateString('en-US')}</td>
                 <td className="py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button size="sm" variant="ghost" onClick={() => openEdit(u)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
@@ -1114,198 +951,6 @@ function UsersSection() {
   );
 }
 
-// ============ AVAILABILITY ZONES SECTION ============
-function AvailabilityZonesSection() {
-  const { data: zones, isLoading, isError, refetch } = useAdminAvailabilityZones();
-  const createAz = useCreateAvailabilityZone();
-  const updateAz = useUpdateAvailabilityZone();
-  const deleteAz = useDeleteAvailabilityZone();
-
-  const [isOpen, setIsOpen] = useState(false);
-  const [editing, setEditing] = useState<AvailabilityZone | null>(null);
-  const [form, setForm] = useState({
-    code: '', name: '', city: '', country: '', region: 'Europe', latitude: 0, longitude: 0, isActive: true,
-  });
-
-  const resetForm = () => {
-    setForm({ code: '', name: '', city: '', country: '', region: 'Europe', latitude: 0, longitude: 0, isActive: true });
-    setEditing(null);
-  };
-
-  const openCreate = () => { resetForm(); setIsOpen(true); };
-  const openEdit = (az: AvailabilityZone) => {
-    setEditing(az);
-    setForm({
-      code: az.code, name: az.name, city: az.city, country: az.country,
-      region: az.region, latitude: az.latitude, longitude: az.longitude, isActive: az.isActive,
-    });
-    setIsOpen(true);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      if (editing) await updateAz.mutateAsync({ id: editing.id, ...form });
-      else await createAz.mutateAsync(form);
-      setIsOpen(false); resetForm();
-    } catch {
-      // error already toasted by mutation
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this availability zone?')) return;
-    try {
-      await deleteAz.mutateAsync(id);
-    } catch {
-      // error already toasted by mutation
-    }
-  };
-
-  if (isError) return <QueryError message="Unable to load availability zones." onRetry={refetch} />;
-
-  const mobileCards = zones?.map((az: AvailabilityZone) => (
-    <MobileCard key={az.id}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="font-medium text-white">{az.name}</p>
-          <p className="text-sm text-slate-400">{az.code}</p>
-        </div>
-        <Badge variant="outline" className={az.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
-          {az.isActive ? 'Active' : 'Inactive'}
-        </Badge>
-      </div>
-      <p className="mt-1 text-xs text-slate-500">{az.city}, {az.country} &middot; {az.region}</p>
-      <div className="mt-3 flex justify-end gap-1">
-        <Button size="sm" variant="ghost" onClick={() => openEdit(az)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
-          <Pencil className="h-4 w-4" />
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => handleDelete(az.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10">
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
-    </MobileCard>
-  ));
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]">
-          <Plus className="mr-2 h-4 w-4" /> Add
-        </Button>
-      </div>
-      <Card className="bg-slate-900 border-slate-800">
-        <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable
-            headers={['Code', 'Name', 'City', 'Region', 'Active']}
-            isLoading={isLoading}
-            emptyMessage="No availability zones"
-            mobileCards={mobileCards}
-          >
-            {zones?.map((az: AvailabilityZone) => (
-              <tr key={az.id} className="hover:bg-slate-800/50 transition-colors">
-                <td className="py-3 font-mono text-xs text-slate-300">{az.code}</td>
-                <td className="py-3 font-medium text-white">{az.name}</td>
-                <td className="py-3 text-slate-400">{az.city}, {az.country}</td>
-                <td className="py-3">
-                  <Badge variant="outline" className="text-xs" style={{ borderColor: `${azRegionColors[az.region] || '#334155'}40`, color: azRegionColors[az.region] || '#94a3b8' }}>
-                    {az.region}
-                  </Badge>
-                </td>
-                <td className="py-3">
-                  <Badge variant="outline" className={az.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
-                    {az.isActive ? 'Active' : 'Inactive'}
-                  </Badge>
-                </td>
-                <td className="py-3 text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => openEdit(az)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => handleDelete(az.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </ResponsiveTable>
-        </CardContent>
-      </Card>
-
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-white">{editing ? 'Edit availability zone' : 'New availability zone'}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Code</label>
-                <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Name</label>
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">City</label>
-                <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Country</label>
-                <Input value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Region</label>
-              <select
-                value={form.region}
-                onChange={(e) => setForm({ ...form, region: e.target.value })}
-                required
-                className="h-10 min-h-[44px] w-full rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
-              >
-                {(['Europe', 'North America', 'Asia-Pacific'].includes(form.region) ? [] : [form.region]).map((r) => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-                <option value="Europe">Europe</option>
-                <option value="North America">North America</option>
-                <option value="Asia-Pacific">Asia-Pacific</option>
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Latitude</label>
-                <Input type="number" step="any" value={form.latitude} onChange={(e) => setForm({ ...form, latitude: parseFloat(e.target.value) || 0 })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Longitude</label>
-                <Input type="number" step="any" value={form.longitude} onChange={(e) => setForm({ ...form, longitude: parseFloat(e.target.value) || 0 })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="az-active"
-                checked={form.isActive}
-                onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-                className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-500"
-              />
-              <label htmlFor="az-active" className="text-sm text-slate-300">Active</label>
-            </div>
-            <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
 // ============ MAIN ADMIN PAGE ============
 export default function Admin() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -1316,7 +961,6 @@ export default function Admin() {
     { value: 'categories', label: 'Categories', icon: Layers },
     { value: 'flavors', label: 'Flavors', icon: Cpu },
     { value: 'dependencies', label: 'Dependencies', icon: Link2 },
-    { value: 'availability-zones', label: 'Regions', icon: Globe },
     { value: 'forecasts', label: 'Forecasts', icon: Activity },
     { value: 'users', label: 'Users', icon: UserCog },
   ];
@@ -1352,7 +996,6 @@ export default function Admin() {
         <TabsContent value="flavors" className="animate-fade-in"><FlavorsSection /></TabsContent>
         <TabsContent value="dependencies" className="animate-fade-in"><DependenciesSection /></TabsContent>
         <TabsContent value="forecasts" className="animate-fade-in"><ForecastsAdminSection /></TabsContent>
-        <TabsContent value="availability-zones" className="animate-fade-in"><AvailabilityZonesSection /></TabsContent>
         <TabsContent value="users" className="animate-fade-in"><UsersSection /></TabsContent>
       </Tabs>
     </div>
