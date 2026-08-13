@@ -93,6 +93,7 @@ export interface ProductLifecycle {
   extendedSupportEnd: string;
   eolDate: string;
   phase: LifecyclePhase;
+  osFamily: string | null;
   createdAt: string;
   updatedAt: string;
 }
