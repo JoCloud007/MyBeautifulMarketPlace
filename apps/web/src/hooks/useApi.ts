@@ -95,7 +95,8 @@ export function useUpdateProduct() {
       addToast('Product updated', 'success');
     },
     onError: (err: any) => {
-      const msg = err.response?.data?.message || err.response?.data?.error || 'Error during update';
+      console.error('Update forecast error:', err);
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Error during update';
       addToast(msg, 'error');
     },
   });
@@ -218,7 +219,9 @@ export function useCreateFlavor() {
       addToast('Flavor created successfully', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Error during creation', 'error');
+      console.error('Create forecast error:', err);
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Error during creation';
+      addToast(msg, 'error');
     },
   });
 }
