@@ -61,7 +61,7 @@ router.get('/dashboard', async (_req, res, next) => {
     const recentForecasts = await prisma.forecast.findMany({
       take: 10,
       orderBy: { createdAt: 'desc' },
-      include: { product: true, flavor: true },
+      include: { lines: { include: { product: true, flavor: true } } },
     });
 
     res.json({
@@ -83,7 +83,7 @@ router.get('/products', async (_req, res, next) => {
         category: true,
         flavors: true,
         availabilityZones: { include: { availabilityZone: true } },
-        _count: { select: { forecasts: true } },
+        _count: { select: { forecastLines: true } },
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -185,7 +185,7 @@ router.delete('/products/:id', async (req, res, next) => {
     const product = await prisma.product.findUnique({
       where: { id },
       include: {
-        _count: { select: { flavors: true, dependencies: true, dependentProducts: true, forecasts: true } },
+        _count: { select: { flavors: true, dependencies: true, dependentProducts: true, forecastLines: true } },
       },
     });
 
@@ -197,7 +197,7 @@ router.delete('/products/:id', async (req, res, next) => {
     if (product._count.flavors > 0) blocks.push('flavors');
     if (product._count.dependencies > 0) blocks.push('dependencies');
     if (product._count.dependentProducts > 0) blocks.push('dependent products');
-    if (product._count.forecasts > 0) blocks.push('forecasts');
+    if (product._count.forecastLines > 0) blocks.push('forecast lines');
 
     if (blocks.length > 0) {
       return res.status(409).json({
@@ -324,7 +324,7 @@ router.delete('/categories/:id', async (req, res, next) => {
 router.get('/flavors', async (_req, res, next) => {
   try {
     const flavors = await prisma.flavor.findMany({
-      include: { product: { include: { category: true } }, _count: { select: { forecasts: true } } },
+      include: { product: { include: { category: true } }, _count: { select: { forecastLines: true } } },
       orderBy: { createdAt: 'desc' },
     });
     res.json(flavors);
@@ -359,10 +359,10 @@ router.delete('/flavors/:id', async (req, res, next) => {
     // Check if flavor has associated forecasts
     const flavor = await prisma.flavor.findUnique({
       where: { id },
-      include: { _count: { select: { forecasts: true } } },
+      include: { _count: { select: { forecastLines: true } } },
     });
 
-    if (flavor && flavor._count.forecasts > 0) {
+    if (flavor && flavor._count.forecastLines > 0) {
       return res.status(409).json({
         error: 'Cannot delete flavor with existing forecasts. Please delete forecasts first.',
       });
@@ -448,7 +448,7 @@ router.delete('/dependencies/:id', async (req, res, next) => {
 router.get('/forecasts', async (_req, res, next) => {
   try {
     const forecasts = await prisma.forecast.findMany({
-      include: { product: { include: { category: true } }, flavor: true },
+      include: { lines: { include: { product: { include: { category: true } }, flavor: true } } },
       orderBy: { createdAt: 'desc' },
     });
     res.json(forecasts);

@@ -61,24 +61,23 @@ export interface Dependency {
   updatedAt: string;
 }
 
-export interface ForecastAvailabilityZone {
+export interface ForecastLine {
   id: string;
   forecastId: string;
+  productId: string;
+  product: Product;
+  flavorId: string;
+  flavor: Flavor;
   azCode: string;
   quantity: number;
 }
 
 export interface Forecast {
   id: string;
-  productId: string;
-  product: Product;
-  flavorId: string;
-  flavor: Flavor;
   requestedBy: string;
   requesterEmail: string;
   targetDate?: string;
-  availabilityZones?: string[];
-  azDetails?: ForecastAvailabilityZone[];
+  lines: ForecastLine[];
   status: ApprovalStatus;
   justification: string | null;
   reviewedBy: string | null;

@@ -6,17 +6,18 @@ import { requireAdminAuth } from '../middleware/auth';
 
 const router = Router();
 
-const createForecastSchema = z.object({
+const forecastLineSchema = z.object({
   productId: z.string().uuid(),
   flavorId: z.string().uuid(),
+  azCode: z.string().min(1),
+  quantity: z.number().int().min(1),
+});
+
+const createForecastSchema = z.object({
   requestedBy: z.string().min(1),
   requesterEmail: z.string().email(),
   targetDate: z.string().datetime().optional(),
-  availabilityZones: z.array(z.string()).optional(),
-  azDetails: z.array(z.object({
-    azCode: z.string().min(1),
-    quantity: z.number().int().min(1),
-  })).optional(),
+  lines: z.array(forecastLineSchema).min(1),
   justification: z.string().optional(),
 });
 
@@ -40,7 +41,7 @@ const updateForecastSchema = z.object({
 router.get('/', async (_req, res, next) => {
   try {
     const forecasts = await prisma.forecast.findMany({
-      include: { product: { include: { category: true } }, flavor: true, azDetails: true },
+      include: { lines: { include: { product: { include: { category: true } }, flavor: true } } },
       orderBy: { createdAt: 'desc' },
     });
     res.json(forecasts);
@@ -70,32 +71,42 @@ router.post('/', requireAdminAuth, async (req, res, next) => {
   try {
     const data = createForecastSchema.parse(req.body);
 
-    // Verify that the flavor belongs to the product
-    const flavor = await prisma.flavor.findUnique({ where: { id: data.flavorId } });
-    if (!flavor) {
-      return res.status(404).json({ error: 'Flavor not found' });
-    }
-    if (flavor.productId !== data.productId) {
-      return res.status(409).json({ error: 'The selected flavor does not belong to the specified product' });
+    for (const line of data.lines) {
+      const flavor = await prisma.flavor.findUnique({ where: { id: line.flavorId } });
+      if (!flavor) {
+        return res.status(404).json({ error: `Flavor not found: ${line.flavorId}` });
+      }
+      if (flavor.productId !== line.productId) {
+        return res.status(409).json({ error: `Flavor ${line.flavorId} does not belong to product ${line.productId}` });
+      }
+      const az = await prisma.availabilityZone.findUnique({ where: { code: line.azCode } });
+      if (!az) {
+        return res.status(404).json({ error: `Availability zone not found: ${line.azCode}` });
+      }
+      const offered = await prisma.productAvailabilityZone.findFirst({
+        where: { productId: line.productId, availabilityZoneId: az.id },
+      });
+      if (!offered) {
+        return res.status(409).json({ error: `Product ${line.productId} is not available in zone ${line.azCode}` });
+      }
     }
 
     const forecast = await prisma.forecast.create({
       data: {
-        productId: data.productId,
-        flavorId: data.flavorId,
         requestedBy: data.requestedBy,
         requesterEmail: data.requesterEmail,
         targetDate: data.targetDate ? new Date(data.targetDate) : null,
-        availabilityZones: data.availabilityZones || [],
         justification: data.justification,
-        azDetails: {
-          create: data.azDetails?.map((d) => ({
-            azCode: d.azCode,
-            quantity: d.quantity,
-          })) || [],
+        lines: {
+          create: data.lines.map((line) => ({
+            productId: line.productId,
+            flavorId: line.flavorId,
+            azCode: line.azCode,
+            quantity: line.quantity,
+          })),
         },
       },
-      include: { product: true, flavor: true, azDetails: true },
+      include: { lines: { include: { product: true, flavor: true } } },
     });
     res.status(201).json(forecast);
   } catch (err) {
@@ -118,7 +129,7 @@ router.patch('/:id', requireAdminAuth, async (req, res, next) => {
         reviewedAt: new Date(),
         rejectionReason: data.rejectionReason || null,
       },
-      include: { product: true, flavor: true },
+      include: { lines: { include: { product: true, flavor: true } } },
     });
 
     res.json(forecast);

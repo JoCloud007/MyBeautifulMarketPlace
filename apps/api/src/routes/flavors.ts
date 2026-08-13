@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../index';
+import { prisma } from '../db';
+import { requireAdminAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -36,7 +37,7 @@ router.get('/', async (req, res, next) => {
       where,
       include: {
         product: { include: { category: true } },
-        _count: { select: { forecasts: true } },
+        _count: { select: { forecastLines: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -48,7 +49,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST /api/flavors
-router.post('/', async (req, res, next) => {
+router.post('/', requireAdminAuth, async (req, res, next) => {
   try {
     const data = createFlavorSchema.parse(req.body);
 
@@ -79,7 +80,7 @@ router.get('/:id', async (req, res, next) => {
       where: { id },
       include: {
         product: { include: { category: true } },
-        _count: { select: { forecasts: true } },
+        _count: { select: { forecastLines: true } },
       },
     });
 
@@ -94,7 +95,7 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // PATCH /api/flavors/:id
-router.patch('/:id', async (req, res, next) => {
+router.patch('/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
     idParamSchema.parse(id);
@@ -123,7 +124,7 @@ router.patch('/:id', async (req, res, next) => {
 });
 
 // DELETE /api/flavors/:id
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
     idParamSchema.parse(id);
@@ -131,10 +132,10 @@ router.delete('/:id', async (req, res, next) => {
     // Check if flavor has associated forecasts
     const flavor = await prisma.flavor.findUnique({
       where: { id },
-      include: { _count: { select: { forecasts: true } } },
+      include: { _count: { select: { forecastLines: true } } },
     });
 
-    if (flavor && flavor._count.forecasts > 0) {
+    if (flavor && flavor._count.forecastLines > 0) {
       return res.status(409).json({
         error: 'Cannot delete flavor with existing forecasts. Please delete forecasts first.',
       });

@@ -58,6 +58,7 @@ import {
   CheckCircle,
   XCircle,
   Search,
+  Eye,
   Link2,
   UserCog,
   Cpu,
@@ -239,9 +240,15 @@ function DashboardSection() {
                 <tbody className="divide-y divide-slate-800">
                   {dashboard?.recentForecasts?.map((forecast: Forecast) => (
                     <tr key={forecast.id} className="hover:bg-slate-800/50 transition-colors">
-                      <td className="py-3 font-medium text-white">{forecast.product?.name}</td>
-                      <td className="py-3 text-slate-400">{forecast.flavor?.name}</td>
-                      <td className="py-3 text-slate-400">{forecast.azDetails?.reduce((s, d) => s + d.quantity, 0) || 0}</td>
+                      <td className="py-3 font-medium text-white">
+                        {forecast.lines?.[0]?.product?.name}
+                        {forecast.lines && forecast.lines.length > 1 ? ` (+${forecast.lines.length - 1} more)` : ''}
+                      </td>
+                      <td className="py-3 text-slate-400">
+                        {forecast.lines?.[0]?.flavor?.name}
+                        {forecast.lines && forecast.lines.length > 1 ? ` (+${forecast.lines.length - 1} more)` : ''}
+                      </td>
+                      <td className="py-3 text-slate-400">{forecast.lines?.reduce((s, l) => s + l.quantity, 0) || 0}</td>
                       <td className="py-3">
                         <Badge variant="outline" className={statusConfig[forecast.status].color}>
                           {statusConfig[forecast.status].label}
@@ -796,9 +803,10 @@ function ForecastsAdminSection() {
   const deleteForecast = useDeleteForecast();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ApprovalStatus | 'ALL'>('ALL');
+  const [detailForecast, setDetailForecast] = useState<Forecast | null>(null);
 
   const filtered = forecasts?.filter((f: Forecast) => {
-    const matchesSearch = !searchQuery || f.product?.name?.toLowerCase().includes(searchQuery.toLowerCase()) || f.requestedBy?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = !searchQuery || f.lines?.some((l) => l.product?.name?.toLowerCase().includes(searchQuery.toLowerCase())) || f.requestedBy?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'ALL' || f.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -834,8 +842,12 @@ function ForecastsAdminSection() {
     <MobileCard key={forecast.id}>
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-white truncate">{forecast.product?.name}</p>
-          <p className="text-sm text-slate-400">{forecast.flavor?.name} × {forecast.azDetails?.reduce((s, d) => s + d.quantity, 0) || 0}</p>
+          <p className="font-medium text-white truncate">
+            {forecast.lines?.length === 1 ? forecast.lines[0].product?.name : `${forecast.lines?.length ?? 0} products`}
+          </p>
+          <p className="text-sm text-slate-400">
+            {forecast.lines?.map((l) => `${l.flavor?.name} × ${l.quantity}`).join(', ')}
+          </p>
         </div>
         <Badge variant="outline" className={statusConfig[forecast.status].color + ' shrink-0 ml-2'}>
           {statusConfig[forecast.status].label}
@@ -846,6 +858,9 @@ function ForecastsAdminSection() {
         <p className="text-xs text-slate-600">{new Date(forecast.createdAt).toLocaleDateString('fr-FR')}</p>
       </div>
       <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => setDetailForecast(forecast)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
+          <Eye className="h-4 w-4" />
+        </Button>
         {forecast.status === 'PENDING' && (
           <>
             <Button size="sm" variant="ghost" onClick={() => handleApprove(forecast.id)} className="h-8 w-8 p-0 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10"><CheckCircle className="h-4 w-4" /></Button>
@@ -899,30 +914,33 @@ function ForecastsAdminSection() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
-                    {filtered?.map((forecast: Forecast) => (
-                      <tr key={forecast.id} className="hover:bg-slate-800/50 transition-colors">
-                        <td className="py-3 font-medium text-white">{forecast.product?.name}</td>
-                        <td className="py-3 text-slate-400">{forecast.flavor?.name}</td>
-                        <td className="py-3 text-slate-400">{forecast.azDetails?.reduce((s, d) => s + d.quantity, 0) || 0}</td>
-                        <td className="py-3 text-slate-400">{forecast.requestedBy}</td>
-                        <td className="py-3">
-                          <Badge variant="outline" className={statusConfig[forecast.status].color}>
-                            {statusConfig[forecast.status].label}
-                          </Badge>
-                        </td>
-                        <td className="py-3 text-slate-500">{new Date(forecast.createdAt).toLocaleDateString('fr-FR')}</td>
-                        <td className="py-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            {forecast.status === 'PENDING' && (
-                              <>
-                                <Button size="sm" variant="ghost" onClick={() => handleApprove(forecast.id)} className="h-8 w-8 p-0 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10"><CheckCircle className="h-4 w-4" /></Button>
-                                <Button size="sm" variant="ghost" onClick={() => handleReject(forecast.id)} className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-500/10"><XCircle className="h-4 w-4" /></Button>
-                              </>
+                    {filtered?.map((forecast: Forecast, forecastIndex: number) => (
+                      forecast.lines?.map((line, lineIndex) => (
+                        <tr key={line.id} className={cn('hover:bg-slate-800/50 transition-colors', forecastIndex > 0 && lineIndex === 0 && 'border-t-2 border-slate-700')}>
+                          <td className="py-3 font-medium text-white">{line.product?.name}</td>
+                          <td className="py-3 text-slate-400">{line.flavor?.name}</td>
+                          <td className="py-3 text-slate-400">{line.quantity}</td>
+                          <td className="py-3 text-slate-400">{lineIndex === 0 ? forecast.requestedBy : ''}</td>
+                          <td className="py-3">{lineIndex === 0 ? <Badge variant="outline" className={statusConfig[forecast.status].color}>{statusConfig[forecast.status].label}</Badge> : ''}</td>
+                          <td className="py-3 text-slate-500">{lineIndex === 0 ? new Date(forecast.createdAt).toLocaleDateString('fr-FR') : ''}</td>
+                          <td className="py-3 text-right">
+                            {lineIndex === 0 && (
+                              <div className="flex items-center justify-end gap-1">
+                                <Button size="sm" variant="ghost" onClick={() => setDetailForecast(forecast)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                                {forecast.status === 'PENDING' && (
+                                  <>
+                                    <Button size="sm" variant="ghost" onClick={() => handleApprove(forecast.id)} className="h-8 w-8 p-0 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10"><CheckCircle className="h-4 w-4" /></Button>
+                                    <Button size="sm" variant="ghost" onClick={() => handleReject(forecast.id)} className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-500/10"><XCircle className="h-4 w-4" /></Button>
+                                  </>
+                                )}
+                                <Button size="sm" variant="ghost" onClick={() => handleDelete(forecast.id)} className="h-8 w-8 p-0 text-slate-500 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                              </div>
                             )}
-                            <Button size="sm" variant="ghost" onClick={() => handleDelete(forecast.id)} className="h-8 w-8 p-0 text-slate-500 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
-                          </div>
-                        </td>
-                      </tr>
+                          </td>
+                        </tr>
+                      ))
                     ))}
                   </tbody>
                 </table>
@@ -931,6 +949,58 @@ function ForecastsAdminSection() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!detailForecast} onOpenChange={() => setDetailForecast(null)}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-white">Forecast details</DialogTitle>
+          </DialogHeader>
+          {detailForecast && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div><span className="text-slate-400">Requester:</span> <span className="text-white">{detailForecast.requestedBy}</span></div>
+                <div><span className="text-slate-400">Email:</span> <span className="text-white">{detailForecast.requesterEmail}</span></div>
+                <div><span className="text-slate-400">Status:</span> <Badge variant="outline" className={statusConfig[detailForecast.status].color}>{statusConfig[detailForecast.status].label}</Badge></div>
+                <div><span className="text-slate-400">Date:</span> <span className="text-white">{new Date(detailForecast.createdAt).toLocaleDateString('fr-FR')}</span></div>
+                {detailForecast.targetDate && (
+                  <div><span className="text-slate-400">Target date:</span> <span className="text-white">{new Date(detailForecast.targetDate).toLocaleDateString('fr-FR')}</span></div>
+                )}
+              </div>
+              {detailForecast.justification && (
+                <div className="text-sm">
+                  <span className="text-slate-400">Justification:</span>
+                  <p className="mt-1 text-white">{detailForecast.justification}</p>
+                </div>
+              )}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-800">
+                      <th className="pb-2 text-left font-medium text-slate-400">Product</th>
+                      <th className="pb-2 text-left font-medium text-slate-400">Flavor</th>
+                      <th className="pb-2 text-left font-medium text-slate-400">AZ</th>
+                      <th className="pb-2 text-right font-medium text-slate-400">Qty</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    {detailForecast.lines?.map((line) => (
+                      <tr key={line.id}>
+                        <td className="py-2 font-medium text-white">{line.product?.name}</td>
+                        <td className="py-2 text-slate-400">{line.flavor?.name}</td>
+                        <td className="py-2 text-slate-400">{line.azCode}</td>
+                        <td className="py-2 text-right text-slate-400">{line.quantity}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <DialogFooter className="flex-col sm:flex-row gap-2">
+                <Button type="button" variant="outline" onClick={() => setDetailForecast(null)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Close</Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

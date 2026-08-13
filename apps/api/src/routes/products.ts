@@ -245,7 +245,7 @@ router.delete('/:id', requireAdminAuth, async (req, res, next) => {
     const product = await prisma.product.findUnique({
       where: { id },
       include: {
-        _count: { select: { flavors: true, dependencies: true, dependentProducts: true, forecasts: true } },
+        _count: { select: { flavors: true, dependencies: true, dependentProducts: true, forecastLines: true } },
       },
     });
 
@@ -257,7 +257,7 @@ router.delete('/:id', requireAdminAuth, async (req, res, next) => {
     if (product._count.flavors > 0) blocks.push('flavors');
     if (product._count.dependencies > 0) blocks.push('dependencies');
     if (product._count.dependentProducts > 0) blocks.push('dependent products');
-    if (product._count.forecasts > 0) blocks.push('forecasts');
+    if (product._count.forecastLines > 0) blocks.push('forecast lines');
 
     if (blocks.length > 0) {
       return res.status(409).json({
@@ -280,8 +280,8 @@ router.get('/:slug/forecasts', async (req, res, next) => {
     if (!product) return res.status(404).json({ error: 'Product not found' });
 
     const forecasts = await prisma.forecast.findMany({
-      where: { productId: product.id },
-      include: { flavor: true, product: true },
+      where: { lines: { some: { productId: product.id } } },
+      include: { lines: { include: { flavor: true, product: true } } },
       orderBy: { createdAt: 'desc' },
     });
 

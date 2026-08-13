@@ -48,23 +48,33 @@ function AnimatedCounter({ value, duration = 800 }: { value: number; duration?: 
     startTime.current = null;
     let raf: number;
 
-    const animate = (timestamp: number) => {
-      if (!startTime.current) startTime.current = timestamp;
+    const tick = (timestamp: number) => {
+      if (startTime.current === null) startTime.current = timestamp;
       const elapsed = timestamp - startTime.current;
       const progress = Math.min(elapsed / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
-      const current = Math.round(startValue.current + (value - startValue.current) * eased);
-      setDisplay(current);
+      setDisplay(Math.round(startValue.current + (value - startValue.current) * eased));
       if (progress < 1) {
-        raf = requestAnimationFrame(animate);
+        raf = requestAnimationFrame(tick);
       }
     };
 
-    raf = requestAnimationFrame(animate);
+    raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [value, duration]);
 
   return <span>{display}</span>;
+}
+
+function StatusBadge({ status }: { status: ApprovalStatus }) {
+  const config = statusConfig[status];
+  const Icon = config.icon;
+  return (
+    <Badge variant="outline" className={`${config.color} flex items-center gap-1`}>
+      <Icon className="w-3.5 h-3.5" />
+      {config.label}
+    </Badge>
+  );
 }
 
 function AnimatedSection({ children, className, delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
@@ -72,57 +82,10 @@ function AnimatedSection({ children, className, delay = 0 }: { children: React.R
   return (
     <div
       ref={ref}
-      className={`transition-all duration-500 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'} ${className || ''}`}
+      className={`transition-all duration-500 ease-out ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'} ${className || ''}`}
       style={{ transitionDelay: `${delay}ms` }}
     >
       {children}
-    </div>
-  );
-}
-
-function ForecastCard({ forecast, onApprove, onReject, onDelete }: {
-  forecast: Forecast;
-  onApprove: (id: string) => void;
-  onReject: (id: string) => void;
-  onDelete: (id: string) => void;
-}) {
-  const status = statusConfig[forecast.status];
-  const StatusIcon = status.icon;
-
-  return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4 sm:hidden">
-      <div className="flex items-start justify-between">
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-white truncate">{forecast.product?.name}</p>
-          <p className="text-sm text-slate-400">{forecast.flavor?.name} × {forecast.azDetails?.reduce((s, d) => s + d.quantity, 0) || 0}</p>
-        </div>
-        <Badge variant="outline" className={`gap-1 shrink-0 ml-2 ${status.color}`}>
-          <StatusIcon className="h-3 w-3" />
-          {status.label}
-        </Badge>
-      </div>
-      <div className="mt-2 text-sm text-slate-400">
-        <p>{forecast.requestedBy}</p>
-        <p className="text-xs text-slate-600">{forecast.requesterEmail}</p>
-      </div>
-      {forecast.justification && (
-        <p className="mt-2 text-xs text-slate-500 line-clamp-2">{forecast.justification}</p>
-      )}
-      <div className="mt-3 flex items-center justify-end gap-1">
-        {forecast.status === 'PENDING' && (
-          <>
-            <Button size="sm" variant="ghost" onClick={() => onApprove(forecast.id)} className="h-8 w-8 p-0 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10">
-              <CheckCircle className="h-4 w-4" />
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => onReject(forecast.id)} className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-500/10">
-              <XCircle className="h-4 w-4" />
-            </Button>
-          </>
-        )}
-        <Button size="sm" variant="ghost" onClick={() => onDelete(forecast.id)} className="h-8 w-8 p-0 text-slate-500 hover:text-red-400 hover:bg-red-500/10">
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
     </div>
   );
 }
@@ -170,53 +133,42 @@ export default function Forecasts() {
   const [statusFilter, setStatusFilter] = useState<ApprovalStatus | 'ALL'>('ALL');
 
   const [formData, setFormData] = useState({
-    productId: '',
-    flavorId: '',
     requestedBy: '',
     requesterEmail: '',
     targetDate: '',
-    azQuantities: {} as Record<string, number>,
     justification: '',
   });
+  const [lines, setLines] = useState<Array<{ productId: string; flavorId: string; azCode: string; quantity: number }>>([]);
+  const [draftLine, setDraftLine] = useState({ productId: '', flavorId: '', azCode: '', quantity: 1 });
 
-  const selectedProduct = products?.find((p) => p.id === formData.productId);
-  const selectedFlavor = selectedProduct?.flavors.find((f: Flavor) => f.id === formData.flavorId);
+  const selectedDraftProduct = products?.find((p) => p.id === draftLine.productId);
 
   const filteredForecasts = forecasts?.filter((f) => {
     const matchesSearch =
       !searchQuery ||
-      f.product?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      f.requestedBy?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      f.requesterEmail?.toLowerCase().includes(searchQuery.toLowerCase());
+      f.lines?.some((l) => l.product?.name?.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      f.requestedBy?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'ALL' || f.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const azDetails = Object.entries(formData.azQuantities)
-      .filter(([, qty]) => qty > 0)
-      .map(([azCode, quantity]) => ({ azCode, quantity }));
     await createForecast.mutateAsync({
-      productId: formData.productId,
-      flavorId: formData.flavorId,
       requestedBy: formData.requestedBy,
       requesterEmail: formData.requesterEmail,
       targetDate: formData.targetDate,
-      availabilityZones: Object.keys(formData.azQuantities).filter((code) => formData.azQuantities[code] > 0),
-      azDetails,
+      lines: lines.map((l) => ({ productId: l.productId, flavorId: l.flavorId, azCode: l.azCode, quantity: l.quantity })),
       justification: formData.justification,
     } as any);
     setIsCreateOpen(false);
     setFormData({
-      productId: '',
-      flavorId: '',
       requestedBy: '',
       requesterEmail: '',
       targetDate: '',
-      azQuantities: {},
       justification: '',
     });
+    setLines([]);
   };
 
   const handleApprove = async (id: string) => {
@@ -228,240 +180,282 @@ export default function Forecasts() {
   };
 
   const handleReject = async (id: string) => {
+    const reason = window.prompt('Reason for rejection?');
+    if (!reason) return;
     await updateForecast.mutateAsync({
       id,
       status: 'REJECTED' as ApprovalStatus,
       reviewedBy: 'Admin',
-      rejectionReason: 'Rejected via dashboard',
+      rejectionReason: reason,
     });
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Delete this request?')) {
-      await deleteForecast.mutateAsync(id);
-    }
+    if (!window.confirm('Delete this forecast?')) return;
+    await deleteForecast.mutateAsync(id);
   };
 
-  const statCards = [
-    { label: 'Total', value: stats?.total ?? 0, icon: BarChart3, color: 'text-blue-400' },
-    { label: 'Pending', value: stats?.pending ?? 0, icon: Clock, color: 'text-amber-400' },
-    { label: 'Approved', value: stats?.approved ?? 0, icon: CheckCircle, color: 'text-emerald-400' },
-    { label: 'Rejected', value: stats?.rejected ?? 0, icon: XCircle, color: 'text-red-400' },
-  ];
+  const addLine = () => {
+    if (!draftLine.productId || !draftLine.flavorId || !draftLine.azCode || draftLine.quantity < 1) return;
+    setLines([...lines, { ...draftLine }]);
+    setDraftLine({ productId: '', flavorId: '', azCode: '', quantity: 1 });
+  };
 
-  const hasError = error && !forecasts;
+  const removeLine = (index: number) => {
+    setLines(lines.filter((_, i) => i !== index));
+  };
+
+  const totalVcpu = lines.reduce((sum, line) => {
+    const flavor = products?.find((p) => p.id === line.productId)?.flavors.find((f) => f.id === line.flavorId);
+    return sum + (flavor?.vcpu || 0) * line.quantity;
+  }, 0);
+
+  const totalRam = lines.reduce((sum, line) => {
+    const flavor = products?.find((p) => p.id === line.productId)?.flavors.find((f) => f.id === line.flavorId);
+    return sum + (flavor?.ramGb || 0) * line.quantity;
+  }, 0);
 
   return (
-    <div className="space-y-6 sm:space-y-8">
-      {/* Header */}
-      <AnimatedSection>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Forecast Dashboard</h1>
-            <p className="mt-2 text-slate-400">
-              Track the status of your provisioning requests.
-            </p>
+    <div className="min-h-screen bg-slate-950">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <AnimatedSection>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                Forecast Dashboard
+              </h1>
+              <p className="text-slate-400 mt-1">Track and manage your infrastructure provisioning requests</p>
+            </div>
+            <Button
+              onClick={() => setIsCreateOpen(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              New request
+            </Button>
           </div>
-          <Button
-            onClick={() => setIsCreateOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            New request
-          </Button>
-        </div>
-      </AnimatedSection>
+        </AnimatedSection>
 
-      {hasError ? (
-        <QueryError
-          message="Unable to load dashboard data."
-          onRetry={loadData}
-        />
-      ) : (
-        <>
-          {/* Stats Cards */}
-          {loading ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-28 rounded-lg bg-slate-800 animate-pulse-soft" />
+        {error && (
+          <AnimatedSection>
+            <QueryError message="Unable to load forecast data." onRetry={loadData} />
+          </AnimatedSection>
+        )}
+
+        {loading && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {[...Array(4)].map((_, i) => (
+              <Card key={i} className="bg-slate-900 border-slate-800">
+                <CardContent className="p-6">
+                  <Skeleton className="h-8 w-16 mb-2" />
+                  <Skeleton className="h-4 w-24" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {!loading && !error && stats && (
+          <>
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              {[
+                { label: 'Total', value: stats.total, icon: BarChart3, color: 'text-blue-400' },
+                { label: 'Pending', value: stats.pending, icon: Clock, color: 'text-amber-400' },
+                { label: 'Approved', value: stats.approved, icon: CheckCircle, color: 'text-emerald-400' },
+                { label: 'Rejected', value: stats.rejected, icon: XCircle, color: 'text-red-400' },
+              ].map((stat, i) => (
+                <AnimatedSection key={stat.label} delay={i * 100}>
+                  <Card className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-slate-400 text-sm">{stat.label}</p>
+                          <p className={`text-3xl font-bold mt-1 ${stat.color}`}>
+                            <AnimatedCounter value={stat.value} />
+                          </p>
+                        </div>
+                        <stat.icon className={`w-8 h-8 ${stat.color} opacity-20`} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </AnimatedSection>
               ))}
             </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {statCards.map((stat, i) => {
-                const Icon = stat.icon;
-                return (
-                  <AnimatedSection key={stat.label} delay={i * 80}>
-                    <Card className="bg-slate-900 border-slate-800 transition-all duration-300 hover:border-slate-700 hover:-translate-y-0.5">
-                      <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-slate-400">
-                          {stat.label}
-                        </CardTitle>
-                        <Icon className={`h-4 w-4 ${stat.color}`} />
-                      </CardHeader>
-                      <CardContent>
-                        <div className="text-3xl font-bold text-white">
-                          <AnimatedCounter value={stat.value} />
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </AnimatedSection>
-                );
-              })}
-            </div>
-          )}
 
-          {/* Filters */}
-          <AnimatedSection delay={100}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                <Input
-                  placeholder="Search..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-slate-500" />
-                <Select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as ApprovalStatus | 'ALL')}
-                  className="w-40 bg-slate-900 border-slate-700 text-white min-h-[44px]"
-                >
-                  <option value="ALL">All statuses</option>
-                  <option value="PENDING">Pending</option>
-                  <option value="APPROVED">Approved</option>
-                  <option value="REJECTED">Rejected</option>
-                </Select>
-              </div>
-            </div>
-          </AnimatedSection>
-
-          {/* Forecasts Table / Cards */}
-          <AnimatedSection delay={150}>
-            <Card className="bg-slate-900 border-slate-800">
-              <CardHeader>
-                <CardTitle className="text-white flex items-center justify-between">
-                  <span>Requests</span>
-                  <span className="text-sm font-normal text-slate-500">
-                    {filteredForecasts?.length ?? 0} result(s)
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="space-y-3">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Skeleton key={i} className="h-14 rounded-lg bg-slate-800 animate-pulse-soft" />
-                    ))}
-                  </div>
-                ) : filteredForecasts?.length === 0 ? (
-                  <div className="text-center py-12 animate-fade-in">
-                    <BarChart3 className="mx-auto h-12 w-12 text-slate-700" />
-                    <p className="mt-4 text-lg font-medium text-slate-400">No requests</p>
-                    <p className="text-slate-500">
-                      {searchQuery || statusFilter !== 'ALL'
-                        ? 'Try adjusting your filters.'
-                        : 'Create your first provisioning request.'}
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    {/* Mobile card view */}
-                    <div className="space-y-3 sm:hidden">
-                      {filteredForecasts?.map((forecast) => (
-                        <ForecastCard
-                          key={forecast.id}
-                          forecast={forecast}
-                          onApprove={handleApprove}
-                          onReject={handleReject}
-                          onDelete={handleDelete}
-                        />
-                      ))}
+            {/* Search & Filter */}
+            <AnimatedSection delay={400}>
+              <Card className="bg-slate-900 border-slate-800 mb-6">
+                <CardContent className="p-4">
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                      <Input
+                        placeholder="Search by product or requester..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-10 bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 min-h-[44px]"
+                      />
                     </div>
-                    {/* Desktop table view */}
-                    <div className="hidden sm:block overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-slate-800">
-                            <th className="pb-3 text-left font-medium text-slate-400">Product</th>
-                            <th className="pb-3 text-left font-medium text-slate-400">Flavor</th>
-                            <th className="pb-3 text-left font-medium text-slate-400">Qty</th>
-                            <th className="pb-3 text-left font-medium text-slate-400">Requester</th>
-                            <th className="pb-3 text-left font-medium text-slate-400">Status</th>
-                            <th className="pb-3 text-left font-medium text-slate-400">Justification</th>
-                            <th className="pb-3 text-right font-medium text-slate-400">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800">
-                          {filteredForecasts?.map((forecast) => {
-                            const status = statusConfig[forecast.status];
-                            const StatusIcon = status.icon;
-                            return (
+                    <div className="flex items-center gap-2">
+                      <Filter className="w-4 h-4 text-slate-500" />
+                      <Select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as ApprovalStatus | 'ALL')}
+                        className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+                      >
+                        <option value="ALL">All statuses</option>
+                        <option value="PENDING">Pending</option>
+                        <option value="APPROVED">Approved</option>
+                        <option value="REJECTED">Rejected</option>
+                      </Select>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </AnimatedSection>
+
+            {/* Forecasts Table */}
+            <AnimatedSection delay={500}>
+              <Card className="bg-slate-900 border-slate-800">
+                <CardHeader>
+                  <CardTitle className="text-white">
+                    Requests <span className="text-slate-500 text-sm font-normal">{filteredForecasts?.length || 0} result(s)</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {filteredForecasts?.length === 0 ? (
+                    <div className="text-center py-12">
+                      <BarChart3 className="w-12 h-12 text-slate-700 mx-auto mb-4" />
+                      <p className="text-slate-500">No forecasts found</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Mobile Cards */}
+                      <div className="sm:hidden space-y-3">
+                        {filteredForecasts?.map((forecast) => (
+                          <div key={forecast.id} className="bg-slate-950 rounded-lg p-4 border border-slate-800">
+                            <div className="flex items-start justify-between mb-2">
+                              <div>
+                                <p className="text-white font-medium text-sm">
+                                  {forecast.lines?.map((l) => `${l.product?.name} (${l.flavor?.name})`).join(', ') || 'N/A'}
+                                </p>
+                                <p className="text-slate-500 text-xs mt-1">
+                                  {new Date(forecast.createdAt).toLocaleDateString('fr-FR')}
+                                </p>
+                              </div>
+                              <StatusBadge status={forecast.status} />
+                            </div>
+                            <div className="text-sm text-slate-400 mb-2">{forecast.requestedBy}</div>
+                            <div className="flex gap-2">
+                              {forecast.status === 'PENDING' && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleApprove(forecast.id)}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white h-8"
+                                  >
+                                    <CheckCircle className="w-3 h-3 mr-1" />
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleReject(forecast.id)}
+                                    className="bg-red-600 hover:bg-red-700 text-white h-8"
+                                  >
+                                    <XCircle className="w-3 h-3 mr-1" />
+                                    Reject
+                                  </Button>
+                                </>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleDelete(forecast.id)}
+                                className="border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 h-8"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Desktop Table */}
+                      <div className="hidden sm:block overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-slate-800">
+                              <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider">Lines</th>
+                              <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider">Requester</th>
+                              <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                              <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider">Date</th>
+                              <th className="text-right py-3 px-4 text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800">
+                            {filteredForecasts?.map((forecast) => (
                               <tr key={forecast.id} className="hover:bg-slate-800/50 transition-colors">
-                                <td className="py-3 font-medium text-white">{forecast.product?.name}</td>
-                                <td className="py-3 text-slate-400">{forecast.flavor?.name}</td>
-                                <td className="py-3 text-slate-400">{forecast.azDetails?.reduce((s, d) => s + d.quantity, 0) || 0}</td>
-                                <td className="py-3 text-slate-400">
-                                  <div>{forecast.requestedBy}</div>
-                                  <div className="text-xs text-slate-600">{forecast.requesterEmail}</div>
+                                <td className="py-3 px-4">
+                                  <div className="space-y-1">
+                                    {forecast.lines?.map((line) => (
+                                      <div key={line.id} className="text-sm text-white">
+                                        {line.product?.name} · {line.flavor?.name} · {line.azCode} · {line.quantity}
+                                      </div>
+                                    )) || <span className="text-slate-500 text-sm">N/A</span>}
+                                  </div>
                                 </td>
-                                <td className="py-3">
-                                  <Badge variant="outline" className={`gap-1 ${status.color}`}>
-                                    <StatusIcon className="h-3 w-3" />
-                                    {status.label}
-                                  </Badge>
+                                <td className="py-3 px-4 text-slate-400 text-sm">{forecast.requestedBy}</td>
+                                <td className="py-3 px-4">
+                                  <StatusBadge status={forecast.status} />
                                 </td>
-                                <td className="py-3 max-w-xs truncate text-slate-500">
-                                  {forecast.justification || '—'}
+                                <td className="py-3 px-4 text-slate-500 text-sm">
+                                  {new Date(forecast.createdAt).toLocaleDateString('fr-FR')}
                                 </td>
-                                <td className="py-3 text-right">
-                                  <div className="flex items-center justify-end gap-1">
+                                <td className="py-3 px-4 text-right">
+                                  <div className="flex justify-end gap-2">
                                     {forecast.status === 'PENDING' && (
                                       <>
                                         <Button
                                           size="sm"
-                                          variant="ghost"
                                           onClick={() => handleApprove(forecast.id)}
-                                          className="h-8 w-8 p-0 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10"
+                                          className="bg-emerald-600 hover:bg-emerald-700 text-white h-8"
                                         >
-                                          <CheckCircle className="h-4 w-4" />
+                                          <CheckCircle className="w-3 h-3" />
                                         </Button>
                                         <Button
                                           size="sm"
-                                          variant="ghost"
                                           onClick={() => handleReject(forecast.id)}
-                                          className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-500/10"
+                                          className="bg-red-600 hover:bg-red-700 text-white h-8"
                                         >
-                                          <XCircle className="h-4 w-4" />
+                                          <XCircle className="w-3 h-3" />
                                         </Button>
                                       </>
                                     )}
                                     <Button
                                       size="sm"
-                                      variant="ghost"
+                                      variant="outline"
                                       onClick={() => handleDelete(forecast.id)}
-                                      className="h-8 w-8 p-0 text-slate-500 hover:text-red-400 hover:bg-red-500/10"
+                                      className="border-slate-700 text-slate-400 hover:text-red-400 hover:border-red-500/50 h-8"
                                     >
-                                      <Trash2 className="h-4 w-4" />
+                                      <Trash2 className="w-3 h-3" />
                                     </Button>
                                   </div>
                                 </td>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </AnimatedSection>
-        </>
-      )}
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </AnimatedSection>
+          </>
+        )}
+      </div>
 
       {/* Create Forecast Dialog */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
@@ -472,136 +466,123 @@ export default function Forecasts() {
               <DialogHeader className="pb-2">
                 <DialogTitle className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">New Provisioning Request</DialogTitle>
                 <DialogDescription className="text-slate-400">
-                  Configure your infrastructure deployment across regions
+                  Add one or more lines to your forecast request
                 </DialogDescription>
               </DialogHeader>
 
               <form onSubmit={handleCreate} className="space-y-5">
-                {/* Step 1: Product */}
+                {/* Add Line */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-sm font-bold">1</div>
-                    <label className="text-sm font-semibold text-slate-200">Select Product</label>
+                    <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-sm font-bold">+</div>
+                    <label className="text-sm font-semibold text-slate-200">Add Line</label>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {products?.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, productId: p.id, flavorId: '' })}
-                        className={`p-3 rounded-xl border text-left transition-all ${
-                          formData.productId === p.id
-                            ? 'border-blue-500 bg-blue-500/10'
-                            : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
-                        }`}
+                  <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <Select
+                        value={draftLine.productId}
+                        onChange={(e) => setDraftLine({ ...draftLine, productId: e.target.value, flavorId: '' })}
+                        className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
                       >
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center text-lg">💻</div>
-                          <div>
-                            <div className="text-sm font-semibold text-white">{p.name}</div>
-                            <div className="text-xs text-slate-400">{p.category?.name} · {p.os || 'N/A'}</div>
-                          </div>
-                        </div>
-                      </button>
-                    ))}
+                        <option value="">Product...</option>
+                        {products?.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </Select>
+                      <Select
+                        value={draftLine.flavorId}
+                        onChange={(e) => setDraftLine({ ...draftLine, flavorId: e.target.value })}
+                        disabled={!selectedDraftProduct}
+                        className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+                      >
+                        <option value="">Flavor...</option>
+                        {selectedDraftProduct?.flavors.map((f: Flavor) => (
+                          <option key={f.id} value={f.id}>{f.name} ({f.vcpu}v/{f.ramGb}GB)</option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Select
+                        value={draftLine.azCode}
+                        onChange={(e) => setDraftLine({ ...draftLine, azCode: e.target.value })}
+                        className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+                      >
+                        <option value="">Region...</option>
+                        {zones?.map((z) => (
+                          <option key={z.id} value={z.code}>{z.name}</option>
+                        ))}
+                      </Select>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={draftLine.quantity}
+                        onChange={(e) => setDraftLine({ ...draftLine, quantity: parseInt(e.target.value) || 1 })}
+                        placeholder="Quantity"
+                        className="bg-slate-950 border-slate-700 text-white min-h-[44px] text-center"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={addLine}
+                      disabled={!draftLine.productId || !draftLine.flavorId || !draftLine.azCode}
+                      className="bg-blue-600 hover:bg-blue-700 text-white w-full min-h-[44px]"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Line
+                    </Button>
                   </div>
                 </div>
 
-                {/* Step 2: Flavor */}
-                {selectedProduct && selectedProduct.flavors.length > 0 && (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-sm font-bold">2</div>
-                      <label className="text-sm font-semibold text-slate-200">Choose Flavor</label>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {selectedProduct.flavors.map((f) => (
-                        <button
-                          key={f.id}
-                          type="button"
-                          onClick={() => setFormData({ ...formData, flavorId: f.id })}
-                          className={`p-3 rounded-xl border text-center transition-all ${
-                            formData.flavorId === f.id
-                              ? 'border-blue-500 bg-blue-500/10'
-                              : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
-                          }`}
-                        >
-                          <div className="text-sm font-bold text-white">{f.name}</div>
-                          <div className="text-xs text-slate-400 mt-1">{f.vcpu} vCPU · {f.ramGb} GB</div>
-                          <div className="text-[10px] text-slate-500 mt-0.5">{f.description?.slice(0, 20) || ''}</div>
-                        </button>
-                      ))}
+                {/* Lines Table */}
+                {lines.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-200">Lines ({lines.length})</label>
+                    <div className="bg-slate-950 border border-slate-700 rounded-xl overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-700">
+                            <th className="text-left py-2 px-3 text-xs text-slate-500">Product</th>
+                            <th className="text-left py-2 px-3 text-xs text-slate-500">Flavor</th>
+                            <th className="text-left py-2 px-3 text-xs text-slate-500">Region</th>
+                            <th className="text-center py-2 px-3 text-xs text-slate-500">Qty</th>
+                            <th className="text-right py-2 px-3 text-xs text-slate-500"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lines.map((line, idx) => {
+                            const p = products?.find((pr) => pr.id === line.productId);
+                            const f = p?.flavors.find((fl: Flavor) => fl.id === line.flavorId);
+                            return (
+                              <tr key={idx} className="border-b border-slate-800 last:border-0">
+                                <td className="py-2 px-3 text-white">{p?.name}</td>
+                                <td className="py-2 px-3 text-slate-400">{f?.name}</td>
+                                <td className="py-2 px-3 text-slate-400">{line.azCode}</td>
+                                <td className="py-2 px-3 text-center text-white">{line.quantity}</td>
+                                <td className="py-2 px-3 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeLine(idx)}
+                                    className="text-slate-500 hover:text-red-400 transition-colors"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 )}
 
-                {/* Step 3: Region & Schedule */}
+                {/* Request Details */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-sm font-bold">3</div>
-                    <label className="text-sm font-semibold text-slate-200">Region & Schedule</label>
+                    <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-sm font-bold">i</div>
+                    <label className="text-sm font-semibold text-slate-200">Request Info</label>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-slate-400 uppercase tracking-wide mb-2 block">Availability Zones</label>
-                      <div className="space-y-1.5">
-                        {zones?.map((z) => (
-                          <div key={z.id} className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const qty = formData.azQuantities[z.code] || 0;
-                                setFormData({
-                                  ...formData,
-                                  azQuantities: { ...formData.azQuantities, [z.code]: qty > 0 ? 0 : 1 },
-                                });
-                              }}
-                              className={`flex-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all text-left ${
-                                (formData.azQuantities[z.code] || 0) > 0
-                                  ? 'bg-blue-500/20 border border-blue-500 text-blue-400'
-                                  : 'bg-slate-800 border border-slate-700 text-slate-400 hover:border-slate-500'
-                              }`}
-                            >
-                              {(formData.azQuantities[z.code] || 0) > 0 ? '✓ ' : ''}{z.name}
-                            </button>
-                            {(formData.azQuantities[z.code] || 0) > 0 && (
-                              <Input
-                                type="number"
-                                min={1}
-                                value={formData.azQuantities[z.code]}
-                                onChange={(e) => {
-                                  const qty = parseInt(e.target.value) || 1;
-                                  setFormData({
-                                    ...formData,
-                                    azQuantities: { ...formData.azQuantities, [z.code]: qty },
-                                  });
-                                }}
-                                className="w-16 bg-slate-950 border-slate-700 text-white text-center text-xs h-8 px-1"
-                              />
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-400 uppercase tracking-wide mb-2 block">Target Date</label>
-                      <Input
-                        type="date"
-                        value={formData.targetDate}
-                        onChange={(e) => setFormData({ ...formData, targetDate: e.target.value })}
-                        className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Step 4: Request Details */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-sm font-bold">4</div>
-                    <label className="text-sm font-semibold text-slate-200">Request Details</label>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Requester</label>
                       <Input
@@ -624,12 +605,23 @@ export default function Forecasts() {
                       />
                     </div>
                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Target Date</label>
+                      <Input
+                        type="date"
+                        value={formData.targetDate}
+                        onChange={(e) => setFormData({ ...formData, targetDate: e.target.value })}
+                        className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+                      />
+                    </div>
+                  </div>
                   <div>
                     <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Justification</label>
                     <Textarea
                       value={formData.justification}
                       onChange={(e) => setFormData({ ...formData, justification: e.target.value })}
-                      placeholder="Why do you need this product?"
+                      placeholder="Why do you need this?"
                       rows={3}
                       className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600"
                     />
@@ -647,7 +639,7 @@ export default function Forecasts() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={createForecast.isPending || !formData.productId || !formData.flavorId || Object.values(formData.azQuantities).filter((q) => q > 0).length === 0}
+                    disabled={createForecast.isPending || lines.length === 0}
                     className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]"
                   >
                     {createForecast.isPending ? 'Creating...' : 'Create Request'}
@@ -662,61 +654,31 @@ export default function Forecasts() {
                 <h3 className="text-sm font-semibold text-slate-200">Request Summary</h3>
 
                 <div className="space-y-3">
-                  {selectedProduct && (
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center text-lg">💻</div>
-                      <div>
-                        <div className="text-sm font-semibold text-white">{selectedProduct.name}</div>
-                        <div className="text-xs text-slate-400">{selectedProduct.category?.name} · {selectedProduct.os || 'N/A'}</div>
-                      </div>
-                    </div>
+                  {lines.length === 0 && (
+                    <p className="text-sm text-slate-500">Add lines to see the summary</p>
                   )}
-
-                  {selectedFlavor && (
-                    <>
-                      <div className="h-px bg-slate-700" />
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-400">Flavor</span>
-                        <span className="font-medium text-white">{selectedFlavor.name}</span>
+                  {lines.map((line, idx) => {
+                    const p = products?.find((pr) => pr.id === line.productId);
+                    const f = p?.flavors.find((fl: Flavor) => fl.id === line.flavorId);
+                    return (
+                      <div key={idx} className="space-y-1">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-white font-medium">{p?.name}</span>
+                          <span className="text-slate-400">x{line.quantity}</span>
+                        </div>
+                        <div className="text-xs text-slate-400">{f?.name} · {line.azCode}</div>
+                        <div className="text-xs text-slate-500">{f ? `${f.vcpu * line.quantity} vCPU · ${f.ramGb * line.quantity} GB` : ''}</div>
+                        {idx < lines.length - 1 && <div className="h-px bg-slate-700 my-2" />}
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-slate-400">Specs</span>
-                        <span className="font-medium text-white">{selectedFlavor.vcpu} vCPU · {selectedFlavor.ramGb} GB</span>
-                      </div>
-                    </>
-                  )}
+                    );
+                  })}
 
-                  {Object.entries(formData.azQuantities).filter(([, q]) => q > 0).length > 0 && (
-                    <>
-                      <div className="h-px bg-slate-700" />
-                      <div className="space-y-1">
-                        {Object.entries(formData.azQuantities)
-                          .filter(([, q]) => q > 0)
-                          .map(([code, qty]) => (
-                            <div key={code} className="flex justify-between text-sm">
-                              <span className="text-slate-400">{zones?.find((z) => z.code === code)?.name || code}</span>
-                              <span className="font-medium text-white">{qty} instances</span>
-                            </div>
-                          ))}
-                      </div>
-                    </>
-                  )}
-
-                  {formData.targetDate && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-400">Target Date</span>
-                      <span className="font-medium text-white">{new Date(formData.targetDate).toLocaleDateString('fr-FR')}</span>
-                    </div>
-                  )}
-
-                  {selectedFlavor && Object.values(formData.azQuantities).filter((q) => q > 0).length > 0 && (
+                  {lines.length > 0 && (
                     <>
                       <div className="h-px bg-slate-700" />
                       <div className="flex justify-between items-center">
-                        <span className="text-sm font-semibold text-slate-200">Total Resources</span>
-                        <span className="text-lg font-bold text-blue-400">
-                          {selectedFlavor.vcpu * Object.values(formData.azQuantities).reduce((a, b) => a + b, 0)} vCPU · {selectedFlavor.ramGb * Object.values(formData.azQuantities).reduce((a, b) => a + b, 0)} GB
-                        </span>
+                        <span className="text-sm font-semibold text-slate-200">Total</span>
+                        <span className="text-lg font-bold text-blue-400">{totalVcpu} vCPU · {totalRam} GB</span>
                       </div>
                     </>
                   )}
