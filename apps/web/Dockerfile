@@ -22,21 +22,17 @@ RUN if [ "$NODE_TLS_REJECT_UNAUTHORIZED" = "0" ]; then npm config set strict-ssl
 
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
-COPY apps/web/package*.json ./apps/web/
-COPY packages/shared-types/package*.json ./packages/shared-types/
-
-RUN npm install
-
-# Copy source
+# Copy full project including node_modules (installed on host before build)
 COPY . .
 
 # Build shared types
 RUN npm run build -w packages/shared-types
 
+# Build web app — run tsc from project root so node_modules is found
+RUN npx tsc -p apps/web/tsconfig.json --noEmit && cd apps/web && npx vite build
+
 WORKDIR /app/apps/web
 
 EXPOSE 5192
 
-CMD ["npm", "run", "dev"]
+CMD ["node", "server.js"]

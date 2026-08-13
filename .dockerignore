@@ -1,5 +1,6 @@
-# Node modules (huge, not needed in build context)
-**/node_modules
+# Build dependencies are installed inside the container, but we keep
+# node_modules/.prisma/ and node_modules/@prisma/client/ from the host
+# because they contain the generated Prisma client with the Linux binary.
 
 # Git
 .git
@@ -22,8 +23,11 @@ Thumbs.db
 **/__tests__
 
 # Build outputs (will be rebuilt inside container)
-**/dist
-**/build
+# WARNING: do not use **/dist — it would exclude node_modules/*/dist/
+apps/*/dist
+packages/*/dist
+apps/*/build
+packages/*/build
 
 # Logs
 *.log

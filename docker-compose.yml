@@ -56,8 +56,6 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/api:/app/apps/api
-      - /app/apps/api/node_modules
-      - /app/node_modules
       - ./packages:/app/packages
     networks:
       - cloudmarket-net
@@ -79,6 +77,9 @@ services:
     env_file:
       - .env
     environment:
+      API_HOST: api
+      API_PORT: 3001
+      PORT: 5192
       VITE_API_URL: ${VITE_API_URL}
       HTTP_PROXY: ${COMPOSE_HTTP_PROXY:-}
       HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
@@ -89,11 +90,6 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    volumes:
-      - ./apps/web:/app/apps/web
-      - /app/apps/web/node_modules
-      - /app/node_modules
-      - ./packages:/app/packages
     networks:
       - cloudmarket-net
 

@@ -19,6 +19,13 @@
   "devDependencies": {
     "concurrently": "^8.2.2",
     "eslint": "^8.57.0",
+    "serve": "^14.2.6",
     "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.1"
+  },
+  "optionalDependencies": {
+    "@esbuild/linux-arm64": "^0.28.2"
   }
 }

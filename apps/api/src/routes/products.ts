@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { prisma } from '../index';
+import { prisma } from '../db';
+import { requireAdminAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -9,6 +10,7 @@ const productQuerySchema = z.object({
   os: z.string().optional(),
   flavor: z.string().optional(),
   search: z.string().max(200).optional(),
+  availabilityZoneIds: z.string().optional(),
 });
 
 const createProductSchema = z.object({
@@ -20,6 +22,7 @@ const createProductSchema = z.object({
   documentation: z.string().optional(),
   roadmap: z.string().optional(),
   isActive: z.boolean().optional(),
+  availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
 });
 
 const idParamSchema = z.string().uuid();
@@ -33,6 +36,7 @@ const updateProductSchema = z.object({
   documentation: z.string().optional(),
   roadmap: z.string().optional(),
   isActive: z.boolean().optional(),
+  availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
 });
 
 // GET /api/products
@@ -61,11 +65,21 @@ router.get('/', async (req, res, next) => {
       where.flavors = { some: { name: { equals: filters.flavor, mode: 'insensitive' } } };
     }
 
+    if (filters.availabilityZoneIds && filters.availabilityZoneIds.length > 0) {
+      const ids = filters.availabilityZoneIds.split(',').filter((id) => id.length > 0);
+      if (ids.length > 0) {
+        where.availabilityZones = { some: { availabilityZoneId: { in: ids } } };
+      }
+    }
+
     const products = await prisma.product.findMany({
       where,
       include: {
         category: true,
         flavors: true,
+        availabilityZones: {
+          include: { availabilityZone: true },
+        },
         dependencies: {
           include: { dependsOn: { include: { category: true } } },
         },
@@ -83,9 +97,10 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST /api/products
-router.post('/', async (req, res, next) => {
+router.post('/', requireAdminAuth, async (req, res, next) => {
   try {
     const data = createProductSchema.parse(req.body);
+    const { availabilityZoneIds, ...productData } = data;
 
     // Check for duplicate slug
     const existing = await prisma.product.findUnique({ where: { slug: data.slug } });
@@ -93,11 +108,27 @@ router.post('/', async (req, res, next) => {
       return res.status(409).json({ error: 'A product with this slug already exists' });
     }
 
+    // Validate availabilityZoneIds exist
+    if (availabilityZoneIds && availabilityZoneIds.length > 0) {
+      const zones = await prisma.availabilityZone.findMany({ where: { id: { in: availabilityZoneIds } } });
+      if (zones.length !== availabilityZoneIds.length) {
+        return res.status(400).json({ error: 'One or more availability zones do not exist' });
+      }
+    }
+
     const product = await prisma.product.create({
-      data,
+      data: {
+        ...productData,
+        availabilityZones: availabilityZoneIds
+          ? { create: availabilityZoneIds.map((id) => ({ availabilityZoneId: id })) }
+          : undefined,
+      },
       include: {
         category: true,
         flavors: true,
+        availabilityZones: {
+          include: { availabilityZone: true },
+        },
         dependencies: {
           include: { dependsOn: { include: { category: true } } },
         },
@@ -122,6 +153,9 @@ router.get('/:slug', async (req, res, next) => {
       include: {
         category: true,
         flavors: true,
+        availabilityZones: {
+          include: { availabilityZone: true },
+        },
         dependencies: {
           include: { dependsOn: { include: { category: true, flavors: true } } },
         },
@@ -142,11 +176,12 @@ router.get('/:slug', async (req, res, next) => {
 });
 
 // PATCH /api/products/:id
-router.patch('/:id', async (req, res, next) => {
+router.patch('/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
     idParamSchema.parse(id);
     const data = updateProductSchema.parse(req.body);
+    const { availabilityZoneIds, ...productData } = data;
 
     // Check for duplicate slug if updating slug
     if (data.slug) {
@@ -156,19 +191,42 @@ router.patch('/:id', async (req, res, next) => {
       }
     }
 
-    const product = await prisma.product.update({
-      where: { id },
-      data,
-      include: {
-        category: true,
-        flavors: true,
-        dependencies: {
-          include: { dependsOn: { include: { category: true } } },
+    if (availabilityZoneIds) {
+      // Validate new availabilityZoneIds exist before deleting old ones
+      if (availabilityZoneIds.length > 0) {
+        const zones = await prisma.availabilityZone.findMany({ where: { id: { in: availabilityZoneIds } } });
+        if (zones.length !== availabilityZoneIds.length) {
+          return res.status(400).json({ error: 'One or more availability zones do not exist' });
+        }
+      }
+    }
+
+    const product = await prisma.$transaction(async (tx) => {
+      if (availabilityZoneIds) {
+        await tx.productAvailabilityZone.deleteMany({ where: { productId: id } });
+      }
+      return tx.product.update({
+        where: { id },
+        data: {
+          ...productData,
+          availabilityZones: availabilityZoneIds
+            ? { create: availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) }
+            : undefined,
         },
-        dependentProducts: {
-          include: { product: { include: { category: true } } },
+        include: {
+          category: true,
+          flavors: true,
+          availabilityZones: {
+            include: { availabilityZone: true },
+          },
+          dependencies: {
+            include: { dependsOn: { include: { category: true } } },
+          },
+          dependentProducts: {
+            include: { product: { include: { category: true } } },
+          },
         },
-      },
+      });
     });
 
     res.json(product);
@@ -178,7 +236,7 @@ router.patch('/:id', async (req, res, next) => {
 });
 
 // DELETE /api/products/:id
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
     idParamSchema.parse(id);
@@ -187,7 +245,7 @@ router.delete('/:id', async (req, res, next) => {
     const product = await prisma.product.findUnique({
       where: { id },
       include: {
-        _count: { select: { flavors: true, dependencies: true, dependentProducts: true, forecasts: true } },
+        _count: { select: { flavors: true, dependencies: true, dependentProducts: true, forecastLines: true } },
       },
     });
 
@@ -199,7 +257,7 @@ router.delete('/:id', async (req, res, next) => {
     if (product._count.flavors > 0) blocks.push('flavors');
     if (product._count.dependencies > 0) blocks.push('dependencies');
     if (product._count.dependentProducts > 0) blocks.push('dependent products');
-    if (product._count.forecasts > 0) blocks.push('forecasts');
+    if (product._count.forecastLines > 0) blocks.push('forecast lines');
 
     if (blocks.length > 0) {
       return res.status(409).json({
@@ -222,8 +280,8 @@ router.get('/:slug/forecasts', async (req, res, next) => {
     if (!product) return res.status(404).json({ error: 'Product not found' });
 
     const forecasts = await prisma.forecast.findMany({
-      where: { productId: product.id },
-      include: { flavor: true, product: true },
+      where: { lines: { some: { productId: product.id } } },
+      include: { lines: { include: { flavor: true, product: true } } },
       orderBy: { createdAt: 'desc' },
     });
 

@@ -6,6 +6,7 @@ import ToastContainer from './components/Toast';
 import Home from './pages/Home';
 import Marketplace from './pages/Marketplace';
 import ProductDetail from './pages/ProductDetail';
+import AvailabilityZones from './pages/AvailabilityZones';
 import Forecasts from './pages/Forecasts';
 import Admin from './pages/Admin';
 import NotFound from './pages/NotFound';
@@ -19,6 +20,7 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/products/:slug" element={<ProductDetail />} />
+            <Route path="/availability-zones" element={<AvailabilityZones />} />
             <Route path="/forecasts" element={<Forecasts />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="*" element={<NotFound />} />

@@ -22,22 +22,8 @@ RUN if [ "$NODE_TLS_REJECT_UNAUTHORIZED" = "0" ]; then npm config set strict-ssl
 
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
-COPY apps/api/package*.json ./apps/api/
-COPY packages/shared-types/package*.json ./packages/shared-types/
-
-RUN npm install
-
-# Copy source
+# Copy full project including node_modules (installed on host before build)
 COPY . .
-
-# Re-install dependencies after COPY (COPY . . may have overwritten node_modules
-# with an empty one from the build context since .dockerignore excludes it)
-RUN npm install
-
-# Generate Prisma client with locally installed packages (no npx cache symlinks)
-RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
 
 # Build shared types
 RUN npm run build -w packages/shared-types

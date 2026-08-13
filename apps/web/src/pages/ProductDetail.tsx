@@ -1,4 +1,6 @@
+import * as React from 'react';
 import { useParams, Link } from 'react-router-dom';
+import type { Product, Dependency, Flavor } from '@cloudmarket/shared-types';
 import { useProduct, useProducts } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
@@ -6,6 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  ComposableMap,
+  Geographies,
+  Geography,
+  Marker,
+  ZoomableGroup,
+} from 'react-simple-maps';
 import {
   Cpu,
   Database,
@@ -23,6 +32,8 @@ import {
   Layers,
   Zap,
   Send,
+  Globe,
+  MapPin,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -34,8 +45,16 @@ const iconMap: Record<string, React.ElementType> = {
   Monitor,
 };
 
+const regionColors: Record<string, string> = {
+  Europe: '#3b82f6',
+  'North America': '#10b981',
+  'Asia-Pacific': '#f59e0b',
+};
+
+const geoUrl = '/world-110m.json';
+
 function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString('fr-FR', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -274,10 +293,20 @@ export default function ProductDetail() {
   }
 
   const Icon = iconMap[product.category?.icon || ''] || Server;
-  const maxVcpu = Math.max(...(product.flavors?.map((f) => f.vcpu) ?? [1]));
-  const maxRam = Math.max(...(product.flavors?.map((f) => f.ramGb) ?? [1]));
+  const maxVcpu = Math.max(...(product.flavors?.map((f: Flavor) => f.vcpu) ?? [1]));
+  const maxRam = Math.max(...(product.flavors?.map((f: Flavor) => f.ramGb) ?? [1]));
 
-  const related = relatedProducts?.filter((p) => p.id !== product.id).slice(0, 3) ?? [];
+  const related = relatedProducts?.filter((p: Product) => p.id !== product.id).slice(0, 3) ?? [];
+
+  const productAzs = product.availabilityZones?.map((az) => az.availabilityZone) ?? [];
+
+  // Compute map center from AZ coordinates
+  const mapCenter = React.useMemo(() => {
+    if (productAzs.length === 0) return [10, 30] as [number, number];
+    const avgLng = productAzs.reduce((sum, az) => sum + az.longitude, 0) / productAzs.length;
+    const avgLat = productAzs.reduce((sum, az) => sum + az.latitude, 0) / productAzs.length;
+    return [avgLng, avgLat] as [number, number];
+  }, [productAzs]);
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -380,6 +409,7 @@ export default function ProductDetail() {
             <TabsTrigger value="documentation" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Documentation</TabsTrigger>
             <TabsTrigger value="roadmap" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Roadmap</TabsTrigger>
             <TabsTrigger value="dependencies" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Dependencies</TabsTrigger>
+            <TabsTrigger value="availability" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Availability</TabsTrigger>
           </TabsList>
 
           {/* Overview */}
@@ -406,7 +436,7 @@ export default function ProductDetail() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {product.flavors?.map((flavor) => (
+                    {product.flavors?.map((flavor: Flavor) => (
                       <div
                         key={flavor.id}
                         className="rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 space-y-2"
@@ -497,7 +527,7 @@ export default function ProductDetail() {
                   <>
                     <DependencyGraph productName={product.name} dependencies={product.dependencies} />
                     <div className="space-y-3">
-                      {product.dependencies.map((dep) => (
+                      {product.dependencies.map((dep: Dependency) => (
                         <div
                           key={dep.id}
                           className="flex items-center gap-4 rounded-lg border border-slate-800 bg-slate-950 px-4 py-3"
@@ -542,6 +572,136 @@ export default function ProductDetail() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Availability */}
+          <TabsContent value="availability" className="mt-4 space-y-6 animate-fade-in">
+            <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+              <Card className="bg-slate-900 border-slate-800">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-white">
+                    <Globe className="h-5 w-5 text-blue-500" />
+                    Available in
+                  </CardTitle>
+                  <CardDescription className="text-slate-400">
+                    {productAzs.length} availability zone{productAzs.length !== 1 ? 's' : ''} across{' '}
+                    {new Set(productAzs.map((az) => az.region)).size} region
+                    {new Set(productAzs.map((az) => az.region)).size !== 1 ? 's' : ''}.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {productAzs.length > 0 ? (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        {productAzs.map((az) => (
+                          <Link
+                            key={az.id}
+                            to="/availability-zones"
+                            className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-slate-800"
+                            style={{
+                              borderColor: `${regionColors[az.region] || '#334155'}40`,
+                              color: regionColors[az.region] || '#94a3b8',
+                            }}
+                          >
+                            <MapPin className="h-3 w-3" />
+                            {az.name}
+                          </Link>
+                        ))}
+                      </div>
+                      <div className="mt-4 space-y-2">
+                        {productAzs.map((az) => (
+                          <div
+                            key={az.id}
+                            className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="h-2.5 w-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: regionColors[az.region] || '#64748b' }}
+                              />
+                              <span className="text-sm text-white">{az.name}</span>
+                              <span className="text-xs text-slate-500">{az.city}, {az.country}</span>
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className="text-[10px]"
+                              style={{
+                                borderColor: `${regionColors[az.region] || '#334155'}40`,
+                                color: regionColors[az.region] || '#94a3b8',
+                              }}
+                            >
+                              {az.code}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <Globe className="mx-auto h-10 w-10 text-slate-700" />
+                      <p className="mt-3 text-slate-500">No availability zones linked to this product.</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Mini Map */}
+              <Card className="bg-slate-900 border-slate-800 overflow-hidden">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-white text-base">
+                    <MapPin className="h-5 w-5 text-blue-500" />
+                    Zone Map
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {productAzs.length > 0 ? (
+                    <div className="relative h-[300px] w-full bg-slate-950">
+                      <ComposableMap
+                        projection="geoMercator"
+                        projectionConfig={{ scale: 120 }}
+                        style={{ width: '100%', height: '100%' }}
+                      >
+                        <ZoomableGroup center={mapCenter} zoom={1}>
+                          <Geographies geography={geoUrl}>
+                            {({ geographies }) =>
+                              geographies.map((geo) => (
+                                <Geography
+                                  key={geo.rsmKey}
+                                  geography={geo}
+                                  fill="#1e293b"
+                                  stroke="#334155"
+                                  strokeWidth={0.5}
+                                  style={{
+                                    default: { outline: 'none' },
+                                    hover: { fill: '#334155', outline: 'none' },
+                                    pressed: { outline: 'none' },
+                                  }}
+                                />
+                              ))
+                            }
+                          </Geographies>
+                          {productAzs.map((az) => (
+                            <Marker key={az.id} coordinates={[az.longitude, az.latitude]}>
+                              <circle
+                                r={6}
+                                fill={regionColors[az.region] || '#64748b'}
+                                stroke="#0f172a"
+                                strokeWidth={2}
+                              />
+                            </Marker>
+                          ))}
+                        </ZoomableGroup>
+                      </ComposableMap>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <MapPin className="mx-auto h-10 w-10 text-slate-700" />
+                      <p className="mt-3 text-sm text-slate-500">No zones to display.</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
         </Tabs>
       </AnimatedSection>
 
@@ -551,7 +711,7 @@ export default function ProductDetail() {
           <div className="space-y-4">
             <h2 className="text-xl font-bold text-white">Similar products</h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {related.map((rel) => {
+              {related.map((rel: Product) => {
                 const RelIcon = iconMap[rel.category?.icon || ''] || Server;
                 return (
                   <Link key={rel.id} to={`/products/${rel.slug}`} className="group">
