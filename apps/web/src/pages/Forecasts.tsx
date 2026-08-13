@@ -4,6 +4,7 @@ import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -152,6 +153,7 @@ export default function Forecasts() {
   });
   const [lines, setLines] = useState<Array<{ productId: string; flavorId: string; azCode: string; quantity: number; osVersion?: string }>>([]);
   const [draftLine, setDraftLine] = useState({ productId: '', flavorId: '', azSelections: {} as Record<string, number>, osVersion: '' });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const selectedDraftProduct = products?.find((p) => p.id === draftLine.productId);
   const selectedDraftFlavor = selectedDraftProduct?.flavors.find((f: any) => f.id === draftLine.flavorId);
@@ -220,10 +222,14 @@ export default function Forecasts() {
     });
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Delete this request?')) {
-      await deleteForecast.mutateAsync(id);
+  const handleDelete = (id: string) => {
+    setConfirmDelete({ open: true, id });
+  };
+  const handleConfirmDelete = async () => {
+    if (confirmDelete.id) {
+      await deleteForecast.mutateAsync(confirmDelete.id);
     }
+    setConfirmDelete({ open: false, id: null });
   };
 
   const statCards = [
@@ -770,6 +776,16 @@ export default function Forecasts() {
           </div>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete Request"
+        description="Are you sure you want to delete this request? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 }
