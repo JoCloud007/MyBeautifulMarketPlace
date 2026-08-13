@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { Product, Forecast, ForecastStats } from '@cloudmarket/shared-types';
+import type { Product, Forecast, ForecastStats, AvailabilityZone, Flavor } from '@cloudmarket/shared-types';
 import {
   Dialog,
   DialogContent,
@@ -131,6 +131,7 @@ export default function Forecasts() {
   const [forecasts, setForecasts] = useState<Forecast[] | null>(null);
   const [stats, setStats] = useState<ForecastStats | null>(null);
   const [products, setProducts] = useState<Product[] | null>(null);
+  const [zones, setZones] = useState<AvailabilityZone[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -140,12 +141,14 @@ export default function Forecasts() {
     Promise.all([
       fetch('/api/forecasts').then(r => r.ok ? r.json() : Promise.reject(new Error('forecasts failed'))),
       fetch('/api/forecasts/stats').then(r => r.ok ? r.json() : Promise.reject(new Error('stats failed'))),
-      fetch('/api/products').then(r => r.ok ? r.json() : Promise.reject(new Error('products failed')))
+      fetch('/api/products').then(r => r.ok ? r.json() : Promise.reject(new Error('products failed'))),
+      fetch('/api/availability-zones').then(r => r.ok ? r.json() : Promise.reject(new Error('zones failed')))
     ])
-      .then(([forecastsData, statsData, productsData]) => {
+      .then(([forecastsData, statsData, productsData, zonesData]) => {
         setForecasts(forecastsData);
         setStats(statsData);
         setProducts(productsData);
+        setZones(zonesData);
         setLoading(false);
       })
       .catch(() => {
@@ -172,10 +175,13 @@ export default function Forecasts() {
     requestedBy: '',
     requesterEmail: '',
     quantity: 1,
+    targetDate: '',
+    availabilityZones: [] as string[],
     justification: '',
   });
 
   const selectedProduct = products?.find((p) => p.id === formData.productId);
+  const selectedFlavor = selectedProduct?.flavors.find((f: Flavor) => f.id === formData.flavorId);
 
   const filteredForecasts = forecasts?.filter((f) => {
     const matchesSearch =
@@ -197,6 +203,8 @@ export default function Forecasts() {
       requestedBy: '',
       requesterEmail: '',
       quantity: 1,
+      targetDate: '',
+      availabilityZones: [],
       justification: '',
     });
   };
@@ -447,117 +455,261 @@ export default function Forecasts() {
 
       {/* Create Forecast Dialog */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-white">New request</DialogTitle>
-            <DialogDescription className="text-slate-400">
-              Create a provisioning request for a product.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Product</label>
-              <Select
-                value={formData.productId}
-                onChange={(e) =>
-                  setFormData({ ...formData, productId: e.target.value, flavorId: '' })
-                }
-                required
-                className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
-              >
-                <option value="">Choose a product...</option>
-                {products?.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-4xl max-h-[90vh] overflow-y-auto p-0">
+          <div className="grid grid-cols-1 lg:grid-cols-3">
+            {/* LEFT: Form */}
+            <div className="lg:col-span-2 p-6 space-y-6">
+              <DialogHeader className="pb-2">
+                <DialogTitle className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">New Provisioning Request</DialogTitle>
+                <DialogDescription className="text-slate-400">
+                  Configure your infrastructure deployment across regions
+                </DialogDescription>
+              </DialogHeader>
+
+              <form onSubmit={handleCreate} className="space-y-5">
+                {/* Step 1: Product */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-sm font-bold">1</div>
+                    <label className="text-sm font-semibold text-slate-200">Select Product</label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {products?.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, productId: p.id, flavorId: '' })}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          formData.productId === p.id
+                            ? 'border-blue-500 bg-blue-500/10'
+                            : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center text-lg">💻</div>
+                          <div>
+                            <div className="text-sm font-semibold text-white">{p.name}</div>
+                            <div className="text-xs text-slate-400">{p.category?.name} · {p.os || 'N/A'}</div>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Step 2: Flavor */}
+                {selectedProduct && selectedProduct.flavors.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-sm font-bold">2</div>
+                      <label className="text-sm font-semibold text-slate-200">Choose Flavor</label>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {selectedProduct.flavors.map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, flavorId: f.id })}
+                          className={`p-3 rounded-xl border text-center transition-all ${
+                            formData.flavorId === f.id
+                              ? 'border-blue-500 bg-blue-500/10'
+                              : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
+                          }`}
+                        >
+                          <div className="text-sm font-bold text-white">{f.name}</div>
+                          <div className="text-xs text-slate-400 mt-1">{f.vcpu} vCPU · {f.ramGb} GB</div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">{f.description?.slice(0, 20) || ''}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 3: Region & Schedule */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-sm font-bold">3</div>
+                    <label className="text-sm font-semibold text-slate-200">Region & Schedule</label>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-slate-400 uppercase tracking-wide mb-2 block">Availability Zones</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {zones?.map((z) => (
+                          <button
+                            key={z.id}
+                            type="button"
+                            onClick={() => {
+                              const codes = formData.availabilityZones;
+                              const newCodes = codes.includes(z.code)
+                                ? codes.filter((c) => c !== z.code)
+                                : [...codes, z.code];
+                              setFormData({ ...formData, availabilityZones: newCodes });
+                            }}
+                            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                              formData.availabilityZones.includes(z.code)
+                                ? 'bg-blue-500/20 border border-blue-500 text-blue-400'
+                                : 'bg-slate-800 border border-slate-700 text-slate-400 hover:border-slate-500'
+                            }`}
+                          >
+                            {formData.availabilityZones.includes(z.code) ? '✓ ' : ''}{z.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 uppercase tracking-wide mb-2 block">Target Date</label>
+                      <Input
+                        type="date"
+                        value={formData.targetDate}
+                        onChange={(e) => setFormData({ ...formData, targetDate: e.target.value })}
+                        className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 4: Request Details */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center text-sm font-bold">4</div>
+                    <label className="text-sm font-semibold text-slate-200">Request Details</label>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Quantity</label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={formData.quantity}
+                        onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
+                        required
+                        className="bg-slate-950 border-slate-700 text-white min-h-[44px] text-center"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Requester</label>
+                      <Input
+                        value={formData.requestedBy}
+                        onChange={(e) => setFormData({ ...formData, requestedBy: e.target.value })}
+                        placeholder="Name"
+                        required
+                        className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 min-h-[44px]"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Email</label>
+                      <Input
+                        type="email"
+                        value={formData.requesterEmail}
+                        onChange={(e) => setFormData({ ...formData, requesterEmail: e.target.value })}
+                        placeholder="email@example.com"
+                        required
+                        className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 min-h-[44px]"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Justification</label>
+                    <Textarea
+                      value={formData.justification}
+                      onChange={(e) => setFormData({ ...formData, justification: e.target.value })}
+                      placeholder="Why do you need this product?"
+                      rows={3}
+                      className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600"
+                    />
+                  </div>
+                </div>
+
+                <DialogFooter className="flex-col sm:flex-row gap-2 pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsCreateOpen(false)}
+                    className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white w-full sm:w-auto min-h-[44px]"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={createForecast.isPending || !formData.productId || !formData.flavorId}
+                    className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]"
+                  >
+                    {createForecast.isPending ? 'Creating...' : 'Create Request'}
+                  </Button>
+                </DialogFooter>
+              </form>
             </div>
 
-            {selectedProduct && selectedProduct.flavors.length > 0 && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Flavor</label>
-                <Select
-                  value={formData.flavorId}
-                  onChange={(e) => setFormData({ ...formData, flavorId: e.target.value })}
-                  required
-                  className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
-                >
-                  <option value="">Choose a flavor...</option>
-                  {selectedProduct.flavors.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name} ({f.vcpu} vCPU, {f.ramGb} GB)
-                    </option>
-                  ))}
-                </Select>
+            {/* RIGHT: Summary */}
+            <div className="hidden lg:block bg-slate-800/30 border-l border-slate-800 p-6">
+              <div className="sticky top-6 space-y-4">
+                <h3 className="text-sm font-semibold text-slate-200">Request Summary</h3>
+
+                <div className="space-y-3">
+                  {selectedProduct && (
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center text-lg">💻</div>
+                      <div>
+                        <div className="text-sm font-semibold text-white">{selectedProduct.name}</div>
+                        <div className="text-xs text-slate-400">{selectedProduct.category?.name} · {selectedProduct.os || 'N/A'}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedFlavor && (
+                    <>
+                      <div className="h-px bg-slate-700" />
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-400">Flavor</span>
+                        <span className="font-medium text-white">{selectedFlavor.name}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-400">Specs</span>
+                        <span className="font-medium text-white">{selectedFlavor.vcpu} vCPU · {selectedFlavor.ramGb} GB</span>
+                      </div>
+                    </>
+                  )}
+
+                  {formData.availabilityZones.length > 0 && (
+                    <>
+                      <div className="h-px bg-slate-700" />
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-400">Regions</span>
+                        <span className="font-medium text-white text-right">{formData.availabilityZones.join(', ')}</span>
+                      </div>
+                    </>
+                  )}
+
+                  {formData.targetDate && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-400">Target Date</span>
+                      <span className="font-medium text-white">{new Date(formData.targetDate).toLocaleDateString()}</span>
+                    </div>
+                  )}
+
+                  {formData.quantity > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-400">Quantity</span>
+                      <span className="font-medium text-white">{formData.quantity} instances</span>
+                    </div>
+                  )}
+
+                  {selectedFlavor && formData.quantity > 0 && (
+                    <>
+                      <div className="h-px bg-slate-700" />
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-semibold text-slate-200">Total Resources</span>
+                        <span className="text-lg font-bold text-blue-400">
+                          {selectedFlavor.vcpu * formData.quantity} vCPU · {selectedFlavor.ramGb * formData.quantity} GB
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Requester</label>
-                <Input
-                  value={formData.requestedBy}
-                  onChange={(e) => setFormData({ ...formData, requestedBy: e.target.value })}
-                  placeholder="Name"
-                  required
-                  className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 min-h-[44px]"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Email</label>
-                <Input
-                  type="email"
-                  value={formData.requesterEmail}
-                  onChange={(e) => setFormData({ ...formData, requesterEmail: e.target.value })}
-                  placeholder="email@example.com"
-                  required
-                  className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600 min-h-[44px]"
-                />
-              </div>
             </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Quantity</label>
-              <Input
-                type="number"
-                min={1}
-                value={formData.quantity}
-                onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
-                required
-                className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Justification</label>
-              <Textarea
-                value={formData.justification}
-                onChange={(e) => setFormData({ ...formData, justification: e.target.value })}
-                placeholder="Why do you need this product?"
-                rows={3}
-                className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-600"
-              />
-            </div>
-
-            <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsCreateOpen(false)}
-                className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white w-full sm:w-auto min-h-[44px]"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={createForecast.isPending}
-                className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]"
-              >
-                {createForecast.isPending ? 'Creating...' : 'Create request'}
-              </Button>
-            </DialogFooter>
-          </form>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { ApprovalStatus } from '@prisma/client';
 import { z } from 'zod';
-import { prisma } from '../index';
+import { prisma } from '../db';
+import { requireAdminAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -11,6 +12,8 @@ const createForecastSchema = z.object({
   requestedBy: z.string().min(1),
   requesterEmail: z.string().email(),
   quantity: z.number().int().min(1),
+  targetDate: z.string().datetime().optional(),
+  availabilityZones: z.array(z.string()).optional(),
   justification: z.string().optional(),
 });
 
@@ -60,7 +63,7 @@ router.get('/stats', async (_req, res, next) => {
 });
 
 // POST /api/forecasts
-router.post('/', async (req, res, next) => {
+router.post('/', requireAdminAuth, async (req, res, next) => {
   try {
     const data = createForecastSchema.parse(req.body);
 
@@ -74,7 +77,16 @@ router.post('/', async (req, res, next) => {
     }
 
     const forecast = await prisma.forecast.create({
-      data,
+      data: {
+        productId: data.productId,
+        flavorId: data.flavorId,
+        requestedBy: data.requestedBy,
+        requesterEmail: data.requesterEmail,
+        quantity: data.quantity,
+        targetDate: data.targetDate ? new Date(data.targetDate) : null,
+        availabilityZones: data.availabilityZones || [],
+        justification: data.justification,
+      },
       include: { product: true, flavor: true },
     });
     res.status(201).json(forecast);
@@ -84,9 +96,10 @@ router.post('/', async (req, res, next) => {
 });
 
 // PATCH /api/forecasts/:id
-router.patch('/:id', async (req, res, next) => {
+router.patch('/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
     const data = updateForecastSchema.parse(req.body);
 
     const forecast = await prisma.forecast.update({
@@ -107,9 +120,10 @@ router.patch('/:id', async (req, res, next) => {
 });
 
 // DELETE /api/forecasts/:id
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', requireAdminAuth, async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
     await prisma.forecast.delete({ where: { id } });
     res.status(204).send();
   } catch (err) {

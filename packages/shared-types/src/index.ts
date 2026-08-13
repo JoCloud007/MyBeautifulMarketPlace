@@ -70,6 +70,8 @@ export interface Forecast {
   requestedBy: string;
   requesterEmail: string;
   quantity: number;
+  targetDate?: string;
+  availabilityZones?: string[];
   status: ApprovalStatus;
   justification: string | null;
   reviewedBy: string | null;

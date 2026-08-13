@@ -67,22 +67,24 @@ model Dependency {
 }
 
 model Forecast {
-  id              String         @id @default(uuid())
-  productId       String
-  product         Product        @relation(fields: [productId], references: [id])
-  flavorId        String
-  flavor          Flavor         @relation(fields: [flavorId], references: [id])
-  requestedBy     String
-  requesterEmail  String
-  quantity        Int
-  status          ApprovalStatus @default(PENDING)
-  justification   String?
-  reviewedBy      String?
-  reviewedAt      DateTime?
-  rejectionReason String?
-  requestedAt     DateTime       @default(now())
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id                String         @id @default(uuid())
+  productId         String
+  product           Product        @relation(fields: [productId], references: [id])
+  flavorId          String
+  flavor            Flavor         @relation(fields: [flavorId], references: [id])
+  requestedBy       String
+  requesterEmail    String
+  quantity          Int
+  targetDate        DateTime?
+  availabilityZones String[]
+  status            ApprovalStatus @default(PENDING)
+  justification     String?
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  rejectionReason   String?
+  requestedAt       DateTime       @default(now())
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 }
 
 model AvailabilityZone {
