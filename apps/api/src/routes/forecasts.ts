@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { ApprovalStatus } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db';
-import { requireAdminAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -68,7 +67,7 @@ router.get('/stats', async (_req, res, next) => {
 });
 
 // POST /api/forecasts
-router.post('/', requireAdminAuth, async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     const data = createForecastSchema.parse(req.body);
 
@@ -117,7 +116,7 @@ router.post('/', requireAdminAuth, async (req, res, next) => {
 });
 
 // PATCH /api/forecasts/:id
-router.patch('/:id', requireAdminAuth, async (req, res, next) => {
+router.patch('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     idParamSchema.parse(id);
@@ -141,7 +140,7 @@ router.patch('/:id', requireAdminAuth, async (req, res, next) => {
 });
 
 // DELETE /api/forecasts/:id
-router.delete('/:id', requireAdminAuth, async (req, res, next) => {
+router.delete('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     idParamSchema.parse(id);

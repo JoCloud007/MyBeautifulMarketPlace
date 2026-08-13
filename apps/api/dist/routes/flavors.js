@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.flavorRoutes = void 0;
 const express_1 = require("express");
 const zod_1 = require("zod");
-const index_1 = require("../index");
+const db_1 = require("../db");
 const router = (0, express_1.Router)();
 exports.flavorRoutes = router;
 const idParamSchema = zod_1.z.string().uuid();
@@ -29,11 +29,11 @@ router.get('/', async (req, res, next) => {
         if (productId && typeof productId === 'string') {
             where.productId = productId;
         }
-        const flavors = await index_1.prisma.flavor.findMany({
+        const flavors = await db_1.prisma.flavor.findMany({
             where,
             include: {
                 product: { include: { category: true } },
-                _count: { select: { forecasts: true } },
+                _count: { select: { forecastLines: true } },
             },
             orderBy: { createdAt: 'desc' },
         });
@@ -48,11 +48,11 @@ router.post('/', async (req, res, next) => {
     try {
         const data = createFlavorSchema.parse(req.body);
         // Verify product exists
-        const product = await index_1.prisma.product.findUnique({ where: { id: data.productId } });
+        const product = await db_1.prisma.product.findUnique({ where: { id: data.productId } });
         if (!product) {
             return res.status(404).json({ error: 'Product not found' });
         }
-        const flavor = await index_1.prisma.flavor.create({
+        const flavor = await db_1.prisma.flavor.create({
             data,
             include: {
                 product: { include: { category: true } },
@@ -68,11 +68,11 @@ router.post('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
     try {
         const { id } = req.params;
-        const flavor = await index_1.prisma.flavor.findUnique({
+        const flavor = await db_1.prisma.flavor.findUnique({
             where: { id },
             include: {
                 product: { include: { category: true } },
-                _count: { select: { forecasts: true } },
+                _count: { select: { forecastLines: true } },
             },
         });
         if (!flavor) {
@@ -92,12 +92,12 @@ router.patch('/:id', async (req, res, next) => {
         const data = updateFlavorSchema.parse(req.body);
         // If productId is being updated, verify the new product exists
         if (data.productId) {
-            const product = await index_1.prisma.product.findUnique({ where: { id: data.productId } });
+            const product = await db_1.prisma.product.findUnique({ where: { id: data.productId } });
             if (!product) {
                 return res.status(404).json({ error: 'Product not found' });
             }
         }
-        const flavor = await index_1.prisma.flavor.update({
+        const flavor = await db_1.prisma.flavor.update({
             where: { id },
             data,
             include: {
@@ -116,16 +116,16 @@ router.delete('/:id', async (req, res, next) => {
         const { id } = req.params;
         idParamSchema.parse(id);
         // Check if flavor has associated forecasts
-        const flavor = await index_1.prisma.flavor.findUnique({
+        const flavor = await db_1.prisma.flavor.findUnique({
             where: { id },
-            include: { _count: { select: { forecasts: true } } },
+            include: { _count: { select: { forecastLines: true } } },
         });
-        if (flavor && flavor._count.forecasts > 0) {
+        if (flavor && flavor._count.forecastLines > 0) {
             return res.status(409).json({
                 error: 'Cannot delete flavor with existing forecasts. Please delete forecasts first.',
             });
         }
-        await index_1.prisma.flavor.delete({ where: { id } });
+        await db_1.prisma.flavor.delete({ where: { id } });
         res.status(204).send();
     }
     catch (err) {

@@ -210,44 +210,70 @@ async function main() {
     data: { email: 'user@cloudmarket.local', name: 'Demo User', role: 'USER' },
   });
 
+  // Create ProductAvailabilityZones (all products in all zones)
+  for (const product of [vmDebian, vmWindows, vmRedHat, bareMetalHpc, objectStorage, nasStorage, vmwareVsphere, citrixVdi]) {
+    for (const zone of [parisAz1, parisAz2, london, newYork, singapore, hongKong]) {
+      await prisma.productAvailabilityZone.upsert({
+        where: { productId_availabilityZoneId: { productId: product.id, availabilityZoneId: zone.id } },
+        update: {},
+        create: { productId: product.id, availabilityZoneId: zone.id },
+      });
+    }
+  }
+
   // Create Sample Forecasts
   const allFlavors = await prisma.flavor.findMany();
   const vmDebianFlavors = allFlavors.filter(f => f.productId === vmDebian.id);
 
   await prisma.forecast.create({
     data: {
-      productId: vmDebian.id,
-      flavorId: vmDebianFlavors[1].id,
       requestedBy: 'Demo User',
       requesterEmail: 'user@cloudmarket.local',
-      quantity: 5,
       status: ApprovalStatus.PENDING,
       justification: 'Need VMs for development team expansion',
+      lines: {
+        create: [{
+          productId: vmDebian.id,
+          flavorId: vmDebianFlavors[1].id,
+          azCode: 'ap-south-sin1',
+          quantity: 5,
+        }],
+      },
     },
   });
 
   await prisma.forecast.create({
     data: {
-      productId: vmWindows.id,
-      flavorId: allFlavors.find(f => f.productId === vmWindows.id && f.name === 'Medium')!.id,
       requestedBy: 'Demo User',
       requesterEmail: 'user@cloudmarket.local',
-      quantity: 3,
       status: ApprovalStatus.APPROVED,
       justification: 'Windows servers for finance department',
       reviewedBy: 'System Administrator',
       reviewedAt: new Date(),
+      lines: {
+        create: [{
+          productId: vmWindows.id,
+          flavorId: allFlavors.find(f => f.productId === vmWindows.id && f.name === 'Medium')!.id,
+          azCode: 'ap-south-sin1',
+          quantity: 3,
+        }],
+      },
     },
   });
 
   await prisma.forecast.create({
     data: {
-      productId: bareMetalHpc.id,
-      flavorId: allFlavors.find(f => f.productId === bareMetalHpc.id && f.name === 'XL')!.id,
       requestedBy: 'Demo User',
       requesterEmail: 'user@cloudmarket.local',
-      quantity: 2,
       status: ApprovalStatus.REJECTED,
+      lines: {
+        create: [{
+          productId: bareMetalHpc.id,
+          flavorId: allFlavors.find(f => f.productId === bareMetalHpc.id && f.name === 'XL')!.id,
+          azCode: 'ap-south-sin1',
+          quantity: 2,
+        }],
+      },
       justification: 'HPC nodes for ML training',
       reviewedBy: 'System Administrator',
       reviewedAt: new Date(),

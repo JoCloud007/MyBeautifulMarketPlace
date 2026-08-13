@@ -4,15 +4,21 @@ exports.forecastRoutes = void 0;
 const express_1 = require("express");
 const client_1 = require("@prisma/client");
 const zod_1 = require("zod");
-const index_1 = require("../index");
+const db_1 = require("../db");
 const router = (0, express_1.Router)();
 exports.forecastRoutes = router;
-const createForecastSchema = zod_1.z.object({
+const forecastLineSchema = zod_1.z.object({
     productId: zod_1.z.string().uuid(),
     flavorId: zod_1.z.string().uuid(),
+    azCode: zod_1.z.string().min(1),
+    quantity: zod_1.z.number().int().min(1),
+    metadata: zod_1.z.record(zod_1.z.any()).optional(),
+});
+const createForecastSchema = zod_1.z.object({
     requestedBy: zod_1.z.string().min(1),
     requesterEmail: zod_1.z.string().email(),
-    quantity: zod_1.z.number().int().min(1),
+    targetDate: zod_1.z.string().datetime().optional(),
+    lines: zod_1.z.array(forecastLineSchema).min(1),
     justification: zod_1.z.string().optional(),
 });
 const idParamSchema = zod_1.z.string().uuid();
@@ -32,8 +38,8 @@ const updateForecastSchema = zod_1.z.object({
 // GET /api/forecasts
 router.get('/', async (_req, res, next) => {
     try {
-        const forecasts = await index_1.prisma.forecast.findMany({
-            include: { product: { include: { category: true } }, flavor: true },
+        const forecasts = await db_1.prisma.forecast.findMany({
+            include: { lines: { include: { product: { include: { category: true } }, flavor: true } } },
             orderBy: { createdAt: 'desc' },
         });
         res.json(forecasts);
@@ -46,10 +52,10 @@ router.get('/', async (_req, res, next) => {
 router.get('/stats', async (_req, res, next) => {
     try {
         const [total, pending, approved, rejected] = await Promise.all([
-            index_1.prisma.forecast.count(),
-            index_1.prisma.forecast.count({ where: { status: client_1.ApprovalStatus.PENDING } }),
-            index_1.prisma.forecast.count({ where: { status: client_1.ApprovalStatus.APPROVED } }),
-            index_1.prisma.forecast.count({ where: { status: client_1.ApprovalStatus.REJECTED } }),
+            db_1.prisma.forecast.count(),
+            db_1.prisma.forecast.count({ where: { status: client_1.ApprovalStatus.PENDING } }),
+            db_1.prisma.forecast.count({ where: { status: client_1.ApprovalStatus.APPROVED } }),
+            db_1.prisma.forecast.count({ where: { status: client_1.ApprovalStatus.REJECTED } }),
         ]);
         res.json({ total, pending, approved, rejected });
     }
@@ -61,17 +67,42 @@ router.get('/stats', async (_req, res, next) => {
 router.post('/', async (req, res, next) => {
     try {
         const data = createForecastSchema.parse(req.body);
-        // Verify that the flavor belongs to the product
-        const flavor = await index_1.prisma.flavor.findUnique({ where: { id: data.flavorId } });
-        if (!flavor) {
-            return res.status(404).json({ error: 'Flavor not found' });
+        for (const line of data.lines) {
+            const flavor = await db_1.prisma.flavor.findUnique({ where: { id: line.flavorId } });
+            if (!flavor) {
+                return res.status(404).json({ error: `Flavor not found: ${line.flavorId}` });
+            }
+            if (flavor.productId !== line.productId) {
+                return res.status(409).json({ error: `Flavor ${line.flavorId} does not belong to product ${line.productId}` });
+            }
+            const az = await db_1.prisma.availabilityZone.findUnique({ where: { code: line.azCode } });
+            if (!az) {
+                return res.status(404).json({ error: `Availability zone not found: ${line.azCode}` });
+            }
+            const offered = await db_1.prisma.productAvailabilityZone.findFirst({
+                where: { productId: line.productId, availabilityZoneId: az.id },
+            });
+            if (!offered) {
+                return res.status(409).json({ error: `Product ${line.productId} is not available in zone ${line.azCode}` });
+            }
         }
-        if (flavor.productId !== data.productId) {
-            return res.status(409).json({ error: 'The selected flavor does not belong to the specified product' });
-        }
-        const forecast = await index_1.prisma.forecast.create({
-            data,
-            include: { product: true, flavor: true },
+        const forecast = await db_1.prisma.forecast.create({
+            data: {
+                requestedBy: data.requestedBy,
+                requesterEmail: data.requesterEmail,
+                targetDate: data.targetDate ? new Date(data.targetDate) : null,
+                justification: data.justification,
+                lines: {
+                    create: data.lines.map((line) => ({
+                        productId: line.productId,
+                        flavorId: line.flavorId,
+                        azCode: line.azCode,
+                        quantity: line.quantity,
+                        metadata: line.metadata || undefined,
+                    })),
+                },
+            },
+            include: { lines: { include: { product: true, flavor: true } } },
         });
         res.status(201).json(forecast);
     }
@@ -83,8 +114,9 @@ router.post('/', async (req, res, next) => {
 router.patch('/:id', async (req, res, next) => {
     try {
         const { id } = req.params;
+        idParamSchema.parse(id);
         const data = updateForecastSchema.parse(req.body);
-        const forecast = await index_1.prisma.forecast.update({
+        const forecast = await db_1.prisma.forecast.update({
             where: { id },
             data: {
                 status: data.status,
@@ -92,7 +124,7 @@ router.patch('/:id', async (req, res, next) => {
                 reviewedAt: new Date(),
                 rejectionReason: data.rejectionReason || null,
             },
-            include: { product: true, flavor: true },
+            include: { lines: { include: { product: true, flavor: true } } },
         });
         res.json(forecast);
     }
@@ -104,7 +136,8 @@ router.patch('/:id', async (req, res, next) => {
 router.delete('/:id', async (req, res, next) => {
     try {
         const { id } = req.params;
-        await index_1.prisma.forecast.delete({ where: { id } });
+        idParamSchema.parse(id);
+        await db_1.prisma.forecast.delete({ where: { id } });
         res.status(204).send();
     }
     catch (err) {
