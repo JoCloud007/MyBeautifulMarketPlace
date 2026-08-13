@@ -77,9 +77,11 @@ function ProductTimeline({ product, yearStart, yearEnd }: { product: Product; ye
       </button>
 
       <div className="relative ml-6">
-        <div className="relative h-10 mb-2">
+        <div className="space-y-2 mb-2">
           {lifecycles.map((lc) => (
-            <LifecycleBar key={lc.id} lifecycle={lc} yearStart={yearStart} yearEnd={yearEnd} />
+            <div key={lc.id} className="relative h-8">
+              <LifecycleBar lifecycle={lc} yearStart={yearStart} yearEnd={yearEnd} />
+            </div>
           ))}
         </div>
 
