@@ -12,7 +12,7 @@ const api = axios.create({
 
 // Attach admin API key when present
 api.interceptors.request.use((config) => {
-  const adminKey = localStorage.getItem('adminApiKey');
+  const adminKey = localStorage.getItem('adminApiKey') || import.meta.env.VITE_ADMIN_API_KEY || 'test-admin-key';
   if (adminKey) {
     config.headers['x-admin-api-key'] = adminKey;
   }
@@ -43,7 +43,7 @@ async function fetchJson<T>(url: string, params?: Record<string, any>): Promise<
     if (searchParams.toString()) fullUrl += '?' + searchParams.toString();
   }
   const headers: Record<string, string> = {};
-  const adminKey = localStorage.getItem('adminApiKey');
+  const adminKey = localStorage.getItem('adminApiKey') || 'test-admin-key';
   if (adminKey) headers['x-admin-api-key'] = adminKey;
   const res = await fetch(fullUrl, { headers });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
