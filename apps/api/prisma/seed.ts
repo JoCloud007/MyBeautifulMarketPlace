@@ -225,61 +225,61 @@ async function main() {
   const allFlavors = await prisma.flavor.findMany();
   const vmDebianFlavors = allFlavors.filter(f => f.productId === vmDebian.id);
 
-  await prisma.forecast.create({
-    data: {
-      requestedBy: 'Demo User',
-      requesterEmail: 'user@cloudmarket.local',
-      status: ApprovalStatus.PENDING,
-      justification: 'Need VMs for development team expansion',
-      lines: {
-        create: [{
-          productId: vmDebian.id,
-          flavorId: vmDebianFlavors[1].id,
-          azCode: 'ap-south-sin1',
-          quantity: 5,
-        }],
-      },
-    },
-  });
+//   // // await prisma.forecast.create({
+// //     data: {
+// //       requestedBy: 'Demo User',
+// //       requesterEmail: 'user@cloudmarket.local',
+// //       status: ApprovalStatus.PENDING,
+// //       justification: 'Need VMs for development team expansion',
+// //       lines: {
+// //         create: [{
+// //           productId: vmDebian.id,
+// //           flavorId: vmDebianFlavors[1].id,
+// //           azCode: 'ap-south-sin1',
+// //           quantity: 5,
+// //         }],
+// //       },
+// //     },
+// //   });
 
-  await prisma.forecast.create({
-    data: {
-      requestedBy: 'Demo User',
-      requesterEmail: 'user@cloudmarket.local',
-      status: ApprovalStatus.APPROVED,
-      justification: 'Windows servers for finance department',
-      reviewedBy: 'System Administrator',
-      reviewedAt: new Date(),
-      lines: {
-        create: [{
-          productId: vmWindows.id,
-          flavorId: allFlavors.find(f => f.productId === vmWindows.id && f.name === 'Medium')!.id,
-          azCode: 'ap-south-sin1',
-          quantity: 3,
-        }],
-      },
-    },
-  });
+//   // // await prisma.forecast.create({
+// //     data: {
+// //       requestedBy: 'Demo User',
+// //       requesterEmail: 'user@cloudmarket.local',
+// //       status: ApprovalStatus.APPROVED,
+// //       justification: 'Windows servers for finance department',
+// //       reviewedBy: 'System Administrator',
+// //       reviewedAt: new Date(),
+// //       lines: {
+// //         create: [{
+// //           productId: vmWindows.id,
+// //           flavorId: allFlavors.find(f => f.productId === vmWindows.id && f.name === 'Medium')!.id,
+// //           azCode: 'ap-south-sin1',
+// //           quantity: 3,
+// //         }],
+// //       },
+// //     },
+// //   });
 
-  await prisma.forecast.create({
-    data: {
-      requestedBy: 'Demo User',
-      requesterEmail: 'user@cloudmarket.local',
-      status: ApprovalStatus.REJECTED,
-      lines: {
-        create: [{
-          productId: bareMetalHpc.id,
-          flavorId: allFlavors.find(f => f.productId === bareMetalHpc.id && f.name === 'XL')!.id,
-          azCode: 'ap-south-sin1',
-          quantity: 2,
-        }],
-      },
-      justification: 'HPC nodes for ML training',
-      reviewedBy: 'System Administrator',
-      reviewedAt: new Date(),
-      rejectionReason: 'Budget constraints for Q3. Please resubmit in Q4.',
-    },
-  });
+//   // // await prisma.forecast.create({
+// //     data: {
+// //       requestedBy: 'Demo User',
+// //       requesterEmail: 'user@cloudmarket.local',
+// //       status: ApprovalStatus.REJECTED,
+// //       lines: {
+// //         create: [{
+// //           productId: bareMetalHpc.id,
+// //           flavorId: allFlavors.find(f => f.productId === bareMetalHpc.id && f.name === 'XL')!.id,
+// //           azCode: 'ap-south-sin1',
+// //           quantity: 2,
+// //         }],
+// //       },
+// //       justification: 'HPC nodes for ML training',
+// //       reviewedBy: 'System Administrator',
+// //       reviewedAt: new Date(),
+// //       rejectionReason: 'Budget constraints for Q3. Please resubmit in Q4.',
+// //     },
+// //   });
 
   console.log('✅ Seed completed successfully');
 }

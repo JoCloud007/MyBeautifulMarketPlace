@@ -87,7 +87,10 @@ export function useUpdateProduct() {
       const { data } = await api.patch(`/products/${id}`, payload);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(['products'], (old: Product[] | undefined) =>
+        old?.map((p) => (p.id === variables.id ? data : p)) ?? []
+      );
       queryClient.invalidateQueries({ queryKey: ['products'] });
       addToast('Product updated', 'success');
     },
@@ -104,7 +107,10 @@ export function useDeleteProduct() {
     mutationFn: async (id: string) => {
       await api.delete(`/products/${id}`);
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(['products'], (old: Product[] | undefined) =>
+        old?.filter((p) => p.id !== id) ?? []
+      );
       queryClient.invalidateQueries({ queryKey: ['products'] });
       addToast('Product deleted', 'success');
     },
@@ -151,7 +157,10 @@ export function useUpdateCategory() {
       const { data } = await api.patch(`/categories/${id}`, payload);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(['categories'], (old: Category[] | undefined) =>
+        old?.map((c) => (c.id === variables.id ? data : c)) ?? []
+      );
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       addToast('Category updated', 'success');
     },
@@ -168,7 +177,10 @@ export function useDeleteCategory() {
     mutationFn: async (id: string) => {
       await api.delete(`/categories/${id}`);
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(['categories'], (old: Category[] | undefined) =>
+        old?.filter((c) => c.id !== id) ?? []
+      );
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       addToast('Category deleted', 'success');
     },
@@ -362,7 +374,10 @@ export function useUpdateForecast() {
       const { data } = await api.patch(`/forecasts/${id}`, payload);
       return data;
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(['forecasts'], (old: Forecast[] | undefined) =>
+        old?.map((f) => (f.id === variables.id ? data : f)) ?? []
+      );
       queryClient.invalidateQueries({ queryKey: ['forecasts'] });
       queryClient.invalidateQueries({ queryKey: ['forecast-stats'] });
       const status = (variables as any).status;
@@ -383,7 +398,10 @@ export function useDeleteForecast() {
     mutationFn: async (id: string) => {
       await api.delete(`/forecasts/${id}`);
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(['forecasts'], (old: Forecast[] | undefined) =>
+        old?.filter((f) => f.id !== id) ?? []
+      );
       queryClient.invalidateQueries({ queryKey: ['forecasts'] });
       queryClient.invalidateQueries({ queryKey: ['forecast-stats'] });
       addToast('Request deleted', 'success');
@@ -431,7 +449,10 @@ export function useUpdateUser() {
       const { data } = await api.patch(`/users/${id}`, payload);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(['users'], (old: User[] | undefined) =>
+        old?.map((u) => (u.id === variables.id ? data : u)) ?? []
+      );
       queryClient.invalidateQueries({ queryKey: ['users'] });
       addToast('User updated', 'success');
     },
@@ -448,7 +469,10 @@ export function useDeleteUser() {
     mutationFn: async (id: string) => {
       await api.delete(`/users/${id}`);
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(['users'], (old: User[] | undefined) =>
+        old?.filter((u) => u.id !== id) ?? []
+      );
       queryClient.invalidateQueries({ queryKey: ['users'] });
       addToast('User deleted', 'success');
     },
