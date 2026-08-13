@@ -14,6 +14,12 @@ import { dependencyRoutes } from './routes/dependencies';
 import { userRoutes } from './routes/users';
 import { adminRoutes } from './routes/admin';
 import { availabilityZoneRoutes } from './routes/availability-zones';
+import { applicationRoutes } from './routes/applications';
+import { continuityLevelRoutes } from './routes/continuity-levels';
+import { instanceRoutes } from './routes/instances';
+import { healthCheckRoutes } from './routes/health-checks';
+import { maintenanceWindowRoutes } from './routes/maintenance-windows';
+import { startCronJobs } from './cron';
 
 dotenv.config();
 
@@ -44,6 +50,12 @@ app.use('/api/flavors', flavorRoutes);
 app.use('/api/dependencies', dependencyRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/availability-zones', availabilityZoneRoutes);
+app.use('/api/applications', applicationRoutes);
+app.use('/api/continuity-levels', continuityLevelRoutes);
+app.use('/api/instances', instanceRoutes);
+app.use('/api/health-checks', healthCheckRoutes);
+app.use('/api/maintenance-windows', maintenanceWindowRoutes);
+
 // Conditional admin API key protection (active only when ADMIN_API_KEY is set)
 const adminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const key = process.env.ADMIN_API_KEY;
@@ -114,6 +126,7 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 
 app.listen(PORT, () => {
   console.log(`🚀 API server running on port ${PORT}`);
+  startCronJobs();
 });
 
 export { prisma };

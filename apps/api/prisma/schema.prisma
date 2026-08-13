@@ -31,12 +31,61 @@ model Product {
   dependentProducts Dependency[]                @relation("ProductDependents")
   forecastLines     ForecastLine[]
   availabilityZones ProductAvailabilityZone[]
+  options           ProductOption[]
+  lifecycles        ProductLifecycle[]
+  upgradeFrom       UpgradePath[]               @relation("UpgradeFrom")
+  upgradeTo         UpgradePath[]               @relation("UpgradeTo")
+  instances         Instance[]
   documentation     String?
   roadmap           String?
   os                String?
   isActive          Boolean                     @default(true)
   createdAt         DateTime                    @default(now())
   updatedAt         DateTime                    @updatedAt
+}
+
+model ProductOption {
+  id         String        @id @default(uuid())
+  productId  String
+  product    Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type       OptionType
+  value      String
+  label      String
+  isDefault  Boolean       @default(false)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@unique([productId, type, value])
+}
+
+model ProductLifecycle {
+  id                String          @id @default(uuid())
+  productId         String
+  product           Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  version           String
+  releaseDate       DateTime
+  normalSupportEnd  DateTime
+  extendedSupportEnd DateTime
+  eolDate           DateTime
+  phase             LifecyclePhase  @default(RELEASED)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([productId, version])
+}
+
+model UpgradePath {
+  id               String        @id @default(uuid())
+  fromProductId    String
+  fromProduct      Product       @relation("UpgradeFrom", fields: [fromProductId], references: [id])
+  toProductId      String
+  toProduct        Product       @relation("UpgradeTo", fields: [toProductId], references: [id])
+  fromVersion      String
+  toVersion        String
+  migrationType    MigrationType
+  notes            String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 }
 
 model Flavor {
@@ -48,6 +97,7 @@ model Flavor {
   productId   String
   product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
   forecastLines ForecastLine[]
+  instances   Instance[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 }
@@ -66,6 +116,31 @@ model Dependency {
   @@unique([productId, dependsOnId])
 }
 
+model Application {
+  id                String           @id @default(uuid())
+  name              String           @unique
+  description       String?
+  continuityLevelId String
+  continuityLevel   ContinuityLevel  @relation(fields: [continuityLevelId], references: [id])
+  owner             String
+  forecasts         Forecast[]
+  instances         Instance[]
+  maintenanceWindows MaintenanceWindow[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model ContinuityLevel {
+  id          String        @id @default(uuid())
+  name        String        @unique
+  rtoMinutes  Int
+  rpoMinutes  Int
+  description String?
+  color       String        @default("green")
+  applications Application[]
+  createdAt   DateTime      @default(now())
+}
+
 model Forecast {
   id             String         @id @default(uuid())
   requestedBy    String
@@ -80,6 +155,10 @@ model Forecast {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   lines          ForecastLine[]
+  instances      Instance[]
+  applicationId  String
+  application    Application    @relation(fields: [applicationId], references: [id])
+  environment    Environment    @default(DEV)
 }
 
 model ForecastLine {
@@ -94,6 +173,7 @@ model ForecastLine {
   az         AvailabilityZone @relation(fields: [azCode], references: [code])
   quantity   Int              @default(1)
   metadata   Json?
+  resiliency ResiliencyLevel  @default(STANDARD)
 }
 
 model AvailabilityZone {
@@ -108,6 +188,7 @@ model AvailabilityZone {
   isActive              Boolean                     @default(true)
   productAvailabilities ProductAvailabilityZone[]
   forecastLines         ForecastLine[]
+  instances             Instance[]
   createdAt             DateTime                    @default(now())
   updatedAt             DateTime                    @updatedAt
 }
@@ -146,4 +227,120 @@ enum ApprovalStatus {
 enum UserRole {
   ADMIN
   USER
+}
+
+enum Environment {
+  PRD
+  DEV
+  STG
+}
+
+enum ResiliencyLevel {
+  STANDARD
+  HA
+  MULTI_AZ
+}
+
+enum OptionType {
+  OS_VERSION
+  EDITION
+  FEATURE
+}
+
+enum LifecyclePhase {
+  RELEASED
+  NORMAL_SUPPORT
+  EXTENDED_SUPPORT
+  NO_SUPPORT
+  EOL
+}
+
+enum MigrationType {
+  IN_PLACE
+  REBUILD
+  BLUE_GREEN
+  SNAPSHOT
+}
+
+enum InstanceStatus {
+  PENDING
+  PROVISIONING
+  RUNNING
+  STOPPED
+  TERMINATED
+}
+
+enum HealthStatus {
+  HEALTHY
+  DEGRADED
+  UNHEALTHY
+}
+
+enum MaintenanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Instance {
+  id            String         @id @default(uuid())
+  name          String
+  description   String?
+  forecastId    String?
+  forecast      Forecast?      @relation(fields: [forecastId], references: [id], onDelete: SetNull)
+  applicationId String
+  application   Application    @relation(fields: [applicationId], references: [id])
+  productId     String
+  product       Product        @relation(fields: [productId], references: [id])
+  flavorId      String
+  flavor        Flavor         @relation(fields: [flavorId], references: [id])
+  azCode        String
+  az            AvailabilityZone @relation(fields: [azCode], references: [code])
+  status        InstanceStatus @default(PENDING)
+  environment   Environment    @default(DEV)
+  ipAddress     String?
+  hostname      String?
+  metadata      Json?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  startedAt     DateTime?
+  stoppedAt     DateTime?
+  terminatedAt  DateTime?
+  healthChecks  HealthCheck[]
+  maintenanceWindows MaintenanceWindow[]
+}
+
+model HealthCheck {
+  id              String      @id @default(uuid())
+  instanceId      String
+  instance        Instance    @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  status          HealthStatus @default(HEALTHY)
+  cpuPercent      Float       @default(0)
+  memoryPercent   Float       @default(0)
+  diskPercent     Float       @default(0)
+  responseTimeMs  Int         @default(0)
+  checkedAt       DateTime    @default(now())
+  createdAt       DateTime    @default(now())
+
+  @@index([instanceId, checkedAt])
+}
+
+model MaintenanceWindow {
+  id              String             @id @default(uuid())
+  instanceId      String?
+  instance        Instance?          @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  applicationId   String?
+  application     Application?       @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  title           String
+  description     String?
+  startTime       DateTime
+  endTime         DateTime
+  status          MaintenanceStatus  @default(SCHEDULED)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([instanceId])
+  @@index([applicationId])
+  @@index([startTime, endTime])
 }

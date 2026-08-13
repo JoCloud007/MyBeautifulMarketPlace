@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
-import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone } from '@cloudmarket/shared-types';
+import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone, Application, ContinuityLevel, ProductLifecycle, ProductOption, UpgradePath, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus } from '@cloudmarket/shared-types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -625,6 +625,530 @@ export function useAdminUsers() {
     queryFn: () => fetchJson('/admin/users'),
     retry: 3,
     retryDelay: 2000,
+  });
+}
+
+// ========== APPLICATIONS ==========
+
+export function useApplications() {
+  return useQuery<Application[]>({
+    queryKey: ['applications'],
+    queryFn: () => fetchJson('/applications'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreateApplication() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (payload: Partial<Application>) => {
+      const { data } = await api.post('/applications', payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['applications'] });
+      addToast('Application created successfully', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error during creation', 'error');
+    },
+  });
+}
+
+export function useUpdateApplication() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & Partial<Application>) => {
+      const { data } = await api.patch(`/applications/${id}`, payload);
+      return data;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(['applications'], (old: Application[] | undefined) =>
+        old?.map((a) => (a.id === variables.id ? data : a)) ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['applications'] });
+      addToast('Application updated', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error during update', 'error');
+    },
+  });
+}
+
+export function useDeleteApplication() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/applications/${id}`);
+    },
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(['applications'], (old: Application[] | undefined) =>
+        old?.filter((a) => a.id !== id) ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['applications'] });
+      addToast('Application deleted', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Unable to delete this application', 'error');
+    },
+  });
+}
+
+// ========== CONTINUITY LEVELS ==========
+
+export function useContinuityLevels() {
+  return useQuery<ContinuityLevel[]>({
+    queryKey: ['continuity-levels'],
+    queryFn: () => fetchJson('/continuity-levels'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useUpdateContinuityLevel() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & Partial<ContinuityLevel>) => {
+      const { data } = await api.patch(`/continuity-levels/${id}`, payload);
+      return data;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(['continuity-levels'], (old: ContinuityLevel[] | undefined) =>
+        old?.map((cl) => (cl.id === variables.id ? data : cl)) ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['continuity-levels'] });
+      addToast('Continuity level updated', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error during update', 'error');
+    },
+  });
+}
+
+// ========== PRODUCT LIFECYCLES ==========
+
+export function useProductLifecycles(productId: string) {
+  return useQuery<ProductLifecycle[]>({
+    queryKey: ['product-lifecycles', productId],
+    queryFn: () => fetchJson(`/products/${productId}/lifecycles`),
+    enabled: !!productId,
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreateProductLifecycle() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ productId, ...payload }: { productId: string } & Partial<ProductLifecycle>) => {
+      const { data } = await api.post(`/products/${productId}/lifecycles`, payload);
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['product-lifecycles', variables.productId] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Lifecycle created successfully', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error during creation', 'error');
+    },
+  });
+}
+
+export function useDeleteProductLifecycle() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ productId, lifecycleId }: { productId: string; lifecycleId: string }) => {
+      await api.delete(`/products/${productId}/lifecycles/${lifecycleId}`);
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['product-lifecycles', variables.productId] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Lifecycle deleted', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Unable to delete this lifecycle', 'error');
+    },
+  });
+}
+
+// ========== PRODUCT OPTIONS ==========
+
+export function useProductOptions(productId: string) {
+  return useQuery<ProductOption[]>({
+    queryKey: ['product-options', productId],
+    queryFn: () => fetchJson(`/products/${productId}/options`),
+    enabled: !!productId,
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreateProductOption() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ productId, ...payload }: { productId: string } & Partial<ProductOption>) => {
+      const { data } = await api.post(`/products/${productId}/options`, payload);
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['product-options', variables.productId] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Option created successfully', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error during creation', 'error');
+    },
+  });
+}
+
+export function useDeleteProductOption() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ productId, optionId }: { productId: string; optionId: string }) => {
+      await api.delete(`/products/${productId}/options/${optionId}`);
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['product-options', variables.productId] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Option deleted', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Unable to delete this option', 'error');
+    },
+  });
+}
+
+// ========== UPGRADE PATHS ==========
+
+export function useUpgradePaths(productId: string) {
+  return useQuery<UpgradePath[]>({
+    queryKey: ['upgrade-paths', productId],
+    queryFn: () => fetchJson(`/products/${productId}/upgrade-paths`),
+    enabled: !!productId,
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+// ========== FORECAST ANALYTICS ==========
+
+export function useForecastTrends(days: number = 30) {
+  return useQuery<ForecastTrend[]>({
+    queryKey: ['forecast-trends', days],
+    queryFn: () => fetchJson('/forecasts/trends', { days: String(days) }),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useResourcesByZone() {
+  return useQuery<ResourceByZone[]>({
+    queryKey: ['resources-by-zone'],
+    queryFn: () => fetchJson('/forecasts/resources-by-zone'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useDemandHeatmap() {
+  return useQuery<ProductDemand[]>({
+    queryKey: ['demand-heatmap'],
+    queryFn: () => fetchJson('/forecasts/demand-heatmap'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+// ========== INSTANCES ==========
+
+export function useInstances(filters?: { applicationId?: string; productId?: string; status?: InstanceStatus; environment?: string }) {
+  return useQuery<Instance[]>({
+    queryKey: ['instances', filters],
+    queryFn: () => fetchJson('/instances', filters),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useInstance(id: string) {
+  return useQuery<Instance>({
+    queryKey: ['instance', id],
+    queryFn: () => fetchJson(`/instances/${id}`),
+    enabled: !!id,
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreateInstance() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (payload: Partial<Instance>) => {
+      const { data } = await api.post('/instances', payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['instances'] });
+      queryClient.invalidateQueries({ queryKey: ['instance-stats'] });
+      addToast('Instance created successfully', 'success');
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Error during creation';
+      addToast(msg, 'error');
+    },
+  });
+}
+
+export function useUpdateInstance() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & Partial<Instance>) => {
+      const { data } = await api.patch(`/instances/${id}`, payload);
+      return data;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(['instances'], (old: Instance[] | undefined) =>
+        old?.map((i) => (i.id === variables.id ? data : i)) ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['instances'] });
+      queryClient.invalidateQueries({ queryKey: ['instance-stats'] });
+      addToast('Instance updated', 'success');
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Error during update';
+      addToast(msg, 'error');
+    },
+  });
+}
+
+export function useDeleteInstance() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/instances/${id}`);
+    },
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(['instances'], (old: Instance[] | undefined) =>
+        old?.filter((i) => i.id !== id) ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['instances'] });
+      queryClient.invalidateQueries({ queryKey: ['instance-stats'] });
+      addToast('Instance deleted', 'success');
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Unable to delete this instance';
+      addToast(msg, 'error');
+    },
+  });
+}
+
+export function useInstanceStats() {
+  return useQuery<{
+    total: number;
+    pending: number;
+    provisioning: number;
+    running: number;
+    stopped: number;
+    terminated: number;
+  }>({
+    queryKey: ['instance-stats'],
+    queryFn: () => fetchJson('/instances/stats'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+// ========== HEALTH CHECKS ==========
+
+export function useHealthChecks(filters?: { instanceId?: string; status?: HealthStatus }) {
+  return useQuery<HealthCheck[]>({
+    queryKey: ['health-checks', filters],
+    queryFn: () => fetchJson('/health-checks', filters),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useHealthCheckStats() {
+  return useQuery<{
+    total: number;
+    healthy: number;
+    degraded: number;
+    unhealthy: number;
+  }>({
+    queryKey: ['health-check-stats'],
+    queryFn: () => fetchJson('/health-checks/stats'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreateHealthCheck() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (payload: Partial<HealthCheck>) => {
+      const { data } = await api.post('/health-checks', payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['health-checks'] });
+      queryClient.invalidateQueries({ queryKey: ['health-check-stats'] });
+      addToast('Health check recorded', 'success');
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Error during creation';
+      addToast(msg, 'error');
+    },
+  });
+}
+
+export function useUpdateHealthCheck() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & Partial<HealthCheck>) => {
+      const { data } = await api.patch(`/health-checks/${id}`, payload);
+      return data;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(['health-checks'], (old: HealthCheck[] | undefined) =>
+        old?.map((h) => (h.id === variables.id ? data : h)) ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['health-checks'] });
+      queryClient.invalidateQueries({ queryKey: ['health-check-stats'] });
+      addToast('Health check updated', 'success');
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Error during update';
+      addToast(msg, 'error');
+    },
+  });
+}
+
+export function useDeleteHealthCheck() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/health-checks/${id}`);
+    },
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(['health-checks'], (old: HealthCheck[] | undefined) =>
+        old?.filter((h) => h.id !== id) ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['health-checks'] });
+      queryClient.invalidateQueries({ queryKey: ['health-check-stats'] });
+      addToast('Health check deleted', 'success');
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Unable to delete this health check';
+      addToast(msg, 'error');
+    },
+  });
+}
+
+// ========== MAINTENANCE WINDOWS ==========
+
+export function useMaintenanceWindows(filters?: { instanceId?: string; applicationId?: string; status?: MaintenanceStatus }) {
+  return useQuery<MaintenanceWindow[]>({
+    queryKey: ['maintenance-windows', filters],
+    queryFn: () => fetchJson('/maintenance-windows', filters),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useMaintenanceWindowStats() {
+  return useQuery<{
+    total: number;
+    scheduled: number;
+    inProgress: number;
+    completed: number;
+    cancelled: number;
+  }>({
+    queryKey: ['maintenance-window-stats'],
+    queryFn: () => fetchJson('/maintenance-windows/stats'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreateMaintenanceWindow() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (payload: Partial<MaintenanceWindow>) => {
+      const { data } = await api.post('/maintenance-windows', payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['maintenance-windows'] });
+      queryClient.invalidateQueries({ queryKey: ['maintenance-window-stats'] });
+      addToast('Maintenance window created', 'success');
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Error during creation';
+      addToast(msg, 'error');
+    },
+  });
+}
+
+export function useUpdateMaintenanceWindow() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & Partial<MaintenanceWindow>) => {
+      const { data } = await api.patch(`/maintenance-windows/${id}`, payload);
+      return data;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(['maintenance-windows'], (old: MaintenanceWindow[] | undefined) =>
+        old?.map((w) => (w.id === variables.id ? data : w)) ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['maintenance-windows'] });
+      queryClient.invalidateQueries({ queryKey: ['maintenance-window-stats'] });
+      addToast('Maintenance window updated', 'success');
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Error during update';
+      addToast(msg, 'error');
+    },
+  });
+}
+
+export function useDeleteMaintenanceWindow() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/maintenance-windows/${id}`);
+    },
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(['maintenance-windows'], (old: MaintenanceWindow[] | undefined) =>
+        old?.filter((w) => w.id !== id) ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['maintenance-windows'] });
+      queryClient.invalidateQueries({ queryKey: ['maintenance-window-stats'] });
+      addToast('Maintenance window deleted', 'success');
+    },
+    onError: (err: any) => {
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Unable to delete this maintenance window';
+      addToast(msg, 'error');
+    },
   });
 }
 

@@ -11,6 +11,7 @@ const forecastLineSchema = z.object({
   azCode: z.string().min(1),
   quantity: z.number().int().min(1),
   metadata: z.record(z.any()).optional(),
+  resiliency: z.enum(['STANDARD', 'HA', 'MULTI_AZ']).optional(),
 });
 
 const createForecastSchema = z.object({
@@ -18,12 +19,13 @@ const createForecastSchema = z.object({
   requesterEmail: z.string().email(),
   targetDate: z.preprocess((val) => {
     if (val === '' || val === undefined || val === null) return undefined;
-    // Accept YYYY-MM-DD from HTML date input — append time to make it ISO datetime
     if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val + 'T00:00:00Z';
     return val;
   }, z.string().datetime().optional()),
   lines: z.array(forecastLineSchema).min(1),
   justification: z.string().optional(),
+  applicationId: z.string().uuid(),
+  environment: z.enum(['PRD', 'DEV', 'STG']).default('DEV'),
 });
 
 const idParamSchema = z.string().uuid();
@@ -46,7 +48,10 @@ const updateForecastSchema = z.object({
 router.get('/', async (_req, res, next) => {
   try {
     const forecasts = await prisma.forecast.findMany({
-      include: { lines: { include: { product: { include: { category: true } }, flavor: true } } },
+      include: {
+        lines: { include: { product: { include: { category: true } }, flavor: true } },
+        application: { include: { continuityLevel: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
     res.json(forecasts);
@@ -71,10 +76,105 @@ router.get('/stats', async (_req, res, next) => {
   }
 });
 
+// GET /api/forecasts/trends
+router.get('/trends', async (req, res, next) => {
+  try {
+    const days = Math.min(parseInt(req.query.days as string) || 30, 365);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const forecasts = await prisma.forecast.findMany({
+      where: { createdAt: { gte: since } },
+      select: { createdAt: true, status: true },
+    });
+
+    const grouped = new Map<string, { created: number; approved: number }>();
+    for (const f of forecasts) {
+      const date = f.createdAt.toISOString().split('T')[0];
+      const entry = grouped.get(date) || { created: 0, approved: 0 };
+      entry.created++;
+      if (f.status === ApprovalStatus.APPROVED) entry.approved++;
+      grouped.set(date, entry);
+    }
+
+    const result = Array.from(grouped.entries())
+      .map(([date, counts]) => ({ date, ...counts }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/forecasts/resources-by-zone
+router.get('/resources-by-zone', async (_req, res, next) => {
+  try {
+    const lines = await prisma.forecastLine.findMany({
+      where: { forecast: { status: ApprovalStatus.APPROVED } },
+      include: { flavor: true },
+    });
+
+    const grouped = new Map<string, { vcpu: number; ramGb: number }>();
+    for (const line of lines) {
+      const entry = grouped.get(line.azCode) || { vcpu: 0, ramGb: 0 };
+      entry.vcpu += (line.flavor.vcpu || 0) * line.quantity;
+      entry.ramGb += (line.flavor.ramGb || 0) * line.quantity;
+      grouped.set(line.azCode, entry);
+    }
+
+    const result = Array.from(grouped.entries()).map(([azCode, resources]) => ({
+      azCode,
+      ...resources,
+    }));
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/forecasts/demand-heatmap
+router.get('/demand-heatmap', async (_req, res, next) => {
+  try {
+    const lines = await prisma.forecastLine.findMany({
+      where: { forecast: { status: ApprovalStatus.APPROVED } },
+      include: { product: true },
+    });
+
+    const grouped = new Map<string, { productId: string; productName: string; azCode: string; count: number }>();
+    for (const line of lines) {
+      const key = `${line.productId}-${line.azCode}`;
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.count += line.quantity;
+      } else {
+        grouped.set(key, {
+          productId: line.productId,
+          productName: line.product.name,
+          azCode: line.azCode,
+          count: line.quantity,
+        });
+      }
+    }
+
+    res.json(Array.from(grouped.values()));
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/forecasts
 router.post('/', async (req, res, next) => {
   try {
     const data = createForecastSchema.parse(req.body);
+
+    // Validate application exists
+    const application = await prisma.application.findUnique({
+      where: { id: data.applicationId },
+    });
+    if (!application) {
+      return res.status(404).json({ error: `Application not found: ${data.applicationId}` });
+    }
 
     for (const line of data.lines) {
       const flavor = await prisma.flavor.findUnique({ where: { id: line.flavorId } });
@@ -94,6 +194,13 @@ router.post('/', async (req, res, next) => {
       if (!offered) {
         return res.status(409).json({ error: `Product ${line.productId} is not available in zone ${line.azCode}` });
       }
+
+      // HA/MULTI_AZ requires minimum 2 AZs if quantity > 1
+      if ((line.resiliency === 'HA' || line.resiliency === 'MULTI_AZ') && line.quantity < 2) {
+        return res.status(400).json({
+          error: `Resiliency ${line.resiliency} requires quantity >= 2 for product ${line.productId}`,
+        });
+      }
     }
 
     const forecast = await prisma.forecast.create({
@@ -102,6 +209,8 @@ router.post('/', async (req, res, next) => {
         requesterEmail: data.requesterEmail,
         targetDate: data.targetDate ? new Date(data.targetDate) : null,
         justification: data.justification,
+        applicationId: data.applicationId,
+        environment: data.environment,
         lines: {
           create: data.lines.map((line) => ({
             productId: line.productId,
@@ -109,10 +218,14 @@ router.post('/', async (req, res, next) => {
             azCode: line.azCode,
             quantity: line.quantity,
             metadata: line.metadata || undefined,
+            resiliency: line.resiliency || 'STANDARD',
           })),
         },
       },
-      include: { lines: { include: { product: true, flavor: true } } },
+      include: {
+        lines: { include: { product: true, flavor: true } },
+        application: { include: { continuityLevel: true } },
+      },
     });
     res.status(201).json(forecast);
   } catch (err) {
@@ -135,7 +248,10 @@ router.patch('/:id', async (req, res, next) => {
         reviewedAt: new Date(),
         rejectionReason: data.rejectionReason || null,
       },
-      include: { lines: { include: { product: true, flavor: true } } },
+      include: {
+        lines: { include: { product: true, flavor: true } },
+        application: { include: { continuityLevel: true } },
+      },
     });
 
     res.json(forecast);

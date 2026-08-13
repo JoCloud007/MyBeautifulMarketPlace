@@ -7,6 +7,8 @@ import Home from './pages/Home';
 import Marketplace from './pages/Marketplace';
 import ProductDetail from './pages/ProductDetail';
 import AvailabilityZones from './pages/AvailabilityZones';
+import Roadmap from './pages/Roadmap';
+import Instances from './pages/Instances';
 import Forecasts from './pages/Forecasts';
 import Admin from './pages/Admin';
 import NotFound from './pages/NotFound';
@@ -21,6 +23,8 @@ function App() {
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/products/:slug" element={<ProductDetail />} />
             <Route path="/availability-zones" element={<AvailabilityZones />} />
+            <Route path="/roadmap" element={<Roadmap />} />
+            <Route path="/instances" element={<Instances />} />
             <Route path="/forecasts" element={<Forecasts />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="*" element={<NotFound />} />

@@ -28,6 +28,12 @@ import {
   useCreateAvailabilityZone,
   useUpdateAvailabilityZone,
   useDeleteAvailabilityZone,
+  useInstances,
+  useCreateInstance,
+  useUpdateInstance,
+  useDeleteInstance,
+  useApplications,
+  useProducts,
 } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
@@ -63,8 +69,9 @@ import {
   UserCog,
   Cpu,
   MapPin,
+  Server,
 } from 'lucide-react';
-import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone } from '@cloudmarket/shared-types';
+import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Instance, InstanceStatus } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ApprovalStatus, { label: string; color: string }> = {
   PENDING: { label: 'Pending', color: 'border-amber-500/20 text-amber-500' },
@@ -1220,6 +1227,226 @@ function AvailabilityZonesSection() {
   );
 }
 
+// ============ INSTANCES SECTION ============
+const instanceStatusConfig: Record<InstanceStatus, { label: string; color: string }> = {
+  PENDING: { label: 'Pending', color: 'border-slate-500/20 text-slate-400' },
+  PROVISIONING: { label: 'Provisioning', color: 'border-blue-500/20 text-blue-400' },
+  RUNNING: { label: 'Running', color: 'border-emerald-500/20 text-emerald-500' },
+  STOPPED: { label: 'Stopped', color: 'border-amber-500/20 text-amber-500' },
+  TERMINATED: { label: 'Terminated', color: 'border-red-500/20 text-red-500' },
+};
+
+function InstancesSection() {
+  const { data: instances, isLoading, isError, refetch } = useInstances();
+  const { data: applications } = useApplications();
+  const { data: products } = useProducts();
+  const { data: zones } = useAvailabilityZones();
+  const createInstance = useCreateInstance();
+  const updateInstance = useUpdateInstance();
+  const deleteInstance = useDeleteInstance();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<Instance | null>(null);
+  const [form, setForm] = useState({
+    name: '', description: '', applicationId: '', productId: '', flavorId: '', azCode: '',
+    status: 'PENDING' as InstanceStatus, environment: 'DEV' as string, ipAddress: '', hostname: '',
+  });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const resetForm = () => {
+    setForm({ name: '', description: '', applicationId: '', productId: '', flavorId: '', azCode: '',
+      status: 'PENDING', environment: 'DEV', ipAddress: '', hostname: '' });
+    setEditing(null);
+  };
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (instance: Instance) => {
+    setEditing(instance);
+    setForm({
+      name: instance.name, description: instance.description || '', applicationId: instance.applicationId,
+      productId: instance.productId, flavorId: instance.flavorId, azCode: instance.azCode,
+      status: instance.status, environment: instance.environment, ipAddress: instance.ipAddress || '',
+      hostname: instance.hostname || '',
+    });
+    setIsOpen(true);
+  };
+
+  const selectedProduct = products?.find((p) => p.id === form.productId);
+  const availableFlavors = selectedProduct?.flavors || [];
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = { ...form };
+    if (editing) await updateInstance.mutateAsync({ id: editing.id, ...payload });
+    else await createInstance.mutateAsync(payload);
+    setIsOpen(false); resetForm();
+  };
+
+  const handleDelete = (id: string) => {
+    setConfirmDelete({ open: true, id });
+  };
+  const handleConfirmDelete = async () => {
+    if (confirmDelete.id) {
+      await deleteInstance.mutateAsync(confirmDelete.id);
+    }
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  const filtered = instances?.filter((i) =>
+    i.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    i.hostname?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    i.ipAddress?.includes(searchQuery)
+  );
+
+  if (isError) return <QueryError message="Unable to load instances." onRetry={refetch} />;
+
+  const mobileCards = filtered?.map((instance) => (
+    <MobileCard key={instance.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{instance.name}</p>
+          <p className="text-sm text-slate-400">{instance.product?.name} · {instance.flavor?.name}</p>
+        </div>
+        <Badge variant="outline" className={instanceStatusConfig[instance.status].color}>
+          {instanceStatusConfig[instance.status].label}
+        </Badge>
+      </div>
+      <div className="mt-2 text-sm text-slate-500">
+        <p>{instance.application?.name}</p>
+        <p>{instance.az?.code} · {instance.environment}</p>
+      </div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openEdit(instance)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => handleDelete(instance.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <Input placeholder="Search instances..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]" />
+        </div>
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add</Button>
+      </div>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable headers={['Name', 'Application', 'Product', 'Flavor', 'AZ', 'Status', 'Env']} isLoading={isLoading} emptyMessage="No instances" mobileCards={mobileCards}>
+            {filtered?.map((instance) => (
+              <tr key={instance.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{instance.name}</td>
+                <td className="py-3 text-slate-400">{instance.application?.name}</td>
+                <td className="py-3 text-slate-400">{instance.product?.name}</td>
+                <td className="py-3 text-slate-400">{instance.flavor?.name}</td>
+                <td className="py-3 text-slate-400">{instance.az?.code}</td>
+                <td className="py-3">
+                  <Badge variant="outline" className={instanceStatusConfig[instance.status].color}>
+                    {instanceStatusConfig[instance.status].label}
+                  </Badge>
+                </td>
+                <td className="py-3">
+                  <Badge variant="outline" className={
+                    instance.environment === 'PRD' ? 'border-red-500/20 text-red-500' :
+                    instance.environment === 'STG' ? 'border-purple-500/20 text-purple-400' :
+                    'border-blue-500/20 text-blue-400'
+                  }>
+                    {instance.environment}
+                  </Badge>
+                </td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(instance)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(instance.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit instance' : 'New instance'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Application</label>
+                <Select value={form.applicationId} onChange={(e) => setForm({ ...form, applicationId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="">Select...</option>
+                  {applications?.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Product</label>
+                <Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value, flavorId: '' })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="">Select...</option>
+                  {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Flavor</label>
+                <Select value={form.flavorId} onChange={(e) => setForm({ ...form, flavorId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="">Select...</option>
+                  {availableFlavors.map((f) => <option key={f.id} value={f.id}>{f.name} ({f.vcpu}vCPU, {f.ramGb}GB)</option>)}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Availability Zone</label>
+                <Select value={form.azCode} onChange={(e) => setForm({ ...form, azCode: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="">Select...</option>
+                  {zones?.map((z) => <option key={z.id} value={z.code}>{z.name} ({z.code})</option>)}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Status</label>
+                <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as InstanceStatus })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="PENDING">Pending</option>
+                  <option value="PROVISIONING">Provisioning</option>
+                  <option value="RUNNING">Running</option>
+                  <option value="STOPPED">Stopped</option>
+                  <option value="TERMINATED">Terminated</option>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Environment</label>
+                <Select value={form.environment} onChange={(e) => setForm({ ...form, environment: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="DEV">Development</option>
+                  <option value="STG">Staging</option>
+                  <option value="PRD">Production</option>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">IP Address</label><Input value={form.ipAddress} onChange={(e) => setForm({ ...form, ipAddress: e.target.value })} placeholder="10.0.0.1" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Hostname</label><Input value={form.hostname} onChange={(e) => setForm({ ...form, hostname: e.target.value })} placeholder="host.cloudmarket.local" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete Instance"
+        description="Are you sure you want to delete this instance? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
+    </div>
+  );
+}
+
 // ============ MAIN ADMIN PAGE ============
 export default function Admin() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -1233,6 +1460,7 @@ export default function Admin() {
     { value: 'forecasts', label: 'Forecasts', icon: Activity },
     { value: 'users', label: 'Users', icon: UserCog },
     { value: 'availability-zones', label: 'Availability Zones', icon: MapPin },
+    { value: 'instances', label: 'Instances', icon: Server },
   ];
 
   return (
@@ -1268,6 +1496,7 @@ export default function Admin() {
         <TabsContent value="forecasts" className="animate-fade-in"><ForecastsAdminSection /></TabsContent>
         <TabsContent value="users" className="animate-fade-in"><UsersSection /></TabsContent>
         <TabsContent value="availability-zones" className="animate-fade-in"><AvailabilityZonesSection /></TabsContent>
+        <TabsContent value="instances" className="animate-fade-in"><InstancesSection /></TabsContent>
       </Tabs>
     </div>
   );

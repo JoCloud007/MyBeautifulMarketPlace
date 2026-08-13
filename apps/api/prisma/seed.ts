@@ -1,4 +1,4 @@
-import { PrismaClient, DependencyType, ApprovalStatus } from '@prisma/client';
+import { PrismaClient, DependencyType, ApprovalStatus, LifecyclePhase, InstanceStatus, HealthStatus, MaintenanceStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -8,11 +8,21 @@ async function main() {
   // Clean existing data (ignore if tables don't exist yet on first run)
   try {
     await prisma.forecast.deleteMany();
+    await prisma.healthCheck.deleteMany();
+    await prisma.maintenanceWindow.deleteMany();
+    await prisma.instance.deleteMany();
     await prisma.dependency.deleteMany();
     await prisma.flavor.deleteMany();
+    await prisma.productOption.deleteMany();
+    await prisma.productLifecycle.deleteMany();
+    await prisma.upgradePath.deleteMany();
+    await prisma.productAvailabilityZone.deleteMany();
+    await prisma.availabilityZone.deleteMany();
     await prisma.product.deleteMany();
     await prisma.category.deleteMany();
     await prisma.user.deleteMany();
+    await prisma.application.deleteMany();
+    await prisma.continuityLevel.deleteMany();
   } catch (e: any) {
     if (e.code === 'P2021') {
       console.log('  Tables do not exist yet — make sure to run "npx prisma db push" first');
@@ -20,6 +30,40 @@ async function main() {
     }
     throw e;
   }
+
+  // Create Availability Zones
+  const parisAz1 = await prisma.availabilityZone.create({
+    data: { code: 'eu-west-par1', name: 'Paris AZ1', city: 'Paris', country: 'France', region: 'eu-west', latitude: 48.8566, longitude: 2.3522, isActive: true },
+  });
+  const parisAz2 = await prisma.availabilityZone.create({
+    data: { code: 'eu-west-par2', name: 'Paris AZ2', city: 'Paris', country: 'France', region: 'eu-west', latitude: 48.8566, longitude: 2.3522, isActive: true },
+  });
+  const london = await prisma.availabilityZone.create({
+    data: { code: 'eu-west-lon1', name: 'London', city: 'London', country: 'UK', region: 'eu-west', latitude: 51.5074, longitude: -0.1278, isActive: true },
+  });
+  const newYork = await prisma.availabilityZone.create({
+    data: { code: 'us-east-nyc1', name: 'New York', city: 'New York', country: 'USA', region: 'us-east', latitude: 40.7128, longitude: -74.006, isActive: true },
+  });
+  const singapore = await prisma.availabilityZone.create({
+    data: { code: 'ap-south-sin1', name: 'Singapore', city: 'Singapore', country: 'Singapore', region: 'ap-south', latitude: 1.3521, longitude: 103.8198, isActive: true },
+  });
+  const hongKong = await prisma.availabilityZone.create({
+    data: { code: 'ap-south-hk1', name: 'Hong Kong', city: 'Hong Kong', country: 'China', region: 'ap-south', latitude: 22.3193, longitude: 114.1694, isActive: true },
+  });
+
+  // Create Continuity Levels
+  const clLow = await prisma.continuityLevel.create({
+    data: { name: 'LOW', rtoMinutes: 1440, rpoMinutes: 240, description: 'Basic backup', color: 'green' },
+  });
+  const clModerate = await prisma.continuityLevel.create({
+    data: { name: 'MODERATE', rtoMinutes: 480, rpoMinutes: 60, description: 'HA pair', color: 'yellow' },
+  });
+  const clSerious = await prisma.continuityLevel.create({
+    data: { name: 'SERIOUS', rtoMinutes: 240, rpoMinutes: 15, description: 'Multi-AZ', color: 'orange' },
+  });
+  const clExtreme = await prisma.continuityLevel.create({
+    data: { name: 'EXTREME', rtoMinutes: 60, rpoMinutes: 5, description: 'Active-Active', color: 'red' },
+  });
 
   // Create Categories
   const compute = await prisma.category.create({
@@ -202,6 +246,105 @@ async function main() {
     },
   });
 
+  // Create Product Options (VM as product, OS as option example)
+  await prisma.productOption.create({
+    data: { productId: vmDebian.id, type: 'OS_VERSION', value: 'debian-12', label: 'Debian 12 (Bookworm)', isDefault: true },
+  });
+  await prisma.productOption.create({
+    data: { productId: vmDebian.id, type: 'OS_VERSION', value: 'debian-11', label: 'Debian 11 (Bullseye)', isDefault: false },
+  });
+  await prisma.productOption.create({
+    data: { productId: vmWindows.id, type: 'OS_VERSION', value: 'windows-server-2022', label: 'Windows Server 2022', isDefault: true },
+  });
+  await prisma.productOption.create({
+    data: { productId: vmWindows.id, type: 'OS_VERSION', value: 'windows-server-2019', label: 'Windows Server 2019', isDefault: false },
+  });
+  await prisma.productOption.create({
+    data: { productId: vmRedHat.id, type: 'OS_VERSION', value: 'rhel-9', label: 'RHEL 9', isDefault: true },
+  });
+  await prisma.productOption.create({
+    data: { productId: vmRedHat.id, type: 'OS_VERSION', value: 'rhel-8', label: 'RHEL 8', isDefault: false },
+  });
+
+  // Create Product Lifecycles
+  await prisma.productLifecycle.create({
+    data: {
+      productId: vmDebian.id,
+      version: '12.0',
+      releaseDate: new Date('2023-06-10'),
+      normalSupportEnd: new Date('2026-06-10'),
+      extendedSupportEnd: new Date('2028-06-10'),
+      eolDate: new Date('2030-06-10'),
+      phase: LifecyclePhase.RELEASED,
+    },
+  });
+  await prisma.productLifecycle.create({
+    data: {
+      productId: vmDebian.id,
+      version: '11.0',
+      releaseDate: new Date('2021-08-14'),
+      normalSupportEnd: new Date('2024-08-14'),
+      extendedSupportEnd: new Date('2026-08-14'),
+      eolDate: new Date('2028-08-14'),
+      phase: LifecyclePhase.NORMAL_SUPPORT,
+    },
+  });
+  await prisma.productLifecycle.create({
+    data: {
+      productId: vmWindows.id,
+      version: '2022',
+      releaseDate: new Date('2021-08-18'),
+      normalSupportEnd: new Date('2026-10-13'),
+      extendedSupportEnd: new Date('2031-10-14'),
+      eolDate: new Date('2033-10-14'),
+      phase: LifecyclePhase.RELEASED,
+    },
+  });
+  await prisma.productLifecycle.create({
+    data: {
+      productId: vmRedHat.id,
+      version: '9.0',
+      releaseDate: new Date('2022-05-18'),
+      normalSupportEnd: new Date('2027-05-31'),
+      extendedSupportEnd: new Date('2031-05-31'),
+      eolDate: new Date('2033-05-31'),
+      phase: LifecyclePhase.RELEASED,
+    },
+  });
+  await prisma.productLifecycle.create({
+    data: {
+      productId: vmware.id,
+      version: '8.0',
+      releaseDate: new Date('2022-10-11'),
+      normalSupportEnd: new Date('2027-10-11'),
+      extendedSupportEnd: new Date('2030-10-11'),
+      eolDate: new Date('2032-10-11'),
+      phase: LifecyclePhase.RELEASED,
+    },
+  });
+
+  // Create Upgrade Paths
+  await prisma.upgradePath.create({
+    data: {
+      fromProductId: vmDebian.id,
+      toProductId: vmDebian.id,
+      fromVersion: '11.0',
+      toVersion: '12.0',
+      migrationType: 'IN_PLACE',
+      notes: 'In-place upgrade via apt full-upgrade',
+    },
+  });
+  await prisma.upgradePath.create({
+    data: {
+      fromProductId: vmWindows.id,
+      toProductId: vmWindows.id,
+      fromVersion: '2019',
+      toVersion: '2022',
+      migrationType: 'BLUE_GREEN',
+      notes: 'Blue-green migration recommended for zero downtime',
+    },
+  });
+
   // Create Users
   await prisma.user.create({
     data: { email: 'admin@cloudmarket.local', name: 'System Administrator', role: 'ADMIN' },
@@ -210,8 +353,19 @@ async function main() {
     data: { email: 'user@cloudmarket.local', name: 'Demo User', role: 'USER' },
   });
 
+  // Create Applications
+  const appEcommerce = await prisma.application.create({
+    data: { name: 'E-Commerce Platform', description: 'Main customer-facing e-commerce application', continuityLevelId: clSerious.id, owner: 'Demo User' },
+  });
+  const appAnalytics = await prisma.application.create({
+    data: { name: 'Analytics Engine', description: 'Internal analytics and reporting platform', continuityLevelId: clModerate.id, owner: 'Demo User' },
+  });
+  const appDevTools = await prisma.application.create({
+    data: { name: 'Developer Portal', description: 'Developer tools and CI/CD portal', continuityLevelId: clLow.id, owner: 'Demo User' },
+  });
+
   // Create ProductAvailabilityZones (all products in all zones)
-  for (const product of [vmDebian, vmWindows, vmRedHat, bareMetalHpc, objectStorage, nasStorage, vmwareVsphere, citrixVdi]) {
+  for (const product of [vmDebian, vmWindows, vmRedHat, bareMetalHpc, objectStorage, nas, vmware, citrixVdi]) {
     for (const zone of [parisAz1, parisAz2, london, newYork, singapore, hongKong]) {
       await prisma.productAvailabilityZone.upsert({
         where: { productId_availabilityZoneId: { productId: product.id, availabilityZoneId: zone.id } },
@@ -225,61 +379,244 @@ async function main() {
   const allFlavors = await prisma.flavor.findMany();
   const vmDebianFlavors = allFlavors.filter(f => f.productId === vmDebian.id);
 
-//   // // await prisma.forecast.create({
-// //     data: {
-// //       requestedBy: 'Demo User',
-// //       requesterEmail: 'user@cloudmarket.local',
-// //       status: ApprovalStatus.PENDING,
-// //       justification: 'Need VMs for development team expansion',
-// //       lines: {
-// //         create: [{
-// //           productId: vmDebian.id,
-// //           flavorId: vmDebianFlavors[1].id,
-// //           azCode: 'ap-south-sin1',
-// //           quantity: 5,
-// //         }],
-// //       },
-// //     },
-// //   });
+  await prisma.forecast.create({
+    data: {
+      requestedBy: 'Demo User',
+      requesterEmail: 'user@cloudmarket.local',
+      status: ApprovalStatus.PENDING,
+      justification: 'Need VMs for development team expansion',
+      applicationId: appDevTools.id,
+      environment: 'DEV',
+      lines: {
+        create: [{
+          productId: vmDebian.id,
+          flavorId: vmDebianFlavors[1].id,
+          azCode: 'ap-south-sin1',
+          quantity: 5,
+          resiliency: 'STANDARD',
+        }],
+      },
+    },
+  });
 
-//   // // await prisma.forecast.create({
-// //     data: {
-// //       requestedBy: 'Demo User',
-// //       requesterEmail: 'user@cloudmarket.local',
-// //       status: ApprovalStatus.APPROVED,
-// //       justification: 'Windows servers for finance department',
-// //       reviewedBy: 'System Administrator',
-// //       reviewedAt: new Date(),
-// //       lines: {
-// //         create: [{
-// //           productId: vmWindows.id,
-// //           flavorId: allFlavors.find(f => f.productId === vmWindows.id && f.name === 'Medium')!.id,
-// //           azCode: 'ap-south-sin1',
-// //           quantity: 3,
-// //         }],
-// //       },
-// //     },
-// //   });
+  await prisma.forecast.create({
+    data: {
+      requestedBy: 'Demo User',
+      requesterEmail: 'user@cloudmarket.local',
+      status: ApprovalStatus.APPROVED,
+      justification: 'Windows servers for finance department',
+      reviewedBy: 'System Administrator',
+      reviewedAt: new Date(),
+      applicationId: appEcommerce.id,
+      environment: 'PRD',
+      lines: {
+        create: [{
+          productId: vmWindows.id,
+          flavorId: allFlavors.find(f => f.productId === vmWindows.id && f.name === 'Medium')!.id,
+          azCode: 'ap-south-sin1',
+          quantity: 3,
+          resiliency: 'HA',
+        }],
+      },
+    },
+  });
 
-//   // // await prisma.forecast.create({
-// //     data: {
-// //       requestedBy: 'Demo User',
-// //       requesterEmail: 'user@cloudmarket.local',
-// //       status: ApprovalStatus.REJECTED,
-// //       lines: {
-// //         create: [{
-// //           productId: bareMetalHpc.id,
-// //           flavorId: allFlavors.find(f => f.productId === bareMetalHpc.id && f.name === 'XL')!.id,
-// //           azCode: 'ap-south-sin1',
-// //           quantity: 2,
-// //         }],
-// //       },
-// //       justification: 'HPC nodes for ML training',
-// //       reviewedBy: 'System Administrator',
-// //       reviewedAt: new Date(),
-// //       rejectionReason: 'Budget constraints for Q3. Please resubmit in Q4.',
-// //     },
-// //   });
+  await prisma.forecast.create({
+    data: {
+      requestedBy: 'Demo User',
+      requesterEmail: 'user@cloudmarket.local',
+      status: ApprovalStatus.REJECTED,
+      lines: {
+        create: [{
+          productId: bareMetalHpc.id,
+          flavorId: allFlavors.find(f => f.productId === bareMetalHpc.id && f.name === 'XL')!.id,
+          azCode: 'ap-south-sin1',
+          quantity: 2,
+          resiliency: 'MULTI_AZ',
+        }],
+      },
+      justification: 'HPC nodes for ML training',
+      reviewedBy: 'System Administrator',
+      reviewedAt: new Date(),
+      rejectionReason: 'Budget constraints for Q3. Please resubmit in Q4.',
+      applicationId: appAnalytics.id,
+      environment: 'STG',
+    },
+  });
+
+  // Create Sample Instances
+  const instanceFlavors = await prisma.flavor.findMany();
+  const debFlavor = instanceFlavors.find(f => f.productId === vmDebian.id && f.name === 'Small');
+  const winFlavor = instanceFlavors.find(f => f.productId === vmWindows.id && f.name === 'Medium');
+  const rhelFlavor = instanceFlavors.find(f => f.productId === vmRedHat.id && f.name === 'Large');
+  const hpcFlavor = instanceFlavors.find(f => f.productId === bareMetalHpc.id && f.name === 'XL');
+
+  if (debFlavor) {
+    await prisma.instance.create({
+      data: {
+        name: 'ecom-web-01',
+        description: 'E-commerce web frontend',
+        applicationId: appEcommerce.id,
+        productId: vmDebian.id,
+        flavorId: debFlavor.id,
+        azCode: 'ap-south-sin1',
+        status: InstanceStatus.RUNNING,
+        environment: 'PRD',
+        ipAddress: '10.0.1.10',
+        hostname: 'ecom-web-01.sin1.cloudmarket.local',
+        startedAt: new Date('2024-01-15'),
+      },
+    });
+  }
+
+  if (winFlavor) {
+    await prisma.instance.create({
+      data: {
+        name: 'ecom-api-01',
+        description: 'E-commerce API server',
+        applicationId: appEcommerce.id,
+        productId: vmWindows.id,
+        flavorId: winFlavor.id,
+        azCode: 'eu-west-par1',
+        status: InstanceStatus.RUNNING,
+        environment: 'PRD',
+        ipAddress: '10.0.2.20',
+        hostname: 'ecom-api-01.par1.cloudmarket.local',
+        startedAt: new Date('2024-02-01'),
+      },
+    });
+  }
+
+  if (rhelFlavor) {
+    await prisma.instance.create({
+      data: {
+        name: 'analytics-worker-01',
+        description: 'Analytics batch worker',
+        applicationId: appAnalytics.id,
+        productId: vmRedHat.id,
+        flavorId: rhelFlavor.id,
+        azCode: 'us-east-nyc1',
+        status: InstanceStatus.STOPPED,
+        environment: 'STG',
+        ipAddress: '10.0.3.30',
+        hostname: 'analytics-worker-01.nyc1.cloudmarket.local',
+        startedAt: new Date('2024-03-10'),
+        stoppedAt: new Date('2024-06-01'),
+      },
+    });
+  }
+
+  if (hpcFlavor) {
+    await prisma.instance.create({
+      data: {
+        name: 'dev-build-01',
+        description: 'CI/CD build agent',
+        applicationId: appDevTools.id,
+        productId: bareMetalHpc.id,
+        flavorId: hpcFlavor.id,
+        azCode: 'eu-west-lon1',
+        status: InstanceStatus.PROVISIONING,
+        environment: 'DEV',
+        ipAddress: '10.0.4.40',
+        hostname: 'dev-build-01.lon1.cloudmarket.local',
+      },
+    });
+  }
+
+  if (debFlavor) {
+    await prisma.instance.create({
+      data: {
+        name: 'ecom-cache-01',
+        description: 'Redis cache node',
+        applicationId: appEcommerce.id,
+        productId: vmDebian.id,
+        flavorId: debFlavor.id,
+        azCode: 'ap-south-hk1',
+        status: InstanceStatus.PENDING,
+        environment: 'PRD',
+      },
+    });
+  }
+
+  if (winFlavor) {
+    await prisma.instance.create({
+      data: {
+        name: 'analytics-db-01',
+        description: 'Analytics database server',
+        applicationId: appAnalytics.id,
+        productId: vmWindows.id,
+        flavorId: winFlavor.id,
+        azCode: 'ap-south-sin1',
+        status: InstanceStatus.TERMINATED,
+        environment: 'DEV',
+        ipAddress: '10.0.5.50',
+        hostname: 'analytics-db-01.sin1.cloudmarket.local',
+        startedAt: new Date('2024-01-01'),
+        stoppedAt: new Date('2024-04-01'),
+        terminatedAt: new Date('2024-05-01'),
+      },
+    });
+  }
+
+  // Create Sample Health Checks
+  const allInstances = await prisma.instance.findMany();
+  for (const instance of allInstances) {
+    const statuses = [HealthStatus.HEALTHY, HealthStatus.HEALTHY, HealthStatus.DEGRADED, HealthStatus.HEALTHY, HealthStatus.UNHEALTHY];
+    const status = statuses[Math.floor(Math.random() * statuses.length)];
+    await prisma.healthCheck.create({
+      data: {
+        instanceId: instance.id,
+        status,
+        cpuPercent: Math.random() * 100,
+        memoryPercent: Math.random() * 100,
+        diskPercent: Math.random() * 100,
+        responseTimeMs: Math.floor(Math.random() * 500) + 20,
+        checkedAt: new Date(),
+      },
+    });
+  }
+
+  // Create Sample Maintenance Windows
+  const now = new Date();
+  await prisma.maintenanceWindow.create({
+    data: {
+      instanceId: allInstances.find(i => i.name === 'ecom-web-01')?.id,
+      title: 'Security Patch – ecom-web-01',
+      description: 'Apply critical kernel security patches',
+      startTime: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+      endTime: new Date(now.getTime() + 26 * 60 * 60 * 1000),
+      status: MaintenanceStatus.SCHEDULED,
+    },
+  });
+  await prisma.maintenanceWindow.create({
+    data: {
+      applicationId: appEcommerce.id,
+      title: 'E-Commerce Platform Upgrade',
+      description: 'Platform-wide OS version upgrade with rolling restart',
+      startTime: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+      endTime: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000 + 4 * 60 * 60 * 1000),
+      status: MaintenanceStatus.SCHEDULED,
+    },
+  });
+  await prisma.maintenanceWindow.create({
+    data: {
+      instanceId: allInstances.find(i => i.name === 'analytics-worker-01')?.id,
+      title: 'Analytics Worker – Disk Expansion',
+      description: 'Expand local storage from 500GB to 1TB',
+      startTime: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
+      endTime: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000),
+      status: MaintenanceStatus.COMPLETED,
+    },
+  });
+  await prisma.maintenanceWindow.create({
+    data: {
+      title: 'Network Maintenance – Singapore AZ',
+      description: 'Core router firmware upgrade in Singapore datacenter',
+      startTime: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
+      endTime: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000 + 6 * 60 * 60 * 1000),
+      status: MaintenanceStatus.SCHEDULED,
+    },
+  });
 
   console.log('✅ Seed completed successfully');
 }
