@@ -23,6 +23,17 @@ export default function StatusDonut() {
     { name: 'Rejected', value: data.rejected, color: COLORS.rejected },
   ].filter((d) => d.value > 0);
 
+  if (chartData.length === 0) {
+    return (
+      <div className="flex h-80 items-center justify-center text-slate-400">
+        <div className="text-center">
+          <p className="text-sm font-medium">No data</p>
+          <p className="text-xs text-slate-600 mt-1">All status counts are zero</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-80">
       <ResponsiveContainer width="100%" height="100%">

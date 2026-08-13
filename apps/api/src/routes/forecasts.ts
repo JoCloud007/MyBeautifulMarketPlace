@@ -5,12 +5,16 @@ import { prisma } from '../db';
 
 const router = Router();
 
+const metadataSchema = z.object({
+  osVersion: z.string().optional(),
+}).catchall(z.unknown()).optional();
+
 const forecastLineSchema = z.object({
   productId: z.string().uuid(),
   flavorId: z.string().uuid(),
   azCode: z.string().min(1),
   quantity: z.number().int().min(1),
-  metadata: z.record(z.any()).optional(),
+  metadata: metadataSchema,
   resiliency: z.enum(['STANDARD', 'HA', 'MULTI_AZ']).optional(),
 });
 
@@ -19,7 +23,10 @@ const createForecastSchema = z.object({
   requesterEmail: z.string().email(),
   targetDate: z.preprocess((val) => {
     if (val === '' || val === undefined || val === null) return undefined;
-    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val + 'T00:00:00Z';
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+      const d = new Date(val + 'T12:00:00Z');
+      if (!isNaN(d.getTime()) && d.toISOString().startsWith(val)) return val + 'T12:00:00Z';
+    }
     return val;
   }, z.string().datetime().optional()),
   lines: z.array(forecastLineSchema).min(1),
@@ -82,11 +89,14 @@ router.get('/trends', async (req, res, next) => {
     const rawDays = req.query.days;
     const parsedDays = typeof rawDays === 'string' && /^\d+$/.test(rawDays) ? parseInt(rawDays, 10) : 30;
     const days = Math.min(parsedDays, 365);
+    if (days <= 0) {
+      return res.status(400).json({ error: 'days must be a positive integer' });
+    }
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
     const forecasts = await prisma.forecast.findMany({
       where: { createdAt: { gte: since } },
-      select: { createdAt: true, status: true },
+      select: { createdAt: true, reviewedAt: true, status: true },
     });
 
     const grouped = new Map<string, { created: number; approved: number }>();
@@ -94,7 +104,12 @@ router.get('/trends', async (req, res, next) => {
       const date = f.createdAt.toISOString().split('T')[0];
       const entry = grouped.get(date) || { created: 0, approved: 0 };
       entry.created++;
-      if (f.status === ApprovalStatus.APPROVED) entry.approved++;
+      if (f.status === ApprovalStatus.APPROVED && f.reviewedAt) {
+        const reviewedDate = f.reviewedAt.toISOString().split('T')[0];
+        const reviewedEntry = grouped.get(reviewedDate) || { created: 0, approved: 0 };
+        reviewedEntry.approved++;
+        grouped.set(reviewedDate, reviewedEntry);
+      }
       grouped.set(date, entry);
     }
 
@@ -125,18 +140,19 @@ router.get('/resources-by-zone', async (_req, res, next) => {
       grouped.set(line.azCode, entry);
     }
 
-    // Subtract resources from terminated instances linked to approved forecasts
+    // Subtract resources from terminated instances that originated from approved forecasts
     const terminatedInstances = await prisma.instance.findMany({
       where: { status: 'TERMINATED', forecastId: { not: null } },
-      include: { flavor: true },
+      include: { flavor: true, forecast: true },
     });
 
     for (const instance of terminatedInstances) {
+      if (instance.forecast?.status !== ApprovalStatus.APPROVED) continue;
       const entry = grouped.get(instance.azCode);
       if (entry && instance.flavor) {
         entry.vcpu -= (instance.flavor.vcpu || 0);
         entry.ramGb -= (instance.flavor.ramGb || 0);
-        if (entry.vcpu <= 0 && entry.ramGb <= 0) {
+        if (entry.vcpu <= 0 || entry.ramGb <= 0) {
           grouped.delete(instance.azCode);
         }
       }
@@ -188,77 +204,92 @@ router.post('/', async (req, res, next) => {
   try {
     const data = createForecastSchema.parse(req.body);
 
-    // Validate application exists
-    const application = await prisma.application.findUnique({
-      where: { id: data.applicationId },
-    });
-    if (!application) {
-      return res.status(404).json({ error: `Application not found: ${data.applicationId}` });
-    }
-
-    // Validate each line and group HA/MULTI_AZ lines by product for resiliency validation
-    const azsByProduct = new Map<string, Set<string>>();
-    for (const line of data.lines) {
-      const flavor = await prisma.flavor.findUnique({ where: { id: line.flavorId } });
-      if (!flavor) {
-        return res.status(404).json({ error: `Flavor not found: ${line.flavorId}` });
-      }
-      if (flavor.productId !== line.productId) {
-        return res.status(409).json({ error: `Flavor ${line.flavorId} does not belong to product ${line.productId}` });
-      }
-      const az = await prisma.availabilityZone.findUnique({ where: { code: line.azCode } });
-      if (!az) {
-        return res.status(404).json({ error: `Availability zone not found: ${line.azCode}` });
-      }
-      const offered = await prisma.productAvailabilityZone.findFirst({
-        where: { productId: line.productId, availabilityZoneId: az.id },
+    const forecast = await prisma.$transaction(async (tx) => {
+      // Validate application exists
+      const application = await tx.application.findUnique({
+        where: { id: data.applicationId },
       });
-      if (!offered) {
-        return res.status(409).json({ error: `Product ${line.productId} is not available in zone ${line.azCode}` });
+      if (!application) {
+        throw Object.assign(new Error(`Application not found: ${data.applicationId}`), { status: 404 });
       }
 
-      if (line.resiliency === 'HA' || line.resiliency === 'MULTI_AZ') {
-        const set = azsByProduct.get(line.productId) || new Set<string>();
-        set.add(line.azCode);
-        azsByProduct.set(line.productId, set);
-      }
-    }
+      // Pre-load all flavors, AZs, and offerings to avoid N+1 queries
+      const flavorIds = [...new Set(data.lines.map((l) => l.flavorId))];
+      const azCodes = [...new Set(data.lines.map((l) => l.azCode))];
+      const productIds = [...new Set(data.lines.map((l) => l.productId))];
 
-    // HA/MULTI_AZ requires minimum 2 distinct AZs per product (counting only HA/MULTI_AZ lines)
-    for (const line of data.lines) {
-      if ((line.resiliency === 'HA' || line.resiliency === 'MULTI_AZ')) {
-        const distinctAzs = azsByProduct.get(line.productId) || new Set<string>();
-        if (distinctAzs.size < 2) {
-          return res.status(400).json({
-            error: `Resiliency ${line.resiliency} requires at least 2 distinct availability zones for product ${line.productId}`,
-          });
+      const [flavors, azs, offerings] = await Promise.all([
+        tx.flavor.findMany({ where: { id: { in: flavorIds } } }),
+        tx.availabilityZone.findMany({ where: { code: { in: azCodes } } }),
+        tx.productAvailabilityZone.findMany({ where: { productId: { in: productIds } } }),
+      ]);
+
+      const flavorMap = new Map(flavors.map((f) => [f.id, f]));
+      const azMap = new Map(azs.map((z) => [z.code, z]));
+      const offeringSet = new Set(offerings.map((o) => `${o.productId}:${o.availabilityZoneId}`));
+
+      // Validate each line and group HA/MULTI_AZ lines by product for resiliency validation
+      const azsByProduct = new Map<string, Set<string>>();
+      for (const line of data.lines) {
+        const flavor = flavorMap.get(line.flavorId);
+        if (!flavor) {
+          throw Object.assign(new Error(`Flavor not found: ${line.flavorId}`), { status: 404 });
+        }
+        if (flavor.productId !== line.productId) {
+          throw Object.assign(new Error(`Flavor ${line.flavorId} does not belong to product ${line.productId}`), { status: 409 });
+        }
+        const az = azMap.get(line.azCode);
+        if (!az) {
+          throw Object.assign(new Error(`Availability zone not found: ${line.azCode}`), { status: 404 });
+        }
+        if (!offeringSet.has(`${line.productId}:${az.id}`)) {
+          throw Object.assign(new Error(`Product ${line.productId} is not available in zone ${line.azCode}`), { status: 409 });
+        }
+
+        if (line.resiliency === 'HA' || line.resiliency === 'MULTI_AZ') {
+          const set = azsByProduct.get(line.productId) || new Set<string>();
+          set.add(line.azCode);
+          azsByProduct.set(line.productId, set);
         }
       }
-    }
 
-    const forecast = await prisma.forecast.create({
-      data: {
-        requestedBy: data.requestedBy,
-        requesterEmail: data.requesterEmail,
-        targetDate: data.targetDate ? new Date(data.targetDate) : null,
-        justification: data.justification,
-        applicationId: data.applicationId,
-        environment: data.environment,
-        lines: {
-          create: data.lines.map((line) => ({
-            productId: line.productId,
-            flavorId: line.flavorId,
-            azCode: line.azCode,
-            quantity: line.quantity,
-            metadata: line.metadata || undefined,
-            resiliency: line.resiliency || 'STANDARD',
-          })),
+      // HA/MULTI_AZ requires minimum 2 distinct AZs per product (counting only HA/MULTI_AZ lines)
+      for (const line of data.lines) {
+        if ((line.resiliency === 'HA' || line.resiliency === 'MULTI_AZ')) {
+          const distinctAzs = azsByProduct.get(line.productId) || new Set<string>();
+          if (distinctAzs.size < 2) {
+            throw Object.assign(new Error(
+              `Resiliency ${line.resiliency} requires at least 2 distinct availability zones for product ${line.productId}. ` +
+              `Only HA and MULTI_AZ lines count toward this requirement; STANDARD lines are ignored.`
+            ), { status: 400 });
+          }
+        }
+      }
+
+      return tx.forecast.create({
+        data: {
+          requestedBy: data.requestedBy,
+          requesterEmail: data.requesterEmail,
+          targetDate: data.targetDate ? new Date(data.targetDate) : null,
+          justification: data.justification,
+          applicationId: data.applicationId,
+          environment: data.environment,
+          lines: {
+            create: data.lines.map((line) => ({
+              productId: line.productId,
+              flavorId: line.flavorId,
+              azCode: line.azCode,
+              quantity: line.quantity,
+              metadata: line.metadata || undefined,
+              resiliency: line.resiliency || 'STANDARD',
+            })),
+          },
         },
-      },
-      include: {
-        lines: { include: { product: true, flavor: true } },
-        application: { include: { continuityLevel: true } },
-      },
+        include: {
+          lines: { include: { product: true, flavor: true } },
+          application: { include: { continuityLevel: true } },
+        },
+      });
     });
     res.status(201).json(forecast);
   } catch (err) {
@@ -272,6 +303,11 @@ router.patch('/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
     const data = updateForecastSchema.parse(req.body);
+
+    const existing = await prisma.forecast.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Forecast not found' });
+    }
 
     const forecast = await prisma.forecast.update({
       where: { id },
@@ -298,6 +334,10 @@ router.delete('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     idParamSchema.parse(id);
+    const existing = await prisma.forecast.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Forecast not found' });
+    }
     await prisma.forecast.delete({ where: { id } });
     res.status(204).send();
   } catch (err) {

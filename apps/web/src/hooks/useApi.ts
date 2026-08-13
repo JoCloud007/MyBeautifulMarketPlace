@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
-import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone, Application, ContinuityLevel, ProductLifecycle, ProductOption, UpgradePath, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus } from '@cloudmarket/shared-types';
+import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone, Application, ContinuityLevel, ProductLifecycle, ProductOption, UpgradePath, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats } from '@cloudmarket/shared-types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -17,12 +17,9 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const message = error.response?.data?.error || error.response?.data?.message || error.message || 'Network error';
-    // Don't toast on 404s for normal queries — handled per-query
-    if (error.response?.status !== 404) {
-      console.error('API Error:', message);
-      if (error.response?.data?.details) {
-        console.error('Validation details:', JSON.stringify(error.response.data.details, null, 2));
-      }
+    console.error('API Error:', message);
+    if (error.response?.data?.details) {
+      console.error('Validation details:', JSON.stringify(error.response.data.details, null, 2));
     }
     return Promise.reject(error);
   }
@@ -666,6 +663,16 @@ export function useApplications() {
   });
 }
 
+export function useApplication(id: string, options?: { enabled?: boolean }) {
+  return useQuery<Application>({
+    queryKey: ['application', id],
+    queryFn: () => fetchJson(`/applications/${id}`),
+    enabled: options?.enabled !== undefined ? options.enabled : !!id,
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
 export function useCreateApplication() {
   const queryClient = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
@@ -1232,6 +1239,66 @@ export function useDeleteMaintenanceWindow() {
       const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Unable to delete this maintenance window';
       addToast(msg, 'error');
     },
+  });
+}
+
+// ========== COMPLIANCE ==========
+
+export function useCompliance() {
+  return useQuery<ApplicationCompliance[]>({
+    queryKey: ['compliance'],
+    queryFn: () => fetchJson('/compliance'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+// ========== TOPOLOGY ==========
+
+export function useTopology() {
+  return useQuery<TopologyData>({
+    queryKey: ['topology'],
+    queryFn: () => fetchJson('/topology'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+// ========== MAINTENANCE ORCHESTRATOR ==========
+
+export function useMaintenanceAlerts() {
+  return useQuery<MaintenanceAlert[]>({
+    queryKey: ['maintenance-alerts'],
+    queryFn: () => fetchJson('/maintenance-orchestrator/alerts'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useMaintenanceSchedule() {
+  return useQuery<MaintenanceRecommendation[]>({
+    queryKey: ['maintenance-schedule'],
+    queryFn: () => fetchJson('/maintenance-orchestrator/schedule'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useMaintenanceImpact() {
+  return useMutation<MaintenanceImpact, Error, { applicationId: string; startTime: string; endTime: string; affectedInstanceIds?: string[] }>({
+    mutationFn: async (payload) => {
+      const { data } = await api.post('/maintenance-orchestrator/impact', payload);
+      return data;
+    },
+  });
+}
+
+export function useOrchestratorStats() {
+  return useQuery<OrchestratorStats>({
+    queryKey: ['orchestrator-stats'],
+    queryFn: () => fetchJson('/maintenance-orchestrator/stats'),
+    retry: 3,
+    retryDelay: 2000,
   });
 }
 

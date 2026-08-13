@@ -8,7 +8,7 @@ const updateContinuityLevelSchema = z.object({
   rtoMinutes: z.number().int().min(1).optional(),
   rpoMinutes: z.number().int().min(1).optional(),
   description: z.string().optional(),
-  color: z.string().optional(),
+  color: z.enum(['green', 'yellow', 'orange', 'red']).optional(),
 });
 
 const idParamSchema = z.string().uuid();
@@ -46,6 +46,11 @@ router.patch('/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
     const data = updateContinuityLevelSchema.parse(req.body);
+
+    const existing = await prisma.continuityLevel.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Continuity level not found' });
+    }
 
     const level = await prisma.continuityLevel.update({
       where: { id },

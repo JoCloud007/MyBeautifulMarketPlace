@@ -18,8 +18,8 @@ export default function DemandHeatmap() {
   if (error) return <QueryError message="Unable to load demand data" onRetry={refetch} />;
   if (!data || data.length === 0) return <div className="text-slate-400 text-center py-12">No demand data available</div>;
 
-  const products = Array.from(new Set(data.map((d) => d.productName)));
-  const zones = Array.from(new Set(data.map((d) => d.azCode)));
+  const products = Array.from(new Set(data.map((d) => d.productName))).sort();
+  const zones = Array.from(new Set(data.map((d) => d.azCode))).sort();
   const maxCount = Math.max(...data.map((d) => d.count), 1);
 
   const matrix = products.map((product) =>

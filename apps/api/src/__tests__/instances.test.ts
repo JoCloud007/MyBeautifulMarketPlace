@@ -57,6 +57,9 @@ describe('Instance Registry Routes', () => {
     prismaMock.forecast = {
       findUnique: jest.fn(),
     };
+    prismaMock.productLifecycle = {
+      findUnique: jest.fn(),
+    };
     jest.clearAllMocks();
   });
 
@@ -87,6 +90,7 @@ describe('Instance Registry Routes', () => {
           application: { include: { continuityLevel: true } },
           product: { include: { category: true } },
           flavor: true,
+          lifecycle: true,
           az: true,
           forecast: true,
         },
@@ -213,6 +217,7 @@ describe('Instance Registry Routes', () => {
         application: { id: 'a1', name: 'App1' },
         product: { id: 'p1', name: 'VM' },
         flavor: { id: 'f1', name: 'Large' },
+        lifecycle: { id: 'lc1', version: '1.0' },
         az: { id: 'az1', code: 'us-east-1a' },
         forecast: null,
       };
@@ -297,6 +302,7 @@ describe('Instance Registry Routes', () => {
           application: { include: { continuityLevel: true } },
           product: { include: { category: true } },
           flavor: true,
+          lifecycle: true,
           az: true,
           forecast: true,
         },
@@ -385,6 +391,52 @@ describe('Instance Registry Routes', () => {
       expect(res.body.error).toContain('Forecast not found');
     });
 
+    it('should create an instance with lifecycleId', async () => {
+      mockRelationsValid();
+      const lifecycleId = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+      prismaMock.productLifecycle.findUnique.mockResolvedValue({ id: lifecycleId, productId: validPayload.productId });
+      const created = {
+        id: 'i-lc',
+        ...validPayload,
+        lifecycleId,
+        status: 'PENDING',
+        environment: 'DEV',
+        application: { id: validPayload.applicationId },
+        product: { id: validPayload.productId },
+        flavor: { id: validPayload.flavorId },
+        lifecycle: { id: lifecycleId },
+        az: { id: 'az1', code: validPayload.azCode },
+        forecast: null,
+      };
+      prismaMock.instance.create.mockResolvedValue(created);
+
+      const app = createApp();
+      const res = await request(app).post('/api/instances').send({ ...validPayload, lifecycleId });
+
+      expect(res.status).toBe(201);
+      expect(res.body).toEqual(created);
+      expect(prismaMock.productLifecycle.findUnique).toHaveBeenCalledWith({ where: { id: lifecycleId } });
+    });
+
+    it('should reject when lifecycleId does not belong to product', async () => {
+      mockRelationsValid();
+      const lifecycleId = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+      prismaMock.productLifecycle.findUnique.mockResolvedValue({ id: lifecycleId, productId: 'other-product-id' });
+      const app = createApp();
+      const res = await request(app).post('/api/instances').send({ ...validPayload, lifecycleId });
+      expect(res.status).toBe(409);
+      expect(res.body.error).toContain('does not belong to product');
+    });
+
+    it('should reject when lifecycle not found', async () => {
+      mockRelationsValid();
+      prismaMock.productLifecycle.findUnique.mockResolvedValue(null);
+      const app = createApp();
+      const res = await request(app).post('/api/instances').send({ ...validPayload, lifecycleId: 'dddddddd-dddd-dddd-dddd-dddddddddddd' });
+      expect(res.status).toBe(404);
+      expect(res.body.error).toContain('Lifecycle not found');
+    });
+
     it('should reject empty name', async () => {
       const app = createApp();
       const res = await request(app).post('/api/instances').send({ ...validPayload, name: '' });
@@ -448,6 +500,7 @@ describe('Instance Registry Routes', () => {
           application: { include: { continuityLevel: true } },
           product: { include: { category: true } },
           flavor: true,
+          lifecycle: true,
           az: true,
           forecast: true,
         },
@@ -521,6 +574,31 @@ describe('Instance Registry Routes', () => {
       const res = await request(app).patch('/api/instances/11111111-1111-1111-1111-111111111111').send({ environment: 'QA' });
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('Validation Error');
+    });
+
+    it('should update lifecycleId', async () => {
+      const lifecycleId = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+      prismaMock.productLifecycle.findUnique.mockResolvedValue({ id: lifecycleId, productId: 'p1' });
+      prismaMock.instance.findUnique.mockResolvedValue({ id: 'i1', productId: 'p1' });
+      prismaMock.instance.update.mockResolvedValue({ id: 'i1', lifecycleId, application: { id: 'a1' }, product: { id: 'p1' }, flavor: { id: 'f1' }, lifecycle: { id: lifecycleId }, az: { id: 'az1' }, forecast: null });
+      const app = createApp();
+      const res = await request(app).patch('/api/instances/11111111-1111-1111-1111-111111111111').send({ lifecycleId });
+      expect(res.status).toBe(200);
+      expect(prismaMock.instance.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ lifecycleId }),
+        })
+      );
+    });
+
+    it('should reject PATCH when lifecycleId does not belong to product', async () => {
+      const lifecycleId = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
+      prismaMock.productLifecycle.findUnique.mockResolvedValue({ id: lifecycleId, productId: 'other-product' });
+      prismaMock.instance.findUnique.mockResolvedValue({ id: 'i1', productId: 'p1' });
+      const app = createApp();
+      const res = await request(app).patch('/api/instances/11111111-1111-1111-1111-111111111111').send({ lifecycleId });
+      expect(res.status).toBe(409);
+      expect(res.body.error).toContain('does not belong to product');
     });
   });
 

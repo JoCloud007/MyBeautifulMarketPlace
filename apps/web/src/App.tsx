@@ -12,7 +12,12 @@ import Instances from './pages/Instances';
 import Health from './pages/Health';
 import Maintenance from './pages/Maintenance';
 import Continuity from './pages/Continuity';
+import Compliance from './pages/Compliance';
+import Orchestrator from './pages/Orchestrator';
 import Forecasts from './pages/Forecasts';
+import Applications from './pages/Applications';
+import ApplicationDetail from './pages/ApplicationDetail';
+import Topology from './pages/Topology';
 import Admin from './pages/Admin';
 import NotFound from './pages/NotFound';
 
@@ -31,7 +36,12 @@ function App() {
             <Route path="/health" element={<Health />} />
             <Route path="/maintenance" element={<Maintenance />} />
             <Route path="/continuity" element={<Continuity />} />
+            <Route path="/compliance" element={<Compliance />} />
+            <Route path="/orchestrator" element={<Orchestrator />} />
             <Route path="/forecasts" element={<Forecasts />} />
+            <Route path="/applications" element={<Applications />} />
+            <Route path="/applications/:id" element={<ApplicationDetail />} />
+            <Route path="/topology" element={<Topology />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

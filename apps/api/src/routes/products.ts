@@ -51,6 +51,14 @@ const createLifecycleSchema = z.object({
   normalSupportEnd: z.string().datetime(),
   extendedSupportEnd: z.string().datetime(),
   eolDate: z.string().datetime(),
+}).refine((data) => {
+  const release = new Date(data.releaseDate).getTime();
+  const normal = new Date(data.normalSupportEnd).getTime();
+  const extended = new Date(data.extendedSupportEnd).getTime();
+  const eol = new Date(data.eolDate).getTime();
+  return release < normal && normal < extended && extended < eol;
+}, {
+  message: 'Dates must be in chronological order: releaseDate < normalSupportEnd < extendedSupportEnd < eolDate',
 });
 
 // GET /api/products
@@ -59,20 +67,28 @@ router.get('/', async (req, res, next) => {
     const filters = productQuerySchema.parse(req.query);
 
     const where: any = { isActive: true };
+    const orConditions: any[] = [];
 
     if (filters.category) {
       where.category = { slug: filters.category };
     }
 
-    if (filters.os) {
-      where.os = { equals: filters.os, mode: 'insensitive' };
-    }
-
     if (filters.search) {
-      where.OR = [
+      orConditions.push(
         { name: { contains: filters.search, mode: 'insensitive' } },
         { description: { contains: filters.search, mode: 'insensitive' } },
-      ];
+      );
+    }
+
+    if (filters.os) {
+      orConditions.push(
+        { os: { equals: filters.os, mode: 'insensitive' } },
+        { options: { some: { type: 'OS_VERSION', value: { equals: filters.os, mode: 'insensitive' } } } },
+      );
+    }
+
+    if (orConditions.length > 0) {
+      where.OR = orConditions;
     }
 
     if (filters.flavor) {
@@ -102,6 +118,8 @@ router.get('/', async (req, res, next) => {
         },
         options: true,
         lifecycles: { orderBy: { releaseDate: 'desc' } },
+        upgradeFrom: { include: { toProduct: { select: { id: true, name: true, slug: true } } } },
+        upgradeTo: { include: { fromProduct: { select: { id: true, name: true, slug: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -203,6 +221,11 @@ router.patch('/:id', async (req, res, next) => {
     const data = updateProductSchema.parse(req.body);
     const { availabilityZoneIds, ...productData } = data;
 
+    const existingProduct = await prisma.product.findUnique({ where: { id } });
+    if (!existingProduct) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
     if (data.slug) {
       const existing = await prisma.product.findUnique({ where: { slug: data.slug } });
       if (existing && existing.id !== id) {
@@ -302,6 +325,7 @@ router.get('/:slug/forecasts', async (req, res, next) => {
       where: { lines: { some: { productId: product.id } } },
       include: { lines: { include: { flavor: true, product: true } } },
       orderBy: { createdAt: 'desc' },
+      take: 100,
     });
 
     res.json(forecasts);
@@ -439,7 +463,14 @@ router.patch('/:id/lifecycles/:lifecycleId', async (req, res, next) => {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    const lifecycle = await prisma.productLifecycle.update({
+    const lifecycle = await prisma.productLifecycle.findFirst({
+      where: { id: lifecycleId, productId: id },
+    });
+    if (!lifecycle) {
+      return res.status(404).json({ error: 'Lifecycle not found for this product' });
+    }
+
+    const updated = await prisma.productLifecycle.update({
       where: { id: lifecycleId },
       data: {
         ...data,
@@ -449,7 +480,7 @@ router.patch('/:id/lifecycles/:lifecycleId', async (req, res, next) => {
         eolDate: data.eolDate ? new Date(data.eolDate) : undefined,
       },
     });
-    res.json(lifecycle);
+    res.json(updated);
   } catch (err) {
     next(err);
   }

@@ -79,40 +79,16 @@ async function main() {
     data: { name: 'Citrix', slug: 'citrix', description: 'Citrix virtualization and VDI solutions', icon: 'Monitor' },
   });
 
-  // Create Products
-  const vmDebian = await prisma.product.create({
+  // Create Products — unified Virtual Machine product with OS as options
+  const vmProduct = await prisma.product.create({
     data: {
-      name: 'VM Debian 12',
-      slug: 'vm-debian-12',
-      description: 'Virtual machine running Debian 12 (Bookworm) with latest security patches and cloud-init support.',
+      name: 'Virtual Machine',
+      slug: 'virtual-machine',
+      description: 'Configurable virtual machine with selectable OS, vCPU, and memory options.',
       categoryId: compute.id,
       os: 'Linux',
-      documentation: '# VM Debian 12\n\n## Overview\nPre-configured Debian 12 virtual machine optimized for cloud workloads.\n\n## Specifications\n- OS: Debian 12 (Bookworm)\n- Kernel: 6.1 LTS\n- Cloud-init enabled\n- QEMU Guest Agent pre-installed',
-      roadmap: '## Roadmap\n- Q3 2024: Debian 12.2 update\n- Q4 2024: ARM64 support\n- Q1 2025: Debian 13 preview',
-    },
-  });
-
-  const vmWindows = await prisma.product.create({
-    data: {
-      name: 'VM Windows Server 2022',
-      slug: 'vm-windows-server-2022',
-      description: 'Windows Server 2022 Datacenter edition with RDS support and Active Directory integration.',
-      categoryId: compute.id,
-      os: 'Windows',
-      documentation: '# VM Windows Server 2022\n\n## Overview\nEnterprise-grade Windows Server 2022 virtual machine.\n\n## Specifications\n- Edition: Datacenter\n- License: Included\n- RDS: 50 CALs included',
-      roadmap: '## Roadmap\n- Q3 2024: Windows Server 2025 preview\n- Q4 2024: Enhanced Azure AD integration',
-    },
-  });
-
-  const vmRedHat = await prisma.product.create({
-    data: {
-      name: 'VM RedHat Enterprise Linux 9',
-      slug: 'vm-rhel-9',
-      description: 'RHEL 9 with Satellite integration and comprehensive support subscription.',
-      categoryId: compute.id,
-      os: 'Linux',
-      documentation: '# VM RHEL 9\n\n## Overview\nRed Hat Enterprise Linux 9 for mission-critical workloads.\n\n## Specifications\n- OS: RHEL 9.3\n- Kernel: 5.14\n- Subscription: Included',
-      roadmap: '## Roadmap\n- Q3 2024: RHEL 9.4 update\n- Q4 2024: Real-time kernel option',
+      documentation: '# Virtual Machine\n\n## Overview\nConfigurable virtual machine with selectable operating system.\n\n## Specifications\n- OS: selectable (Debian, Windows Server, RHEL)\n- vCPU: 2–16\n- RAM: 4–32 GB',
+      roadmap: '## Roadmap\n- Q3 2024: ARM64 support\n- Q4 2024: GPU instance option\n- Q1 2025: Confidential computing',
     },
   });
 
@@ -184,7 +160,7 @@ async function main() {
     { name: 'XL', vcpu: 16, ramGb: 32, description: 'Maximum performance for enterprise workloads' },
   ];
 
-  const products = [vmDebian, vmWindows, vmRedHat, bareMetalHpc, vmware, citrixVdi];
+  const products = [vmProduct, bareMetalHpc, vmware, citrixVdi];
   for (const product of products) {
     for (const flavor of flavors) {
       await prisma.flavor.create({
@@ -212,16 +188,7 @@ async function main() {
   // Create Dependencies
   await prisma.dependency.create({
     data: {
-      productId: vmDebian.id,
-      dependsOnId: objectStorage.id,
-      type: DependencyType.RECOMMENDED,
-      description: 'Recommended for backup and archive storage',
-    },
-  });
-
-  await prisma.dependency.create({
-    data: {
-      productId: vmWindows.id,
+      productId: vmProduct.id,
       dependsOnId: objectStorage.id,
       type: DependencyType.RECOMMENDED,
       description: 'Recommended for backup and archive storage',
@@ -246,30 +213,30 @@ async function main() {
     },
   });
 
-  // Create Product Options (VM as product, OS as option example)
+  // Create Product Options (VM as product, OS as option)
   await prisma.productOption.create({
-    data: { productId: vmDebian.id, type: 'OS_VERSION', value: 'debian-12', label: 'Debian 12 (Bookworm)', isDefault: true },
+    data: { productId: vmProduct.id, type: 'OS_VERSION', value: 'debian-12', label: 'Debian 12 (Bookworm)', isDefault: true },
   });
   await prisma.productOption.create({
-    data: { productId: vmDebian.id, type: 'OS_VERSION', value: 'debian-11', label: 'Debian 11 (Bullseye)', isDefault: false },
+    data: { productId: vmProduct.id, type: 'OS_VERSION', value: 'debian-11', label: 'Debian 11 (Bullseye)', isDefault: false },
   });
   await prisma.productOption.create({
-    data: { productId: vmWindows.id, type: 'OS_VERSION', value: 'windows-server-2022', label: 'Windows Server 2022', isDefault: true },
+    data: { productId: vmProduct.id, type: 'OS_VERSION', value: 'windows-server-2022', label: 'Windows Server 2022', isDefault: false },
   });
   await prisma.productOption.create({
-    data: { productId: vmWindows.id, type: 'OS_VERSION', value: 'windows-server-2019', label: 'Windows Server 2019', isDefault: false },
+    data: { productId: vmProduct.id, type: 'OS_VERSION', value: 'windows-server-2019', label: 'Windows Server 2019', isDefault: false },
   });
   await prisma.productOption.create({
-    data: { productId: vmRedHat.id, type: 'OS_VERSION', value: 'rhel-9', label: 'RHEL 9', isDefault: true },
+    data: { productId: vmProduct.id, type: 'OS_VERSION', value: 'rhel-9', label: 'RHEL 9', isDefault: false },
   });
   await prisma.productOption.create({
-    data: { productId: vmRedHat.id, type: 'OS_VERSION', value: 'rhel-8', label: 'RHEL 8', isDefault: false },
+    data: { productId: vmProduct.id, type: 'OS_VERSION', value: 'rhel-8', label: 'RHEL 8', isDefault: false },
   });
 
   // Create Product Lifecycles
-  await prisma.productLifecycle.create({
+  const debian12Lifecycle = await prisma.productLifecycle.create({
     data: {
-      productId: vmDebian.id,
+      productId: vmProduct.id,
       version: '12.0',
       releaseDate: new Date('2023-06-10'),
       normalSupportEnd: new Date('2026-06-10'),
@@ -278,9 +245,9 @@ async function main() {
       phase: LifecyclePhase.RELEASED,
     },
   });
-  await prisma.productLifecycle.create({
+  const debian11Lifecycle = await prisma.productLifecycle.create({
     data: {
-      productId: vmDebian.id,
+      productId: vmProduct.id,
       version: '11.0',
       releaseDate: new Date('2021-08-14'),
       normalSupportEnd: new Date('2024-08-14'),
@@ -289,9 +256,9 @@ async function main() {
       phase: LifecyclePhase.NORMAL_SUPPORT,
     },
   });
-  await prisma.productLifecycle.create({
+  const windows2022Lifecycle = await prisma.productLifecycle.create({
     data: {
-      productId: vmWindows.id,
+      productId: vmProduct.id,
       version: '2022',
       releaseDate: new Date('2021-08-18'),
       normalSupportEnd: new Date('2026-10-13'),
@@ -300,9 +267,9 @@ async function main() {
       phase: LifecyclePhase.RELEASED,
     },
   });
-  await prisma.productLifecycle.create({
+  const rhel9Lifecycle = await prisma.productLifecycle.create({
     data: {
-      productId: vmRedHat.id,
+      productId: vmProduct.id,
       version: '9.0',
       releaseDate: new Date('2022-05-18'),
       normalSupportEnd: new Date('2027-05-31'),
@@ -311,7 +278,7 @@ async function main() {
       phase: LifecyclePhase.RELEASED,
     },
   });
-  await prisma.productLifecycle.create({
+  const vmware8Lifecycle = await prisma.productLifecycle.create({
     data: {
       productId: vmware.id,
       version: '8.0',
@@ -326,8 +293,8 @@ async function main() {
   // Create Upgrade Paths
   await prisma.upgradePath.create({
     data: {
-      fromProductId: vmDebian.id,
-      toProductId: vmDebian.id,
+      fromProductId: vmProduct.id,
+      toProductId: vmProduct.id,
       fromVersion: '11.0',
       toVersion: '12.0',
       migrationType: 'IN_PLACE',
@@ -336,8 +303,8 @@ async function main() {
   });
   await prisma.upgradePath.create({
     data: {
-      fromProductId: vmWindows.id,
-      toProductId: vmWindows.id,
+      fromProductId: vmProduct.id,
+      toProductId: vmProduct.id,
       fromVersion: '2019',
       toVersion: '2022',
       migrationType: 'BLUE_GREEN',
@@ -365,7 +332,7 @@ async function main() {
   });
 
   // Create ProductAvailabilityZones (all products in all zones)
-  for (const product of [vmDebian, vmWindows, vmRedHat, bareMetalHpc, objectStorage, nas, vmware, citrixVdi]) {
+  for (const product of [vmProduct, bareMetalHpc, objectStorage, nas, vmware, citrixVdi]) {
     for (const zone of [parisAz1, parisAz2, london, newYork, singapore, hongKong]) {
       await prisma.productAvailabilityZone.upsert({
         where: { productId_availabilityZoneId: { productId: product.id, availabilityZoneId: zone.id } },
@@ -377,7 +344,7 @@ async function main() {
 
   // Create Sample Forecasts
   const allFlavors = await prisma.flavor.findMany();
-  const vmDebianFlavors = allFlavors.filter(f => f.productId === vmDebian.id);
+  const vmFlavors = allFlavors.filter(f => f.productId === vmProduct.id);
 
   await prisma.forecast.create({
     data: {
@@ -389,11 +356,12 @@ async function main() {
       environment: 'DEV',
       lines: {
         create: [{
-          productId: vmDebian.id,
-          flavorId: vmDebianFlavors[1].id,
+          productId: vmProduct.id,
+          flavorId: vmFlavors[1].id,
           azCode: 'ap-south-sin1',
           quantity: 5,
           resiliency: 'STANDARD',
+          metadata: { osVersion: 'debian-12' },
         }],
       },
     },
@@ -411,11 +379,12 @@ async function main() {
       environment: 'PRD',
       lines: {
         create: [{
-          productId: vmWindows.id,
-          flavorId: allFlavors.find(f => f.productId === vmWindows.id && f.name === 'Medium')!.id,
+          productId: vmProduct.id,
+          flavorId: allFlavors.find(f => f.productId === vmProduct.id && f.name === 'Medium')!.id,
           azCode: 'ap-south-sin1',
           quantity: 3,
           resiliency: 'HA',
+          metadata: { osVersion: 'windows-server-2022' },
         }],
       },
     },
@@ -455,55 +424,60 @@ async function main() {
 
   // Create Sample Instances
   const instanceFlavors = await prisma.flavor.findMany();
-  const debFlavor = instanceFlavors.find(f => f.productId === vmDebian.id && f.name === 'Small');
-  const winFlavor = instanceFlavors.find(f => f.productId === vmWindows.id && f.name === 'Medium');
-  const rhelFlavor = instanceFlavors.find(f => f.productId === vmRedHat.id && f.name === 'Large');
+  const vmSmallFlavor = instanceFlavors.find(f => f.productId === vmProduct.id && f.name === 'Small');
+  const vmMediumFlavor = instanceFlavors.find(f => f.productId === vmProduct.id && f.name === 'Medium');
+  const vmLargeFlavor = instanceFlavors.find(f => f.productId === vmProduct.id && f.name === 'Large');
   const hpcFlavor = instanceFlavors.find(f => f.productId === bareMetalHpc.id && f.name === 'XL');
 
-  if (debFlavor) {
+  if (vmSmallFlavor) {
     await prisma.instance.create({
       data: {
         name: 'ecom-web-01',
         description: 'E-commerce web frontend',
         applicationId: appEcommerce.id,
-        productId: vmDebian.id,
-        flavorId: debFlavor.id,
+        productId: vmProduct.id,
+        flavorId: vmSmallFlavor.id,
+        lifecycleId: debian12Lifecycle.id,
         azCode: 'ap-south-sin1',
         status: InstanceStatus.RUNNING,
         environment: 'PRD',
         ipAddress: '10.0.1.10',
         hostname: 'ecom-web-01.sin1.cloudmarket.local',
         startedAt: new Date('2024-01-15'),
+        metadata: { osVersion: 'debian-12' },
       },
     });
   }
 
-  if (winFlavor) {
+  if (vmMediumFlavor) {
     await prisma.instance.create({
       data: {
         name: 'ecom-api-01',
         description: 'E-commerce API server',
         applicationId: appEcommerce.id,
-        productId: vmWindows.id,
-        flavorId: winFlavor.id,
+        productId: vmProduct.id,
+        flavorId: vmMediumFlavor.id,
+        lifecycleId: windows2022Lifecycle.id,
         azCode: 'eu-west-par1',
         status: InstanceStatus.RUNNING,
         environment: 'PRD',
         ipAddress: '10.0.2.20',
         hostname: 'ecom-api-01.par1.cloudmarket.local',
         startedAt: new Date('2024-02-01'),
+        metadata: { osVersion: 'windows-server-2022' },
       },
     });
   }
 
-  if (rhelFlavor) {
+  if (vmLargeFlavor) {
     await prisma.instance.create({
       data: {
         name: 'analytics-worker-01',
         description: 'Analytics batch worker',
         applicationId: appAnalytics.id,
-        productId: vmRedHat.id,
-        flavorId: rhelFlavor.id,
+        productId: vmProduct.id,
+        flavorId: vmLargeFlavor.id,
+        lifecycleId: rhel9Lifecycle.id,
         azCode: 'us-east-nyc1',
         status: InstanceStatus.STOPPED,
         environment: 'STG',
@@ -511,6 +485,7 @@ async function main() {
         hostname: 'analytics-worker-01.nyc1.cloudmarket.local',
         startedAt: new Date('2024-03-10'),
         stoppedAt: new Date('2024-06-01'),
+        metadata: { osVersion: 'rhel-9' },
       },
     });
   }
@@ -532,29 +507,32 @@ async function main() {
     });
   }
 
-  if (debFlavor) {
+  if (vmSmallFlavor) {
     await prisma.instance.create({
       data: {
         name: 'ecom-cache-01',
         description: 'Redis cache node',
         applicationId: appEcommerce.id,
-        productId: vmDebian.id,
-        flavorId: debFlavor.id,
+        productId: vmProduct.id,
+        flavorId: vmSmallFlavor.id,
+        lifecycleId: debian12Lifecycle.id,
         azCode: 'ap-south-hk1',
         status: InstanceStatus.PENDING,
         environment: 'PRD',
+        metadata: { osVersion: 'debian-12' },
       },
     });
   }
 
-  if (winFlavor) {
+  if (vmMediumFlavor) {
     await prisma.instance.create({
       data: {
         name: 'analytics-db-01',
         description: 'Analytics database server',
         applicationId: appAnalytics.id,
-        productId: vmWindows.id,
-        flavorId: winFlavor.id,
+        productId: vmProduct.id,
+        flavorId: vmMediumFlavor.id,
+        lifecycleId: windows2022Lifecycle.id,
         azCode: 'ap-south-sin1',
         status: InstanceStatus.TERMINATED,
         environment: 'DEV',
@@ -563,6 +541,7 @@ async function main() {
         startedAt: new Date('2024-01-01'),
         stoppedAt: new Date('2024-04-01'),
         terminatedAt: new Date('2024-05-01'),
+        metadata: { osVersion: 'windows-server-2022' },
       },
     });
   }

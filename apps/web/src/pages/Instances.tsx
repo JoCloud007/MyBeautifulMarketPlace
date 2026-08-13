@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useInstances, useInstanceStats, useApplications, useProducts } from '@/hooks/useApi';
+import { Link } from 'react-router-dom';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,7 +55,10 @@ function InstanceCard({ instance }: { instance: Instance }) {
   const env = envConfig[instance.environment] || { label: instance.environment, color: 'border-slate-600 text-slate-500' };
 
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4 sm:hidden">
+    <Link
+      to={`/instances/${instance.id}`}
+      className="block rounded-lg border border-slate-800 bg-slate-900/50 p-4 sm:hidden transition-all duration-200 hover:border-slate-600 hover:bg-slate-800/50"
+    >
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <p className="font-medium text-white truncate">{instance.name}</p>
@@ -69,6 +73,9 @@ function InstanceCard({ instance }: { instance: Instance }) {
         <p>{instance.application?.name}</p>
         <p className="text-xs text-slate-500">{instance.az?.name}</p>
       </div>
+      {instance.lifecycle?.version && (
+        <p className="mt-1 text-xs text-purple-400">v{instance.lifecycle.version}</p>
+      )}
       {instance.description && (
         <p className="mt-2 text-xs text-slate-500 line-clamp-2">{instance.description}</p>
       )}
@@ -80,7 +87,7 @@ function InstanceCard({ instance }: { instance: Instance }) {
           <span className="text-xs text-slate-600 font-mono">{instance.ipAddress}</span>
         )}
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -279,6 +286,7 @@ export default function InstancesPage() {
                             <th className="pb-3 text-left font-medium text-slate-400">Name</th>
                             <th className="pb-3 text-left font-medium text-slate-400">Application</th>
                             <th className="pb-3 text-left font-medium text-slate-400">Product</th>
+                            <th className="pb-3 text-left font-medium text-slate-400">Version</th>
                             <th className="pb-3 text-left font-medium text-slate-400">Flavor</th>
                             <th className="pb-3 text-left font-medium text-slate-400">AZ</th>
                             <th className="pb-3 text-left font-medium text-slate-400">Status</th>
@@ -294,13 +302,25 @@ export default function InstancesPage() {
                             return (
                               <tr key={instance.id} className="hover:bg-slate-800/50 transition-colors">
                                 <td className="py-3">
-                                  <div className="font-medium text-white">{instance.name}</div>
+                                  <Link
+                                    to={`/instances/${instance.id}`}
+                                    className="font-medium text-white hover:text-blue-400 transition-colors"
+                                  >
+                                    {instance.name}
+                                  </Link>
                                   {instance.description && (
                                     <div className="text-xs text-slate-500">{instance.description}</div>
                                   )}
                                 </td>
                                 <td className="py-3 text-slate-400">{instance.application?.name}</td>
                                 <td className="py-3 text-slate-400">{instance.product?.name}</td>
+                                <td className="py-3 text-slate-400">
+                                  {instance.lifecycle?.version ? (
+                                    <span className="text-purple-400">{instance.lifecycle.version}</span>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </td>
                                 <td className="py-3 text-slate-400">{instance.flavor?.name}</td>
                                 <td className="py-3 text-slate-400">{instance.az?.code}</td>
                                 <td className="py-3">

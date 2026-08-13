@@ -4,7 +4,7 @@ import { PrismaClient, LifecyclePhase } from '@prisma/client';
 const prisma = new PrismaClient();
 
 /** Update lifecycle phases based on current date */
-async function updateLifecyclePhases() {
+export async function updateLifecyclePhases() {
   const now = new Date();
 
   // RELEASED -> NORMAL_SUPPORT (product has been released)
@@ -12,7 +12,6 @@ async function updateLifecyclePhases() {
     where: {
       phase: LifecyclePhase.RELEASED,
       releaseDate: { lte: now },
-      normalSupportEnd: { gte: now },
     },
     data: { phase: LifecyclePhase.NORMAL_SUPPORT },
   });
@@ -35,12 +34,11 @@ async function updateLifecyclePhases() {
     data: { phase: LifecyclePhase.NO_SUPPORT },
   });
 
-  // NO_SUPPORT -> EOL (30 days after eolDate)
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  // NO_SUPPORT -> EOL (when eolDate has passed)
   await prisma.productLifecycle.updateMany({
     where: {
       phase: LifecyclePhase.NO_SUPPORT,
-      eolDate: { lt: thirtyDaysAgo },
+      eolDate: { lt: now },
     },
     data: { phase: LifecyclePhase.EOL },
   });

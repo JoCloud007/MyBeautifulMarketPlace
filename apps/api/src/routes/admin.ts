@@ -80,6 +80,7 @@ router.get('/dashboard', async (_req, res, next) => {
 // GET /api/admin/products
 router.get('/products', async (_req, res, next) => {
   try {
+    // Prisma initialized
     const products = await prisma.product.findMany({
       include: {
         category: true,

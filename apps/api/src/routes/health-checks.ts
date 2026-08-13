@@ -13,6 +13,16 @@ const createSchema = z.object({
   diskPercent: z.number().min(0).max(100).default(0),
   responseTimeMs: z.number().min(0).default(0),
   checkedAt: z.string().datetime().optional(),
+}).refine((data) => {
+  if (data.checkedAt) {
+    const dt = new Date(data.checkedAt);
+    const now = new Date();
+    if (dt > new Date(now.getTime() + 60 * 1000)) return false;
+  }
+  return true;
+}, {
+  message: 'checkedAt cannot be more than 1 minute in the future',
+  path: ['checkedAt'],
 });
 
 const updateSchema = z.object({
@@ -29,10 +39,14 @@ const idParamSchema = z.string().uuid();
 // GET /api/health-checks
 router.get('/', async (req, res, next) => {
   try {
-    const { instanceId, status } = req.query;
+    const querySchema = z.object({
+      instanceId: z.string().uuid().optional(),
+      status: z.enum(['HEALTHY', 'DEGRADED', 'UNHEALTHY']).optional(),
+    });
+    const parsed = querySchema.parse(req.query);
     const where: any = {};
-    if (instanceId) where.instanceId = String(instanceId);
-    if (status) where.status = String(status);
+    if (parsed.instanceId) where.instanceId = parsed.instanceId;
+    if (parsed.status) where.status = parsed.status;
 
     const checks = await prisma.healthCheck.findMany({
       where,
