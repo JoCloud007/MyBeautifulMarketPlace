@@ -244,6 +244,7 @@ async function main() {
       eolDate: new Date('2030-06-10'),
       phase: LifecyclePhase.RELEASED,
       osFamily: 'LINUX',
+      osName: 'Debian 12 (Bookworm)',
     },
   });
   const debian11Lifecycle = await prisma.productLifecycle.create({
@@ -256,6 +257,7 @@ async function main() {
       eolDate: new Date('2028-08-14'),
       phase: LifecyclePhase.NORMAL_SUPPORT,
       osFamily: 'LINUX',
+      osName: 'Debian 11 (Bullseye)',
     },
   });
   const windows2022Lifecycle = await prisma.productLifecycle.create({
@@ -268,6 +270,7 @@ async function main() {
       eolDate: new Date('2033-10-14'),
       phase: LifecyclePhase.RELEASED,
       osFamily: 'WINDOWS',
+      osName: 'Windows Server 2022',
     },
   });
   const rhel9Lifecycle = await prisma.productLifecycle.create({
@@ -280,6 +283,7 @@ async function main() {
       eolDate: new Date('2033-05-31'),
       phase: LifecyclePhase.RELEASED,
       osFamily: 'LINUX',
+      osName: 'RHEL 9',
     },
   });
   const vmware8Lifecycle = await prisma.productLifecycle.create({
@@ -292,6 +296,7 @@ async function main() {
       eolDate: new Date('2032-10-11'),
       phase: LifecyclePhase.RELEASED,
       osFamily: 'HYPERVISOR',
+      osName: 'VMware vSphere 8.0',
     },
   });
 

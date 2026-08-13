@@ -94,6 +94,7 @@ export interface ProductLifecycle {
   eolDate: string;
   phase: LifecyclePhase;
   osFamily: string | null;
+  osName: string | null;
   createdAt: string;
   updatedAt: string;
 }
