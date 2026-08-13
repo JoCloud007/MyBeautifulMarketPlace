@@ -23,7 +23,8 @@
     "typescript": "^5.4.5"
   },
   "dependencies": {
-    "class-variance-authority": "^0.7.1"
+    "class-variance-authority": "^0.7.1",
+    "recharts": "^3.10.1"
   },
   "optionalDependencies": {
     "@esbuild/linux-arm64": "^0.28.2"

@@ -26,7 +26,7 @@ WORKDIR /app
 COPY . .
 
 # Rebuild native deps for container architecture
-RUN npm rebuild rollup
+RUN rm -rf node_modules/@rollup/rollup-darwin-* && npm install rollup
 
 # Build shared types
 RUN npm run build -w packages/shared-types
