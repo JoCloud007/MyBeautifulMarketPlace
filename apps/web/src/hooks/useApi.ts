@@ -95,7 +95,8 @@ export function useUpdateProduct() {
       addToast('Product updated', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Error during update', 'error');
+      const msg = err.response?.data?.message || err.response?.data?.error || 'Error during update';
+      addToast(msg, 'error');
     },
   });
 }
@@ -144,7 +145,8 @@ export function useCreateCategory() {
       addToast('Category created successfully', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Error during creation', 'error');
+      const msg = err.response?.data?.message || err.response?.data?.error || 'Error during creation';
+      addToast(msg, 'error');
     },
   });
 }
