@@ -174,7 +174,7 @@ export default function Forecasts() {
         productId: l.productId,
         flavorId: l.flavorId,
         azCode: l.azCode,
-        quantity: l.quantity,
+        quantity: typeof l.quantity === 'string' ? parseInt(l.quantity, 10) : l.quantity,
         metadata: l.osVersion ? { osVersion: l.osVersion } : undefined,
       })),
     } as any);
