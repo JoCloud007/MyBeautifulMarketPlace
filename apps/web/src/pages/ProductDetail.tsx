@@ -20,6 +20,7 @@ import {
   Map,
   GitBranch,
   ArrowUpRight,
+  ArrowRight,
   Calendar,
   Box,
   Layers,
@@ -43,8 +44,6 @@ const regionColors: Record<string, string> = {
   'North America': '#10b981',
   'Asia-Pacific': '#f59e0b',
 };
-
-const geoUrl = '/world-110m.json';
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('fr-FR', {
@@ -292,14 +291,6 @@ export default function ProductDetail() {
   const related = relatedProducts?.filter((p: Product) => p.id !== product.id).slice(0, 3) ?? [];
 
   const productAzs = product.availabilityZones?.map((az) => az.availabilityZone) ?? [];
-
-  // Compute map center from AZ coordinates
-  const mapCenter = React.useMemo(() => {
-    if (productAzs.length === 0) return [10, 30] as [number, number];
-    const avgLng = productAzs.reduce((sum, az) => sum + az.longitude, 0) / productAzs.length;
-    const avgLat = productAzs.reduce((sum, az) => sum + az.latitude, 0) / productAzs.length;
-    return [avgLng, avgLat] as [number, number];
-  }, [productAzs]);
 
   return (
     <div className="space-y-6 sm:space-y-8">
