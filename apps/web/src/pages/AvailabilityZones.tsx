@@ -1,13 +1,8 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ComposableMap,
-  Geographies,
-  Geography,
-  Marker,
-  ZoomableGroup,
-} from 'react-simple-maps';
-import { useAvailabilityZones } from '@/hooks/useApi';
+  useAvailabilityZones,
+} from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,8 +20,6 @@ import {
   RadioTower,
 } from 'lucide-react';
 import type { AvailabilityZone } from '@cloudmarket/shared-types';
-
-const geoUrl = '/world-110m.json';
 
 const regions = ['All', 'Europe', 'North America', 'Asia-Pacific'];
 
@@ -53,7 +46,6 @@ export default function AvailabilityZonesPage() {
   const { data: zones, isLoading, isError, refetch } = useAvailabilityZones();
   const [selectedRegion, setSelectedRegion] = useState('All');
   const [selectedZone, setSelectedZone] = useState<AvailabilityZone | null>(null);
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; zone: AvailabilityZone } | null>(null);
 
   const filteredZones = useMemo(() => {
     if (!zones) return [];
@@ -141,10 +133,10 @@ export default function AvailabilityZonesPage() {
         </Tabs>
       </AnimatedSection>
 
-      {/* Map + Detail Panel */}
+      {/* Detail Panel */}
       <AnimatedSection delay={160}>
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* Map */}
+          {/* Map Placeholder */}
           <Card className="lg:col-span-2 bg-slate-900 border-slate-800 overflow-hidden">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-white text-base">
@@ -156,79 +148,12 @@ export default function AvailabilityZonesPage() {
               {isLoading ? (
                 <Skeleton className="h-[400px] w-full bg-slate-800" />
               ) : (
-                <div className="relative h-[400px] w-full bg-slate-950" data-map-container>
-                  <ComposableMap
-                    projection="geoMercator"
-                    projectionConfig={{ scale: 120 }}
-                    style={{ width: '100%', height: '100%' }}
-                  >
-                    <ZoomableGroup center={[10, 30]} zoom={1}>
-                      <Geographies geography={geoUrl}>
-                        {({ geographies }) =>
-                          geographies.map((geo) => (
-                            <Geography
-                              key={geo.rsmKey}
-                              geography={geo}
-                              fill="#1e293b"
-                              stroke="#334155"
-                              strokeWidth={0.5}
-                              style={{
-                                default: { outline: 'none' },
-                                hover: { fill: '#334155', outline: 'none' },
-                                pressed: { outline: 'none' },
-                              }}
-                            />
-                          ))
-                        }
-                      </Geographies>
-                      {filteredZones.map((zone) => (
-                        <Marker
-                          key={zone.id}
-                          coordinates={[zone.longitude, zone.latitude]}
-                          onMouseEnter={(e) => {
-                            const rect = (e.target as SVGElement).getBoundingClientRect?.();
-                            const container = (e.currentTarget as SVGElement).closest?.('[data-map-container]');
-                            const containerRect = container?.getBoundingClientRect();
-                            if (rect && containerRect) {
-                              setTooltip({
-                                x: rect.left - containerRect.left + rect.width / 2,
-                                y: rect.top - containerRect.top - 12,
-                                zone,
-                              });
-                            }
-                          }}
-                          onMouseLeave={() => setTooltip(null)}
-                          onClick={() => setSelectedZone(zone)}
-                        >
-                          <circle
-                            r={selectedZone?.id === zone.id ? 8 : 6}
-                            fill={regionColors[zone.region] || '#64748b'}
-                            stroke="#0f172a"
-                            strokeWidth={2}
-                            className="cursor-pointer transition-all duration-200 hover:opacity-80"
-                            style={{ filter: selectedZone?.id === zone.id ? 'drop-shadow(0 0 6px currentColor)' : undefined }}
-                          />
-                        </Marker>
-                      ))}
-                    </ZoomableGroup>
-                  </ComposableMap>
-
-                  {/* Custom Tooltip */}
-                  {tooltip && (
-                    <div
-                      data-testid="map-tooltip"
-                      className="absolute pointer-events-none z-10 rounded-md border border-slate-700 bg-slate-900 px-3 py-2 shadow-lg"
-                      style={{
-                        left: tooltip.x,
-                        top: tooltip.y,
-                        transform: 'translate(-50%, -100%)',
-                      }}
-                    >
-                      <p className="text-xs font-semibold text-white">{tooltip.zone.name}</p>
-                      <p className="text-[10px] text-slate-400">{tooltip.zone.city}, {tooltip.zone.country}</p>
-                      <p className="text-[10px] text-slate-500">{tooltip.zone.code}</p>
-                    </div>
-                  )}
+                <div className="relative h-[400px] w-full bg-slate-950 flex items-center justify-center">
+                  <div className="text-center">
+                    <Globe className="mx-auto h-16 w-16 text-slate-700" />
+                    <p className="mt-4 text-sm text-slate-500">Interactive map coming soon</p>
+                    <p className="text-xs text-slate-600 mt-1">{filteredZones.length} zones across {new Set(filteredZones.map(z => z.region)).size} regions</p>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -310,7 +235,7 @@ export default function AvailabilityZonesPage() {
                 <div className="text-center py-12">
                   <MapPin className="mx-auto h-10 w-10 text-slate-700" />
                   <p className="mt-3 text-sm text-slate-500">
-                    Select a marker on the map to view zone details and available products.
+                    Select a zone from the list below to view details and available products.
                   </p>
                 </div>
               )}

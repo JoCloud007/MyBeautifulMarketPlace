@@ -9,13 +9,6 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  ComposableMap,
-  Geographies,
-  Geography,
-  Marker,
-  ZoomableGroup,
-} from 'react-simple-maps';
-import {
   Cpu,
   Database,
   Server,
@@ -777,43 +770,18 @@ export default function ProductDetail() {
                 </CardHeader>
                 <CardContent className="p-0">
                   {productAzs.length > 0 ? (
-                    <div className="relative h-[300px] w-full bg-slate-950">
-                      <ComposableMap
-                        projection="geoMercator"
-                        projectionConfig={{ scale: 120 }}
-                        style={{ width: '100%', height: '100%' }}
-                      >
-                        <ZoomableGroup center={mapCenter} zoom={1}>
-                          <Geographies geography={geoUrl}>
-                            {({ geographies }) =>
-                              geographies.map((geo) => (
-                                <Geography
-                                  key={geo.rsmKey}
-                                  geography={geo}
-                                  fill="#1e293b"
-                                  stroke="#334155"
-                                  strokeWidth={0.5}
-                                  style={{
-                                    default: { outline: 'none' },
-                                    hover: { fill: '#334155', outline: 'none' },
-                                    pressed: { outline: 'none' },
-                                  }}
-                                />
-                              ))
-                            }
-                          </Geographies>
+                    <div className="relative h-[300px] w-full bg-slate-950 flex items-center justify-center">
+                      <div className="text-center">
+                        <Globe className="mx-auto h-12 w-12 text-slate-700" />
+                        <p className="mt-3 text-sm text-slate-500">{productAzs.length} availability zones</p>
+                        <div className="mt-2 flex flex-wrap gap-2 justify-center">
                           {productAzs.map((az) => (
-                            <Marker key={az.id} coordinates={[az.longitude, az.latitude]}>
-                              <circle
-                                r={6}
-                                fill={regionColors[az.region] || '#64748b'}
-                                stroke="#0f172a"
-                                strokeWidth={2}
-                              />
-                            </Marker>
+                            <span key={az.id} className="text-xs px-2 py-1 rounded bg-slate-900 text-slate-400 border border-slate-800">
+                              {az.code}
+                            </span>
                           ))}
-                        </ZoomableGroup>
-                      </ComposableMap>
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="text-center py-12">
