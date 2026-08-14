@@ -9,6 +9,8 @@ import {
 import type { AvailabilityZone } from '@cloudmarket/shared-types';
 
 const GEO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json';
+const MAP_W = 800;
+const MAP_H = 420;
 
 const regionColors: Record<string, string> = {
   Europe: '#3b82f6',
@@ -112,7 +114,7 @@ export default function WorldMap({ zones, selectedZone, onSelectZone }: WorldMap
                     strokeWidth={hostingZone ? 0.6 : 0.4}
                     style={{
                       default: { outline: 'none' },
-                      hover: { outline: 'none', fill: hostingZone ? regionFill[hostingZone.region] : '#475569' },
+                      hover: { outline: 'none', fill: hostingZone ? (regionFill[hostingZone.region] || 'rgba(100, 116, 139, 0.30)') : '#475569' },
                       pressed: { outline: 'none' },
                     }}
                   />

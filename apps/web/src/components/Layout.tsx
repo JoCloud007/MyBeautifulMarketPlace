@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  Cloud, LayoutGrid, BarChart3, Shield, Globe, Map, Server,
-  Wrench, ShieldCheck, Layers, Menu, X,
+  Cloud, LayoutGrid, BarChart3, Shield, Globe, Map,
+  ShieldCheck, Layers, Menu, X,
   ChevronDown, Home,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
@@ -17,13 +17,6 @@ const navGroups = [
       { path: '/marketplace', label: 'Marketplace', icon: LayoutGrid },
       { path: '/availability-zones', label: 'Regions', icon: Globe },
       { path: '/roadmap', label: 'Roadmap', icon: Map },
-    ],
-  },
-  {
-    label: 'Operations',
-    icon: Server,
-    items: [
-      { path: '/maintenance', label: 'Maintenance', icon: Wrench },
     ],
   },
   {
