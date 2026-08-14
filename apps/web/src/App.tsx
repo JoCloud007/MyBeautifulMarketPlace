@@ -8,7 +8,6 @@ import Marketplace from './pages/Marketplace';
 import ProductDetail from './pages/ProductDetail';
 import AvailabilityZones from './pages/AvailabilityZones';
 import Roadmap from './pages/Roadmap';
-import Maintenance from './pages/Maintenance';
 import Continuity from './pages/Continuity';
 import Forecasts from './pages/Forecasts';
 import Applications from './pages/Applications';
@@ -27,7 +26,6 @@ function App() {
             <Route path="/products/:slug" element={<ProductDetail />} />
             <Route path="/availability-zones" element={<AvailabilityZones />} />
             <Route path="/roadmap" element={<Roadmap />} />
-            <Route path="/maintenance" element={<Maintenance />} />
             <Route path="/continuity" element={<Continuity />} />
             <Route path="/forecasts" element={<Forecasts />} />
             <Route path="/applications" element={<Applications />} />
