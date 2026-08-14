@@ -1,8 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  Cloud, LayoutGrid, BarChart3, Shield, Globe, Map, Server, HeartPulse,
-  Wrench, ShieldCheck, ClipboardCheck, BrainCircuit, Layers, Menu, X,
-  GitBranch, ChevronDown, Home,
+  Cloud, LayoutGrid, BarChart3, Shield, Globe, Map, Server,
+  Wrench, ShieldCheck, Layers, Menu, X,
+  ChevronDown, Home,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
@@ -23,10 +23,7 @@ const navGroups = [
     label: 'Operations',
     icon: Server,
     items: [
-      { path: '/instances', label: 'Instances', icon: Server },
-      { path: '/health', label: 'Health', icon: HeartPulse },
       { path: '/maintenance', label: 'Maintenance', icon: Wrench },
-      { path: '/orchestrator', label: 'Orchestrator', icon: BrainCircuit },
     ],
   },
   {
@@ -34,8 +31,6 @@ const navGroups = [
     icon: ShieldCheck,
     items: [
       { path: '/continuity', label: 'Continuity', icon: ShieldCheck },
-      { path: '/compliance', label: 'Compliance', icon: ClipboardCheck },
-      { path: '/topology', label: 'Topology', icon: GitBranch },
     ],
   },
   {
