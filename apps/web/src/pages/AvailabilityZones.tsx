@@ -5,6 +5,7 @@ import {
 } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
+import WorldMap from '@/components/WorldMap';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -91,7 +92,7 @@ export default function AvailabilityZonesPage() {
               <Globe className="h-8 w-8 text-blue-500" />
               <div>
                 <p className="text-xs text-slate-500">Total AZs</p>
-                <p className="text-2xl font-bold text-white">{isLoading ? <Skeleton className="h-8 w-12 bg-slate-800" /> : filteredZones.length}</p>
+                <div className="text-2xl font-bold text-white">{isLoading ? <Skeleton className="h-8 w-12 bg-slate-800" /> : filteredZones.length}</div>
               </div>
             </CardContent>
           </Card>
@@ -100,7 +101,7 @@ export default function AvailabilityZonesPage() {
               <Radio className="h-8 w-8 text-emerald-500" />
               <div>
                 <p className="text-xs text-slate-500">Active</p>
-                <p className="text-2xl font-bold text-white">{isLoading ? <Skeleton className="h-8 w-12 bg-slate-800" /> : activeCount}</p>
+                <div className="text-2xl font-bold text-white">{isLoading ? <Skeleton className="h-8 w-12 bg-slate-800" /> : activeCount}</div>
               </div>
             </CardContent>
           </Card>
@@ -109,7 +110,7 @@ export default function AvailabilityZonesPage() {
               <RadioTower className="h-8 w-8 text-amber-500" />
               <div>
                 <p className="text-xs text-slate-500">Regions</p>
-                <p className="text-2xl font-bold text-white">{isLoading ? <Skeleton className="h-8 w-12 bg-slate-800" /> : new Set(filteredZones.map((z) => z.region)).size}</p>
+                <div className="text-2xl font-bold text-white">{isLoading ? <Skeleton className="h-8 w-12 bg-slate-800" /> : new Set(filteredZones.map((z) => z.region)).size}</div>
               </div>
             </CardContent>
           </Card>
@@ -118,7 +119,7 @@ export default function AvailabilityZonesPage() {
 
       {/* Region Tabs */}
       <AnimatedSection delay={120}>
-        <Tabs value={selectedRegion} onValueChange={setSelectedRegion}>
+        <Tabs value={selectedRegion} onValueChange={(v) => { setSelectedRegion(v); setSelectedZone(null); }}>
           <TabsList className="bg-slate-900 border border-slate-800 flex-wrap h-auto gap-1 p-1">
             {regions.map((region) => (
               <TabsTrigger
@@ -148,13 +149,11 @@ export default function AvailabilityZonesPage() {
               {isLoading ? (
                 <Skeleton className="h-[400px] w-full bg-slate-800" />
               ) : (
-                <div className="relative h-[400px] w-full bg-slate-950 flex items-center justify-center">
-                  <div className="text-center">
-                    <Globe className="mx-auto h-16 w-16 text-slate-700" />
-                    <p className="mt-4 text-sm text-slate-500">Interactive map coming soon</p>
-                    <p className="text-xs text-slate-600 mt-1">{filteredZones.length} zones across {new Set(filteredZones.map(z => z.region)).size} regions</p>
-                  </div>
-                </div>
+                <WorldMap
+                  zones={filteredZones}
+                  selectedZone={selectedZone}
+                  onSelectZone={setSelectedZone}
+                />
               )}
             </CardContent>
           </Card>
