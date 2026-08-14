@@ -75,7 +75,6 @@ import {
   UserCog,
   Cpu,
   MapPin,
-  Server,
   Shield,
   TrendingUp,
 } from 'lucide-react';
@@ -1263,7 +1262,7 @@ const instanceStatusConfig: Record<InstanceStatus, { label: string; color: strin
   TERMINATED: { label: 'Terminated', color: 'border-red-500/20 text-red-500' },
 };
 
-function InstancesSection() {
+export function _InstancesSection() {
   const { data: instances, isLoading, isError, refetch } = useInstances();
   const { data: applications } = useApplications();
   const { data: products } = useProducts();
@@ -1710,7 +1709,6 @@ export default function Admin() {
     { value: 'forecasts', label: 'Forecasts', icon: Activity },
     { value: 'users', label: 'Users', icon: UserCog },
     { value: 'availability-zones', label: 'Availability Zones', icon: MapPin },
-    { value: 'instances', label: 'Instances', icon: Server },
   ];
 
   return (
@@ -1748,7 +1746,6 @@ export default function Admin() {
         <TabsContent value="forecasts" className="animate-fade-in"><ForecastsAdminSection /></TabsContent>
         <TabsContent value="users" className="animate-fade-in"><UsersSection /></TabsContent>
         <TabsContent value="availability-zones" className="animate-fade-in"><AvailabilityZonesSection /></TabsContent>
-        <TabsContent value="instances" className="animate-fade-in"><InstancesSection /></TabsContent>
       </Tabs>
     </div>
   );
