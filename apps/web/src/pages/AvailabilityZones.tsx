@@ -92,7 +92,7 @@ export default function AvailabilityZonesPage() {
               <Globe className="h-8 w-8 text-blue-500" />
               <div>
                 <p className="text-xs text-slate-500">Total AZs</p>
-                <p className="text-2xl font-bold text-white">{isLoading ? <Skeleton className="h-8 w-12 bg-slate-800" /> : filteredZones.length}</p>
+                <div className="text-2xl font-bold text-white">{isLoading ? <Skeleton className="h-8 w-12 bg-slate-800" /> : filteredZones.length}</div>
               </div>
             </CardContent>
           </Card>
@@ -101,7 +101,7 @@ export default function AvailabilityZonesPage() {
               <Radio className="h-8 w-8 text-emerald-500" />
               <div>
                 <p className="text-xs text-slate-500">Active</p>
-                <p className="text-2xl font-bold text-white">{isLoading ? <Skeleton className="h-8 w-12 bg-slate-800" /> : activeCount}</p>
+                <div className="text-2xl font-bold text-white">{isLoading ? <Skeleton className="h-8 w-12 bg-slate-800" /> : activeCount}</div>
               </div>
             </CardContent>
           </Card>
@@ -110,7 +110,7 @@ export default function AvailabilityZonesPage() {
               <RadioTower className="h-8 w-8 text-amber-500" />
               <div>
                 <p className="text-xs text-slate-500">Regions</p>
-                <p className="text-2xl font-bold text-white">{isLoading ? <Skeleton className="h-8 w-12 bg-slate-800" /> : new Set(filteredZones.map((z) => z.region)).size}</p>
+                <div className="text-2xl font-bold text-white">{isLoading ? <Skeleton className="h-8 w-12 bg-slate-800" /> : new Set(filteredZones.map((z) => z.region)).size}</div>
               </div>
             </CardContent>
           </Card>
@@ -119,7 +119,7 @@ export default function AvailabilityZonesPage() {
 
       {/* Region Tabs */}
       <AnimatedSection delay={120}>
-        <Tabs value={selectedRegion} onValueChange={setSelectedRegion}>
+        <Tabs value={selectedRegion} onValueChange={(v) => { setSelectedRegion(v); setSelectedZone(null); }}>
           <TabsList className="bg-slate-900 border border-slate-800 flex-wrap h-auto gap-1 p-1">
             {regions.map((region) => (
               <TabsTrigger
