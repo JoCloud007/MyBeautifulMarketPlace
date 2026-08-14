@@ -155,34 +155,44 @@ export default function WorldMap({ zones, selectedZone, onSelectZone }: WorldMap
               />
 
               {/* Label (shown on hover or selected) */}
-              {(isHovered || isSelected) && (
-                <g>
-                  <rect
-                    x={pos.x + 12} y={pos.y - 22}
-                    width={140} height={44}
-                    rx={6}
-                    fill="#0f172a"
-                    stroke={color}
-                    strokeWidth="1"
-                    opacity="0.95"
-                  />
-                  <text
-                    x={pos.x + 22} y={pos.y - 6}
-                    fill="#f8fafc"
-                    fontSize="11"
-                    fontWeight="600"
-                  >
-                    {zone.name}
-                  </text>
-                  <text
-                    x={pos.x + 22} y={pos.y + 10}
-                    fill="#94a3b8"
-                    fontSize="9"
-                  >
-                    {zone.city}, {zone.country}
-                  </text>
-                </g>
-              )}
+              {(isHovered || isSelected) && (() => {
+                const flipX = pos.x + 152 > MAP_W;
+                const flipY = pos.y - 22 < 0;
+                const tx = flipX ? pos.x - 152 : pos.x + 12;
+                const ty = flipY ? pos.y + 10 : pos.y - 22;
+                const tNameX = flipX ? pos.x - 142 : pos.x + 22;
+                const tNameY = flipY ? pos.y + 26 : pos.y - 6;
+                const tCityX = flipX ? pos.x - 142 : pos.x + 22;
+                const tCityY = flipY ? pos.y + 42 : pos.y + 10;
+                return (
+                  <g>
+                    <rect
+                      x={tx} y={ty}
+                      width={140} height={44}
+                      rx={6}
+                      fill="#0f172a"
+                      stroke={color}
+                      strokeWidth="1"
+                      opacity="0.95"
+                    />
+                    <text
+                      x={tNameX} y={tNameY}
+                      fill="#f8fafc"
+                      fontSize="11"
+                      fontWeight="600"
+                    >
+                      {zone.name}
+                    </text>
+                    <text
+                      x={tCityX} y={tCityY}
+                      fill="#94a3b8"
+                      fontSize="9"
+                    >
+                      {zone.city}, {zone.country}
+                    </text>
+                  </g>
+                );
+              })()}
             </g>
           );
         })}
