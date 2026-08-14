@@ -13,7 +13,6 @@ import Continuity from './pages/Continuity';
 import Forecasts from './pages/Forecasts';
 import Applications from './pages/Applications';
 import ApplicationDetail from './pages/ApplicationDetail';
-import Topology from './pages/Topology';
 import Admin from './pages/Admin';
 import NotFound from './pages/NotFound';
 
@@ -33,7 +32,6 @@ function App() {
             <Route path="/forecasts" element={<Forecasts />} />
             <Route path="/applications" element={<Applications />} />
             <Route path="/applications/:id" element={<ApplicationDetail />} />
-            <Route path="/topology" element={<Topology />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
