@@ -344,7 +344,6 @@ function ProductsSection() {
         </Badge>
       </div>
       <div className="mt-2 text-sm text-slate-500">
-        {product.os && <span>OS: {product.os} · </span>}
         <span>{product.flavors?.length ?? 0} flavors</span>
       </div>
       <div className="mt-3 flex justify-end gap-1">
@@ -368,7 +367,7 @@ function ProductsSection() {
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable
-            headers={['Name', 'Category', 'OS', 'Flavors', 'Active']}
+            headers={['Name', 'Category', 'Flavors', 'Active']}
             isLoading={isLoading}
             emptyMessage="No products"
             mobileCards={mobileCards}
@@ -377,7 +376,6 @@ function ProductsSection() {
               <tr key={product.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{product.name}</td>
                 <td className="py-3 text-slate-400">{product.category?.name}</td>
-                <td className="py-3 text-slate-400">{product.os || '—'}</td>
                 <td className="py-3 text-slate-400">{product.flavors?.length ?? 0}</td>
                 <td className="py-3">
                   <Badge variant="outline" className={product.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
