@@ -5,6 +5,7 @@ import {
 } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
+import WorldMap from '@/components/WorldMap';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -148,13 +149,11 @@ export default function AvailabilityZonesPage() {
               {isLoading ? (
                 <Skeleton className="h-[400px] w-full bg-slate-800" />
               ) : (
-                <div className="relative h-[400px] w-full bg-slate-950 flex items-center justify-center">
-                  <div className="text-center">
-                    <Globe className="mx-auto h-16 w-16 text-slate-700" />
-                    <p className="mt-4 text-sm text-slate-500">Interactive map coming soon</p>
-                    <p className="text-xs text-slate-600 mt-1">{filteredZones.length} zones across {new Set(filteredZones.map(z => z.region)).size} regions</p>
-                  </div>
-                </div>
+                <WorldMap
+                  zones={filteredZones}
+                  selectedZone={selectedZone}
+                  onSelectZone={setSelectedZone}
+                />
               )}
             </CardContent>
           </Card>
