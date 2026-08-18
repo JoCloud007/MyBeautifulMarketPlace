@@ -84,13 +84,13 @@ async function main() {
 
   // Create Operating Systems
   const osWindows = await prisma.operatingSystem.create({
-    data: { family: 'WINDOWS', name: 'Windows', slug: 'windows', isActive: true },
+    data: { family: 'WINDOWS', name: 'Windows', slug: 'windows', isActive: true, availabilityType: 'STANDARD' },
   });
   const osDebian = await prisma.operatingSystem.create({
-    data: { family: 'LINUX', name: 'Debian', slug: 'debian', isActive: true },
+    data: { family: 'LINUX', name: 'Debian', slug: 'debian', isActive: true, availabilityType: 'RECOMMENDED' },
   });
   const osRedhat = await prisma.operatingSystem.create({
-    data: { family: 'LINUX', name: 'Red Hat Enterprise Linux', slug: 'rhel', isActive: true },
+    data: { family: 'LINUX', name: 'Red Hat Enterprise Linux', slug: 'rhel', isActive: true, availabilityType: 'RESTRICTED' },
   });
 
   // Create OS Versions

@@ -299,7 +299,7 @@ function OSSection() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<OperatingSystem | null>(null);
-  const [form, setForm] = useState({ family: '', name: '', slug: '', isActive: true });
+  const [form, setForm] = useState({ family: '', name: '', slug: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const [versionOpen, setVersionOpen] = useState(false);
@@ -309,11 +309,11 @@ function OSSection() {
     version: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: 'RELEASED', isActive: true,
   });
 
-  const resetForm = () => { setForm({ family: '', name: '', slug: '', isActive: true }); setEditing(null); };
+  const resetForm = () => { setForm({ family: '', name: '', slug: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType }); setEditing(null); };
   const openCreate = () => { resetForm(); setIsOpen(true); };
   const openEdit = (os: OperatingSystem) => {
     setEditing(os);
-    setForm({ family: os.family, name: os.name, slug: os.slug, isActive: os.isActive });
+    setForm({ family: os.family, name: os.name, slug: os.slug, isActive: os.isActive, availabilityType: os.availabilityType || 'STANDARD' });
     setIsOpen(true);
   };
 
@@ -382,7 +382,17 @@ function OSSection() {
           {os.isActive ? 'Active' : 'Inactive'}
         </Badge>
       </div>
-      <div className="mt-2 text-sm text-slate-500">{os.versions?.length ?? 0} versions</div>
+      <div className="mt-2 flex items-center gap-2">
+        <span className="text-sm text-slate-500">{os.versions?.length ?? 0} versions</span>
+        <Badge variant="outline" className={
+          os.availabilityType === 'RECOMMENDED' ? 'text-xs border-emerald-500/20 text-emerald-500' :
+          os.availabilityType === 'RESTRICTED' ? 'text-xs border-red-500/20 text-red-500' :
+          os.availabilityType === 'ON_DEMAND' ? 'text-xs border-amber-500/20 text-amber-500' :
+          'text-xs border-slate-600 text-slate-400'
+        }>
+          {os.availabilityType?.replace('_', ' ') || 'Standard'}
+        </Badge>
+      </div>
       <div className="mt-3 flex justify-end gap-1">
         <Button size="sm" variant="ghost" onClick={() => openVersionModal(os.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Plus className="h-4 w-4" /></Button>
         <Button size="sm" variant="ghost" onClick={() => openEdit(os)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
@@ -398,7 +408,7 @@ function OSSection() {
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Name', 'Family', 'Slug', 'Versions', 'Active']} isLoading={isLoading} emptyMessage="No operating systems" mobileCards={mobileCards}>
+          <ResponsiveTable headers={['Name', 'Family', 'Slug', 'Versions', 'Availability', 'Active']} isLoading={isLoading} emptyMessage="No operating systems" mobileCards={mobileCards}>
             {osList?.map((os) => (
               <tr key={os.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{os.name}</td>
@@ -417,6 +427,16 @@ function OSSection() {
                     ))}
                     {(os.versions?.length ?? 0) > 3 && <span className="text-[10px] text-slate-500">+{(os.versions.length - 3)} more</span>}
                   </div>
+                </td>
+                <td className="py-3">
+                  <Badge variant="outline" className={
+                    os.availabilityType === 'RECOMMENDED' ? 'border-emerald-500/20 text-emerald-500' :
+                    os.availabilityType === 'RESTRICTED' ? 'border-red-500/20 text-red-500' :
+                    os.availabilityType === 'ON_DEMAND' ? 'border-amber-500/20 text-amber-500' :
+                    'border-slate-600 text-slate-400'
+                  }>
+                    {os.availabilityType?.replace('_', ' ') || 'Standard'}
+                  </Badge>
                 </td>
                 <td className="py-3">
                   <Badge variant="outline" className={os.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
@@ -442,6 +462,15 @@ function OSSection() {
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Family</label><Input value={form.family} onChange={(e) => setForm({ ...form, family: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Slug</label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Availability</label>
+              <Select value={form.availabilityType} onChange={(e) => setForm({ ...form, availabilityType: e.target.value as AvailabilityType })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="STANDARD">Standard</option>
+                <option value="RECOMMENDED">Recommended</option>
+                <option value="RESTRICTED">Restricted</option>
+                <option value="ON_DEMAND">On Demand</option>
+              </Select>
+            </div>
             <div className="flex items-center gap-2">
               <input type="checkbox" id="osActive" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
               <label htmlFor="osActive" className="text-sm text-slate-300">Active</label>

@@ -73,6 +73,7 @@ export interface OperatingSystem {
     name: string;
     slug: string;
     isActive: boolean;
+    availabilityType: AvailabilityType;
     versions: OsVersion[];
     createdAt: string;
     updatedAt: string;
