@@ -9,11 +9,10 @@ const productSchema = z.object({
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
   description: z.string().optional(),
   categoryId: z.string().uuid(),
-  os: z.string().optional(),
+  computeType: z.enum(['PHYSICAL', 'VIRTUAL']).optional().nullable(),
   documentation: z.string().optional(),
   roadmap: z.string().optional(),
   isActive: z.boolean().optional(),
-  availabilityZoneIds: z.array(z.string().uuid()).optional(),
 });
 
 const flavorSchema = z.object({
@@ -44,6 +43,18 @@ const userSchema = z.object({
 });
 
 const idParamSchema = z.string().uuid();
+
+// Helper to validate computeType constraint
+async function validateComputeType(categoryId: string, computeType: string | undefined | null) {
+  const category = await prisma.category.findUnique({ where: { id: categoryId } });
+  if (!category) {
+    return { valid: false, message: 'Category not found' };
+  }
+  if (computeType && category.slug !== 'compute') {
+    return { valid: false, message: 'computeType can only be set for Compute category products' };
+  }
+  return { valid: true, category };
+}
 
 // ===================== DASHBOARD =====================
 
@@ -80,13 +91,18 @@ router.get('/dashboard', async (_req, res, next) => {
 // GET /api/admin/products
 router.get('/products', async (_req, res, next) => {
   try {
-    // Prisma initialized
     const products = await prisma.product.findMany({
       include: {
         category: true,
-        flavors: true,
-        availabilityZones: { include: { availabilityZone: true } },
-        _count: { select: { forecastLines: true } },
+        variants: {
+          include: {
+            os: true,
+            osVersion: true,
+            flavor: true,
+            availabilityZones: { include: { availabilityZone: true } },
+          },
+        },
+        _count: { select: { variants: true, forecastLines: true, instances: true } },
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -100,30 +116,20 @@ router.get('/products', async (_req, res, next) => {
 router.post('/products', async (req, res, next) => {
   try {
     const data = productSchema.parse(req.body);
-    const { availabilityZoneIds, ...productData } = data;
 
-    // Check for duplicate slug
     const existing = await prisma.product.findUnique({ where: { slug: data.slug } });
     if (existing) {
       return res.status(409).json({ error: 'A product with this slug already exists' });
     }
 
-    // Validate availabilityZoneIds exist
-    if (availabilityZoneIds && availabilityZoneIds.length > 0) {
-      const zones = await prisma.availabilityZone.findMany({ where: { id: { in: availabilityZoneIds } } });
-      if (zones.length !== availabilityZoneIds.length) {
-        return res.status(400).json({ error: 'One or more availability zones do not exist' });
-      }
+    const validation = await validateComputeType(data.categoryId, data.computeType);
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.message });
     }
 
     const product = await prisma.product.create({
-      data: {
-        ...productData,
-        availabilityZones: availabilityZoneIds
-          ? { create: availabilityZoneIds.map((id) => ({ availabilityZoneId: id })) }
-          : undefined,
-      },
-      include: { category: true, flavors: true, availabilityZones: { include: { availabilityZone: true } } },
+      data,
+      include: { category: true, variants: { include: { os: true, osVersion: true, flavor: true } } },
     });
     res.status(201).json(product);
   } catch (err) {
@@ -137,9 +143,12 @@ router.patch('/products/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
     const data = productSchema.partial().parse(req.body);
-    const { availabilityZoneIds, ...productData } = data;
 
-    // Check for duplicate slug if updating slug
+    const existingProduct = await prisma.product.findUnique({ where: { id } });
+    if (!existingProduct) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
     if (data.slug) {
       const existing = await prisma.product.findUnique({ where: { slug: data.slug } });
       if (existing && existing.id !== id) {
@@ -147,30 +156,19 @@ router.patch('/products/:id', async (req, res, next) => {
       }
     }
 
-    if (availabilityZoneIds) {
-      // Validate new availabilityZoneIds exist before deleting old ones
-      if (availabilityZoneIds.length > 0) {
-        const zones = await prisma.availabilityZone.findMany({ where: { id: { in: availabilityZoneIds } } });
-        if (zones.length !== availabilityZoneIds.length) {
-          return res.status(400).json({ error: 'One or more availability zones do not exist' });
-        }
+    if (data.categoryId || data.computeType !== undefined) {
+      const categoryId = data.categoryId || existingProduct.categoryId;
+      const computeType = data.computeType !== undefined ? data.computeType : existingProduct.computeType;
+      const validation = await validateComputeType(categoryId, computeType);
+      if (!validation.valid) {
+        return res.status(400).json({ error: validation.message });
       }
     }
 
-    const product = await prisma.$transaction(async (tx) => {
-      if (availabilityZoneIds) {
-        await tx.productAvailabilityZone.deleteMany({ where: { productId: id } });
-      }
-      return tx.product.update({
-        where: { id },
-        data: {
-          ...productData,
-          availabilityZones: availabilityZoneIds
-            ? { create: availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) }
-            : undefined,
-        },
-        include: { category: true, flavors: true, availabilityZones: { include: { availabilityZone: true } } },
-      });
+    const product = await prisma.product.update({
+      where: { id },
+      data,
+      include: { category: true, variants: { include: { os: true, osVersion: true, flavor: true } } },
     });
     res.json(product);
   } catch (err) {
@@ -184,22 +182,18 @@ router.delete('/products/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
 
-    // Check for related records that would block deletion
     const product = await prisma.product.findUnique({
       where: { id },
       include: {
         _count: {
           select: {
-            flavors: true,
+            variants: true,
             dependencies: true,
             dependentProducts: true,
             forecastLines: true,
             instances: true,
-            options: true,
-            lifecycles: true,
             upgradeFrom: true,
             upgradeTo: true,
-            availabilityZones: true,
           },
         },
       },
@@ -210,16 +204,13 @@ router.delete('/products/:id', async (req, res, next) => {
     }
 
     const blocks: string[] = [];
-    if (product._count.flavors > 0) blocks.push('flavors');
+    if (product._count.variants > 0) blocks.push('variants');
     if (product._count.dependencies > 0) blocks.push('dependencies');
     if (product._count.dependentProducts > 0) blocks.push('dependent products');
     if (product._count.forecastLines > 0) blocks.push('forecast lines');
     if (product._count.instances > 0) blocks.push('instances');
-    if (product._count.options > 0) blocks.push('options');
-    if (product._count.lifecycles > 0) blocks.push('lifecycles');
     if (product._count.upgradeFrom > 0) blocks.push('upgrade paths');
     if (product._count.upgradeTo > 0) blocks.push('dependent upgrade paths');
-    if (product._count.availabilityZones > 0) blocks.push('availability zones');
 
     if (blocks.length > 0) {
       return res.status(409).json({
@@ -229,28 +220,6 @@ router.delete('/products/:id', async (req, res, next) => {
 
     await prisma.product.delete({ where: { id } });
     res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
-
-// POST /api/admin/products/:id/flavors
-router.post('/products/:id/flavors', async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    idParamSchema.parse(id);
-
-    // Verify product exists
-    const product = await prisma.product.findUnique({ where: { id } });
-    if (!product) {
-      return res.status(404).json({ error: 'Product not found' });
-    }
-
-    const data = flavorSchema.parse(req.body);
-    const flavor = await prisma.flavor.create({
-      data: { ...data, productId: id },
-    });
-    res.status(201).json(flavor);
   } catch (err) {
     next(err);
   }
@@ -276,13 +245,11 @@ router.post('/categories', async (req, res, next) => {
   try {
     const data = categorySchema.parse(req.body);
 
-    // Check for duplicate slug
     const existingSlug = await prisma.category.findUnique({ where: { slug: data.slug } });
     if (existingSlug) {
       return res.status(409).json({ error: 'A category with this slug already exists' });
     }
 
-    // Check for duplicate name
     const existingName = await prisma.category.findUnique({ where: { name: data.name } });
     if (existingName) {
       return res.status(409).json({ error: 'A category with this name already exists' });
@@ -321,7 +288,6 @@ router.delete('/categories/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
 
-    // Check if category has products
     const category = await prisma.category.findUnique({
       where: { id },
       include: { _count: { select: { products: true } } },
@@ -346,10 +312,21 @@ router.delete('/categories/:id', async (req, res, next) => {
 router.get('/flavors', async (_req, res, next) => {
   try {
     const flavors = await prisma.flavor.findMany({
-      include: { product: { include: { category: true } }, _count: { select: { forecastLines: true } } },
+      include: { _count: { select: { variants: true, forecastLines: true, instances: true } } },
       orderBy: { createdAt: 'desc' },
     });
     res.json(flavors);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/admin/flavors
+router.post('/flavors', async (req, res, next) => {
+  try {
+    const data = flavorSchema.parse(req.body);
+    const flavor = await prisma.flavor.create({ data });
+    res.status(201).json(flavor);
   } catch (err) {
     next(err);
   }
@@ -364,7 +341,7 @@ router.patch('/flavors/:id', async (req, res, next) => {
     const flavor = await prisma.flavor.update({
       where: { id },
       data,
-      include: { product: { include: { category: true } } },
+      include: { _count: { select: { variants: true, forecastLines: true, instances: true } } },
     });
     res.json(flavor);
   } catch (err) {
@@ -378,13 +355,13 @@ router.delete('/flavors/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
 
-    // Check if flavor has associated forecasts or instances
     const flavor = await prisma.flavor.findUnique({
       where: { id },
-      include: { _count: { select: { forecastLines: true, instances: true } } },
+      include: { _count: { select: { variants: true, forecastLines: true, instances: true } } },
     });
 
     const blocks: string[] = [];
+    if (flavor && flavor._count.variants > 0) blocks.push('variants');
     if (flavor && flavor._count.forecastLines > 0) blocks.push('forecasts');
     if (flavor && flavor._count.instances > 0) blocks.push('instances');
 
@@ -474,7 +451,7 @@ router.delete('/dependencies/:id', async (req, res, next) => {
 router.get('/forecasts', async (_req, res, next) => {
   try {
     const forecasts = await prisma.forecast.findMany({
-      include: { lines: { include: { product: { include: { category: true } }, flavor: true } }, application: { include: { continuityLevel: true } } },
+      include: { lines: { include: { product: { include: { category: true } }, flavor: true, variant: { include: { os: true, osVersion: true } } } }, application: { include: { continuityLevel: true } } },
       orderBy: { createdAt: 'desc' },
     });
     res.json(forecasts);

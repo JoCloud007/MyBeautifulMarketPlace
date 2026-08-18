@@ -212,15 +212,17 @@ export default function AvailabilityZonesPage() {
 
                   <div>
                     <p className="text-xs font-medium text-slate-400 mb-2">Available Products</p>
-                    {selectedZone.productAvailabilities && selectedZone.productAvailabilities.length > 0 ? (
+                    {(selectedZone as any).variantZones && (selectedZone as any).variantZones.length > 0 ? (
                       <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                        {selectedZone.productAvailabilities.map((pa: any) => (
+                        {Array.from(new Map((selectedZone as any).variantZones.map((vz: any) => [vz.variant?.product?.id, vz.variant?.product])).entries())
+                          .filter(([_, product]: [any, any]) => product)
+                          .map(([id, product]: [any, any]) => (
                           <Link
-                            key={pa.id}
-                            to={`/products/${pa.product.slug}`}
+                            key={id}
+                            to={`/products/${product.slug}`}
                             className="flex items-center justify-between rounded-md bg-slate-950 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-blue-400 transition-colors"
                           >
-                            <span className="truncate">{pa.product.name}</span>
+                            <span className="truncate">{product.name}</span>
                             <ChevronRight className="h-3 w-3 shrink-0 text-slate-600" />
                           </Link>
                         ))}
@@ -282,7 +284,7 @@ export default function AvailabilityZonesPage() {
                       {zone.city}, {zone.country} · {zone.code}
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
-                      {zone.productAvailabilities?.length ?? 0} products
+                      {(zone as any).variantZones?.length ?? 0} variants
                     </p>
                   </button>
                 ))}

@@ -1,22 +1,23 @@
-import { PrismaClient, DependencyType, ApprovalStatus, LifecyclePhase, InstanceStatus, HealthStatus, MaintenanceStatus } from '@prisma/client';
+import { PrismaClient, DependencyType, ApprovalStatus, LifecyclePhase, InstanceStatus, HealthStatus, MaintenanceStatus, ComputeType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Seeding database...');
 
-  // Clean existing data (ignore if tables don't exist yet on first run)
+  // Clean existing data
   try {
     await prisma.forecast.deleteMany();
     await prisma.healthCheck.deleteMany();
     await prisma.maintenanceWindow.deleteMany();
     await prisma.instance.deleteMany();
     await prisma.dependency.deleteMany();
-    await prisma.flavor.deleteMany();
-    await prisma.productOption.deleteMany();
-    await prisma.productLifecycle.deleteMany();
     await prisma.upgradePath.deleteMany();
-    await prisma.productAvailabilityZone.deleteMany();
+    await prisma.productVariantAvailabilityZone.deleteMany();
+    await prisma.productVariant.deleteMany();
+    await prisma.osVersion.deleteMany();
+    await prisma.operatingSystem.deleteMany();
+    await prisma.flavor.deleteMany();
     await prisma.availabilityZone.deleteMany();
     await prisma.product.deleteMany();
     await prisma.category.deleteMany();
@@ -51,6 +52,8 @@ async function main() {
     data: { code: 'ap-south-hk1', name: 'Hong Kong', city: 'Hong Kong', country: 'China', region: 'ap-south', latitude: 22.3193, longitude: 114.1694, isActive: true },
   });
 
+  const allAzs = [parisAz1, parisAz2, london, newYork, singapore, hongKong];
+
   // Create Continuity Levels
   const clLow = await prisma.continuityLevel.create({
     data: { name: 'LOW', rtoMinutes: 1440, rpoMinutes: 240, description: 'Basic backup', color: 'green' },
@@ -79,16 +82,140 @@ async function main() {
     data: { name: 'Citrix', slug: 'citrix', description: 'Citrix virtualization and VDI solutions', icon: 'Monitor' },
   });
 
-  // Create Products — unified Virtual Machine product with OS as options
+  // Create Operating Systems
+  const osWindows = await prisma.operatingSystem.create({
+    data: { family: 'WINDOWS', name: 'Windows', slug: 'windows', isActive: true },
+  });
+  const osDebian = await prisma.operatingSystem.create({
+    data: { family: 'LINUX', name: 'Debian', slug: 'debian', isActive: true },
+  });
+  const osRedhat = await prisma.operatingSystem.create({
+    data: { family: 'LINUX', name: 'Red Hat Enterprise Linux', slug: 'rhel', isActive: true },
+  });
+
+  // Create OS Versions
+  const win2022 = await prisma.osVersion.create({
+    data: {
+      osId: osWindows.id,
+      version: 'Server 2022',
+      releaseDate: new Date('2021-08-18'),
+      normalSupportEnd: new Date('2026-10-13'),
+      extendedSupportEnd: new Date('2031-10-14'),
+      eolDate: new Date('2033-10-14'),
+      phase: LifecyclePhase.RELEASED,
+      isActive: true,
+    },
+  });
+  const win2019 = await prisma.osVersion.create({
+    data: {
+      osId: osWindows.id,
+      version: 'Server 2019',
+      releaseDate: new Date('2018-10-02'),
+      normalSupportEnd: new Date('2024-01-09'),
+      extendedSupportEnd: new Date('2029-01-09'),
+      eolDate: new Date('2031-01-09'),
+      phase: LifecyclePhase.EXTENDED_SUPPORT,
+      isActive: true,
+    },
+  });
+  const win11 = await prisma.osVersion.create({
+    data: {
+      osId: osWindows.id,
+      version: '11',
+      releaseDate: new Date('2021-10-05'),
+      normalSupportEnd: new Date('2025-10-14'),
+      extendedSupportEnd: new Date('2028-10-10'),
+      eolDate: new Date('2030-10-10'),
+      phase: LifecyclePhase.NORMAL_SUPPORT,
+      isActive: true,
+    },
+  });
+  const debian12 = await prisma.osVersion.create({
+    data: {
+      osId: osDebian.id,
+      version: '12 (Bookworm)',
+      releaseDate: new Date('2023-06-10'),
+      normalSupportEnd: new Date('2026-06-10'),
+      extendedSupportEnd: new Date('2028-06-10'),
+      eolDate: new Date('2030-06-10'),
+      phase: LifecyclePhase.RELEASED,
+      isActive: true,
+    },
+  });
+  const debian11 = await prisma.osVersion.create({
+    data: {
+      osId: osDebian.id,
+      version: '11 (Bullseye)',
+      releaseDate: new Date('2021-08-14'),
+      normalSupportEnd: new Date('2024-08-14'),
+      extendedSupportEnd: new Date('2026-08-14'),
+      eolDate: new Date('2028-08-14'),
+      phase: LifecyclePhase.NORMAL_SUPPORT,
+      isActive: true,
+    },
+  });
+  const rhel9 = await prisma.osVersion.create({
+    data: {
+      osId: osRedhat.id,
+      version: '9',
+      releaseDate: new Date('2022-05-18'),
+      normalSupportEnd: new Date('2027-05-31'),
+      extendedSupportEnd: new Date('2031-05-31'),
+      eolDate: new Date('2033-05-31'),
+      phase: LifecyclePhase.RELEASED,
+      isActive: true,
+    },
+  });
+  const rhel8 = await prisma.osVersion.create({
+    data: {
+      osId: osRedhat.id,
+      version: '8',
+      releaseDate: new Date('2019-05-07'),
+      normalSupportEnd: new Date('2024-05-31'),
+      extendedSupportEnd: new Date('2026-05-31'),
+      eolDate: new Date('2028-05-31'),
+      phase: LifecyclePhase.EXTENDED_SUPPORT,
+      isActive: true,
+    },
+  });
+
+  // Create global Flavors
+  const computeFlavors = [
+    { name: 'Small', vcpu: 2, ramGb: 4, description: 'Entry-level configuration for development and testing' },
+    { name: 'Medium', vcpu: 4, ramGb: 8, description: 'Balanced configuration for production workloads' },
+    { name: 'Large', vcpu: 8, ramGb: 16, description: 'High-performance configuration for demanding applications' },
+    { name: 'XL', vcpu: 16, ramGb: 32, description: 'Maximum performance for enterprise workloads' },
+  ];
+
+  const storageFlavors = [
+    { name: 'Storage Small', vcpu: 0, ramGb: 0, description: '1TB storage, 1000 IOPS' },
+    { name: 'Storage Medium', vcpu: 0, ramGb: 0, description: '5TB storage, 5000 IOPS' },
+    { name: 'Storage Large', vcpu: 0, ramGb: 0, description: '20TB storage, 20000 IOPS' },
+    { name: 'Storage XL', vcpu: 0, ramGb: 0, description: '100TB storage, 100000 IOPS' },
+  ];
+
+  const flavorRecords: Record<string, { id: string; name: string; vcpu: number; ramGb: number; description: string | null }> = {};
+  for (const f of computeFlavors) {
+    const rec = await prisma.flavor.create({ data: f });
+    flavorRecords[rec.name] = rec;
+  }
+  for (const f of storageFlavors) {
+    const rec = await prisma.flavor.create({ data: f });
+    flavorRecords[f.name] = rec;
+  }
+
+  // Create Products
   const vmProduct = await prisma.product.create({
     data: {
       name: 'Virtual Machine',
       slug: 'virtual-machine',
       description: 'Configurable virtual machine with selectable OS, vCPU, and memory options.',
       categoryId: compute.id,
+      computeType: ComputeType.VIRTUAL,
       os: 'Linux',
       documentation: '# Virtual Machine\n\n## Overview\nConfigurable virtual machine with selectable operating system.\n\n## Specifications\n- OS: selectable (Debian, Windows Server, RHEL)\n- vCPU: 2–16\n- RAM: 4–32 GB',
       roadmap: '## Roadmap\n- Q3 2024: ARM64 support\n- Q4 2024: GPU instance option\n- Q1 2025: Confidential computing',
+      flavors: { connect: [{ id: flavorRecords['Small'].id }, { id: flavorRecords['Medium'].id }, { id: flavorRecords['Large'].id }, { id: flavorRecords['XL'].id }] },
     },
   });
 
@@ -98,9 +225,11 @@ async function main() {
       slug: 'bare-metal-hpc',
       description: 'High-performance computing bare metal servers with InfiniBand networking and GPU options.',
       categoryId: compute.id,
+      computeType: ComputeType.PHYSICAL,
       os: 'Linux',
       documentation: '# Bare Metal HPC\n\n## Overview\nDedicated bare metal servers for HPC workloads.\n\n## Specifications\n- CPU: AMD EPYC / Intel Xeon\n- GPU: NVIDIA A100/H100 options\n- Network: InfiniBand HDR',
       roadmap: '## Roadmap\n- Q3 2024: NVIDIA H200 support\n- Q4 2024: Liquid cooling option',
+      flavors: { connect: [{ id: flavorRecords['Small'].id }, { id: flavorRecords['Medium'].id }, { id: flavorRecords['Large'].id }, { id: flavorRecords['XL'].id }] },
     },
   });
 
@@ -110,9 +239,9 @@ async function main() {
       slug: 'object-storage',
       description: 'S3-compatible object storage with 99.999999999% durability and global CDN integration.',
       categoryId: data.id,
-      os: null,
       documentation: '# Object Storage\n\n## Overview\nScalable S3-compatible object storage service.\n\n## Features\n- S3 API compatible\n- Multi-region replication\n- Lifecycle policies\n- Versioning support',
       roadmap: '## Roadmap\n- Q3 2024: Glacier-like archive tier\n- Q4 2024: Object lock (WORM)',
+      flavors: { connect: [{ id: flavorRecords['Storage Small'].id }, { id: flavorRecords['Storage Medium'].id }, { id: flavorRecords['Storage Large'].id }, { id: flavorRecords['Storage XL'].id }] },
     },
   });
 
@@ -122,9 +251,9 @@ async function main() {
       slug: 'nas-storage',
       description: 'Network Attached Storage with NFS, SMB, and iSCSI protocols.',
       categoryId: data.id,
-      os: null,
       documentation: '# NAS Storage\n\n## Overview\nEnterprise NAS with multiple protocol support.\n\n## Features\n- NFS v4.2\n- SMB 3.1.1\n- iSCSI\n- Snapshots & replication',
       roadmap: '## Roadmap\n- Q3 2024: NVMe-oF support\n- Q4 2024: Automated tiering',
+      flavors: { connect: [{ id: flavorRecords['Storage Small'].id }, { id: flavorRecords['Storage Medium'].id }, { id: flavorRecords['Storage Large'].id }, { id: flavorRecords['Storage XL'].id }] },
     },
   });
 
@@ -137,6 +266,7 @@ async function main() {
       os: 'ESXi',
       documentation: '# VMware vSphere\n\n## Overview\nEnterprise virtualization platform.\n\n## Specifications\n- Version: vSphere 8.0 U2\n- vCenter included\n- vSAN ready',
       roadmap: '## Roadmap\n- Q3 2024: vSphere 8.0 U3\n- Q4 2024: Confidential VMs',
+      flavors: { connect: [{ id: flavorRecords['Storage Small'].id }, { id: flavorRecords['Storage Medium'].id }, { id: flavorRecords['Storage Large'].id }, { id: flavorRecords['Storage XL'].id }] },
     },
   });
 
@@ -149,39 +279,57 @@ async function main() {
       os: 'Windows',
       documentation: '# Citrix VDI\n\n## Overview\nVirtual desktop infrastructure powered by Citrix.\n\n## Features\n- HDX protocol\n- GPU acceleration\n- Multi-site brokering',
       roadmap: '## Roadmap\n- Q3 2024: Citrix DaaS integration\n- Q4 2024: WebRTC redirection',
+      flavors: { connect: [{ id: flavorRecords['Small'].id }, { id: flavorRecords['Medium'].id }, { id: flavorRecords['Large'].id }, { id: flavorRecords['XL'].id }] },
     },
   });
 
-  // Create Flavors for each product
-  const flavors = [
-    { name: 'Small', vcpu: 2, ramGb: 4, description: 'Entry-level configuration for development and testing' },
-    { name: 'Medium', vcpu: 4, ramGb: 8, description: 'Balanced configuration for production workloads' },
-    { name: 'Large', vcpu: 8, ramGb: 16, description: 'High-performance configuration for demanding applications' },
-    { name: 'XL', vcpu: 16, ramGb: 32, description: 'Maximum performance for enterprise workloads' },
-  ];
-
-  const products = [vmProduct, bareMetalHpc, vmware, citrixVdi];
-  for (const product of products) {
-    for (const flavor of flavors) {
-      await prisma.flavor.create({
-        data: { ...flavor, productId: product.id },
+  // Create Product Variants (only for Compute products)
+  const vmVariants: any[] = [];
+  for (const osVer of [debian12, debian11, win2022, rhel9]) {
+    for (const flavorName of ['Small', 'Medium', 'Large']) {
+      const variant = await prisma.productVariant.create({
+        data: {
+          productId: vmProduct.id,
+          name: `${osVer.version} - ${flavorName}`,
+          osId: osVer.osId,
+          osVersionId: osVer.id,
+          flavorId: flavorRecords[flavorName].id,
+          continuityLevelId: clModerate.id,
+          isActive: true,
+          availabilityZones: {
+            create: [
+              { availabilityZoneId: parisAz1.id },
+              { availabilityZoneId: parisAz2.id },
+              { availabilityZoneId: singapore.id },
+            ],
+          },
+        },
       });
+      vmVariants.push(variant);
     }
   }
 
-  // Object Storage and NAS have their own flavor profiles
-  const storageFlavors = [
-    { name: 'Small', vcpu: 0, ramGb: 0, description: '1TB storage, 1000 IOPS' },
-    { name: 'Medium', vcpu: 0, ramGb: 0, description: '5TB storage, 5000 IOPS' },
-    { name: 'Large', vcpu: 0, ramGb: 0, description: '20TB storage, 20000 IOPS' },
-    { name: 'XL', vcpu: 0, ramGb: 0, description: '100TB storage, 100000 IOPS' },
-  ];
-
-  for (const product of [objectStorage, nas]) {
-    for (const flavor of storageFlavors) {
-      await prisma.flavor.create({
-        data: { ...flavor, productId: product.id },
+  const hpcVariants: any[] = [];
+  for (const osVer of [debian12, rhel9]) {
+    for (const flavorName of ['Large', 'XL']) {
+      const variant = await prisma.productVariant.create({
+        data: {
+          productId: bareMetalHpc.id,
+          name: `${osVer.version} - ${flavorName}`,
+          osId: osVer.osId,
+          osVersionId: osVer.id,
+          flavorId: flavorRecords[flavorName].id,
+          continuityLevelId: clSerious.id,
+          isActive: true,
+          availabilityZones: {
+            create: [
+              { availabilityZoneId: parisAz1.id },
+              { availabilityZoneId: newYork.id },
+            ],
+          },
+        },
       });
+      hpcVariants.push(variant);
     }
   }
 
@@ -194,7 +342,6 @@ async function main() {
       description: 'Recommended for backup and archive storage',
     },
   });
-
   await prisma.dependency.create({
     data: {
       productId: bareMetalHpc.id,
@@ -203,100 +350,12 @@ async function main() {
       description: 'Recommended for dataset storage and results archiving',
     },
   });
-
   await prisma.dependency.create({
     data: {
       productId: citrixVdi.id,
       dependsOnId: vmware.id,
       type: DependencyType.REQUIRED,
       description: 'Citrix VDI requires VMware vSphere as underlying hypervisor',
-    },
-  });
-
-  // Create Product Options (VM as product, OS as option)
-  await prisma.productOption.create({
-    data: { productId: vmProduct.id, type: 'OS_VERSION', value: 'debian-12', label: 'Debian 12 (Bookworm)', isDefault: true },
-  });
-  await prisma.productOption.create({
-    data: { productId: vmProduct.id, type: 'OS_VERSION', value: 'debian-11', label: 'Debian 11 (Bullseye)', isDefault: false },
-  });
-  await prisma.productOption.create({
-    data: { productId: vmProduct.id, type: 'OS_VERSION', value: 'windows-server-2022', label: 'Windows Server 2022', isDefault: false },
-  });
-  await prisma.productOption.create({
-    data: { productId: vmProduct.id, type: 'OS_VERSION', value: 'windows-server-2019', label: 'Windows Server 2019', isDefault: false },
-  });
-  await prisma.productOption.create({
-    data: { productId: vmProduct.id, type: 'OS_VERSION', value: 'rhel-9', label: 'RHEL 9', isDefault: false },
-  });
-  await prisma.productOption.create({
-    data: { productId: vmProduct.id, type: 'OS_VERSION', value: 'rhel-8', label: 'RHEL 8', isDefault: false },
-  });
-
-  // Create Product Lifecycles
-  const debian12Lifecycle = await prisma.productLifecycle.create({
-    data: {
-      productId: vmProduct.id,
-      version: '12.0',
-      releaseDate: new Date('2023-06-10'),
-      normalSupportEnd: new Date('2026-06-10'),
-      extendedSupportEnd: new Date('2028-06-10'),
-      eolDate: new Date('2030-06-10'),
-      phase: LifecyclePhase.RELEASED,
-      osFamily: 'LINUX',
-      osName: 'Debian 12 (Bookworm)',
-    },
-  });
-  const debian11Lifecycle = await prisma.productLifecycle.create({
-    data: {
-      productId: vmProduct.id,
-      version: '11.0',
-      releaseDate: new Date('2021-08-14'),
-      normalSupportEnd: new Date('2024-08-14'),
-      extendedSupportEnd: new Date('2026-08-14'),
-      eolDate: new Date('2028-08-14'),
-      phase: LifecyclePhase.NORMAL_SUPPORT,
-      osFamily: 'LINUX',
-      osName: 'Debian 11 (Bullseye)',
-    },
-  });
-  const windows2022Lifecycle = await prisma.productLifecycle.create({
-    data: {
-      productId: vmProduct.id,
-      version: '2022',
-      releaseDate: new Date('2021-08-18'),
-      normalSupportEnd: new Date('2026-10-13'),
-      extendedSupportEnd: new Date('2031-10-14'),
-      eolDate: new Date('2033-10-14'),
-      phase: LifecyclePhase.RELEASED,
-      osFamily: 'WINDOWS',
-      osName: 'Windows Server 2022',
-    },
-  });
-  const rhel9Lifecycle = await prisma.productLifecycle.create({
-    data: {
-      productId: vmProduct.id,
-      version: '9.0',
-      releaseDate: new Date('2022-05-18'),
-      normalSupportEnd: new Date('2027-05-31'),
-      extendedSupportEnd: new Date('2031-05-31'),
-      eolDate: new Date('2033-05-31'),
-      phase: LifecyclePhase.RELEASED,
-      osFamily: 'LINUX',
-      osName: 'RHEL 9',
-    },
-  });
-  const vmware8Lifecycle = await prisma.productLifecycle.create({
-    data: {
-      productId: vmware.id,
-      version: '8.0',
-      releaseDate: new Date('2022-10-11'),
-      normalSupportEnd: new Date('2027-10-11'),
-      extendedSupportEnd: new Date('2030-10-11'),
-      eolDate: new Date('2032-10-11'),
-      phase: LifecyclePhase.RELEASED,
-      osFamily: 'HYPERVISOR',
-      osName: 'VMware vSphere 8.0',
     },
   });
 
@@ -341,21 +400,7 @@ async function main() {
     data: { name: 'Developer Portal', description: 'Developer tools and CI/CD portal', continuityLevelId: clLow.id, owner: 'Demo User' },
   });
 
-  // Create ProductAvailabilityZones (all products in all zones)
-  for (const product of [vmProduct, bareMetalHpc, objectStorage, nas, vmware, citrixVdi]) {
-    for (const zone of [parisAz1, parisAz2, london, newYork, singapore, hongKong]) {
-      await prisma.productAvailabilityZone.upsert({
-        where: { productId_availabilityZoneId: { productId: product.id, availabilityZoneId: zone.id } },
-        update: {},
-        create: { productId: product.id, availabilityZoneId: zone.id },
-      });
-    }
-  }
-
   // Create Sample Forecasts
-  const allFlavors = await prisma.flavor.findMany();
-  const vmFlavors = allFlavors.filter(f => f.productId === vmProduct.id);
-
   await prisma.forecast.create({
     data: {
       requestedBy: 'Demo User',
@@ -367,10 +412,11 @@ async function main() {
       lines: {
         create: [{
           productId: vmProduct.id,
-          flavorId: vmFlavors[1].id,
+          flavorId: flavorRecords['Medium'].id,
           azCode: 'ap-south-sin1',
           quantity: 5,
           resiliency: 'STANDARD',
+          variantId: vmVariants.find(v => v.name.includes('Bookworm') && v.name.includes('Medium'))?.id,
           metadata: { osVersion: 'debian-12' },
         }],
       },
@@ -390,11 +436,11 @@ async function main() {
       lines: {
         create: [{
           productId: vmProduct.id,
-          flavorId: allFlavors.find(f => f.productId === vmProduct.id && f.name === 'Medium')!.id,
+          flavorId: flavorRecords['Medium'].id,
           azCode: 'ap-south-sin1',
           quantity: 3,
           resiliency: 'HA',
-          metadata: { osVersion: 'windows-server-2022' },
+          metadata: { osVersion: 'windows-server-2022', variantId: vmVariants.find(v => v.name.includes('Server 2022') && v.name.includes('Medium'))?.id },
         }],
       },
     },
@@ -409,14 +455,14 @@ async function main() {
         create: [
           {
             productId: bareMetalHpc.id,
-            flavorId: allFlavors.find(f => f.productId === bareMetalHpc.id && f.name === 'XL')!.id,
+            flavorId: flavorRecords['XL'].id,
             azCode: 'ap-south-sin1',
             quantity: 1,
             resiliency: 'MULTI_AZ',
           },
           {
             productId: bareMetalHpc.id,
-            flavorId: allFlavors.find(f => f.productId === bareMetalHpc.id && f.name === 'XL')!.id,
+            flavorId: flavorRecords['XL'].id,
             azCode: 'ap-south-hk1',
             quantity: 1,
             resiliency: 'MULTI_AZ',
@@ -432,22 +478,21 @@ async function main() {
     },
   });
 
-  // Create Sample Instances
-  const instanceFlavors = await prisma.flavor.findMany();
-  const vmSmallFlavor = instanceFlavors.find(f => f.productId === vmProduct.id && f.name === 'Small');
-  const vmMediumFlavor = instanceFlavors.find(f => f.productId === vmProduct.id && f.name === 'Medium');
-  const vmLargeFlavor = instanceFlavors.find(f => f.productId === vmProduct.id && f.name === 'Large');
-  const hpcFlavor = instanceFlavors.find(f => f.productId === bareMetalHpc.id && f.name === 'XL');
+  // Create Sample Instances (using variantId instead of lifecycleId)
+  const vmSmallVariant = vmVariants.find((v) => v.name.includes('12 (Bookworm)') && v.name.includes('Small'));
+  const vmMediumVariant = vmVariants.find((v) => v.name.includes('Server 2022') && v.name.includes('Medium'));
+  const vmLargeVariant = vmVariants.find((v) => v.name.includes('9') && v.name.includes('Large') && !v.name.includes('8'));
+  const hpcXlVariant = hpcVariants.find((v) => v.name.includes('9') && v.name.includes('XL') && !v.name.includes('8'));
 
-  if (vmSmallFlavor) {
+  if (vmSmallVariant) {
     await prisma.instance.create({
       data: {
         name: 'ecom-web-01',
         description: 'E-commerce web frontend',
         applicationId: appEcommerce.id,
         productId: vmProduct.id,
-        flavorId: vmSmallFlavor.id,
-        lifecycleId: debian12Lifecycle.id,
+        variantId: vmSmallVariant.id,
+        flavorId: vmSmallVariant.flavorId,
         azCode: 'ap-south-sin1',
         status: InstanceStatus.RUNNING,
         environment: 'PRD',
@@ -459,15 +504,15 @@ async function main() {
     });
   }
 
-  if (vmMediumFlavor) {
+  if (vmMediumVariant) {
     await prisma.instance.create({
       data: {
         name: 'ecom-api-01',
         description: 'E-commerce API server',
         applicationId: appEcommerce.id,
         productId: vmProduct.id,
-        flavorId: vmMediumFlavor.id,
-        lifecycleId: windows2022Lifecycle.id,
+        variantId: vmMediumVariant.id,
+        flavorId: vmMediumVariant.flavorId,
         azCode: 'eu-west-par1',
         status: InstanceStatus.RUNNING,
         environment: 'PRD',
@@ -479,15 +524,15 @@ async function main() {
     });
   }
 
-  if (vmLargeFlavor) {
+  if (vmLargeVariant) {
     await prisma.instance.create({
       data: {
         name: 'analytics-worker-01',
         description: 'Analytics batch worker',
         applicationId: appAnalytics.id,
         productId: vmProduct.id,
-        flavorId: vmLargeFlavor.id,
-        lifecycleId: rhel9Lifecycle.id,
+        variantId: vmLargeVariant.id,
+        flavorId: vmLargeVariant.flavorId,
         azCode: 'us-east-nyc1',
         status: InstanceStatus.STOPPED,
         environment: 'STG',
@@ -500,14 +545,15 @@ async function main() {
     });
   }
 
-  if (hpcFlavor) {
+  if (hpcXlVariant) {
     await prisma.instance.create({
       data: {
         name: 'dev-build-01',
         description: 'CI/CD build agent',
         applicationId: appDevTools.id,
         productId: bareMetalHpc.id,
-        flavorId: hpcFlavor.id,
+        variantId: hpcXlVariant.id,
+        flavorId: hpcXlVariant.flavorId,
         azCode: 'eu-west-lon1',
         status: InstanceStatus.PROVISIONING,
         environment: 'DEV',
@@ -517,15 +563,15 @@ async function main() {
     });
   }
 
-  if (vmSmallFlavor) {
+  if (vmSmallVariant) {
     await prisma.instance.create({
       data: {
         name: 'ecom-cache-01',
         description: 'Redis cache node',
         applicationId: appEcommerce.id,
         productId: vmProduct.id,
-        flavorId: vmSmallFlavor.id,
-        lifecycleId: debian12Lifecycle.id,
+        variantId: vmSmallVariant.id,
+        flavorId: vmSmallVariant.flavorId,
         azCode: 'ap-south-hk1',
         status: InstanceStatus.PENDING,
         environment: 'PRD',
@@ -534,15 +580,15 @@ async function main() {
     });
   }
 
-  if (vmMediumFlavor) {
+  if (vmMediumVariant) {
     await prisma.instance.create({
       data: {
         name: 'analytics-db-01',
         description: 'Analytics database server',
         applicationId: appAnalytics.id,
         productId: vmProduct.id,
-        flavorId: vmMediumFlavor.id,
-        lifecycleId: windows2022Lifecycle.id,
+        variantId: vmMediumVariant.id,
+        flavorId: vmMediumVariant.flavorId,
         azCode: 'ap-south-sin1',
         status: InstanceStatus.TERMINATED,
         environment: 'DEV',

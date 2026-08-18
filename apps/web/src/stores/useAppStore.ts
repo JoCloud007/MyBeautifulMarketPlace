@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 export type SortOption = 'newest' | 'name' | 'category';
+export type ViewMode = 'flat' | 'grouped';
 
 interface AppState {
   filters: {
@@ -10,15 +11,18 @@ interface AppState {
     search?: string;
   };
   sortBy: SortOption;
+  viewMode: ViewMode;
   setFilters: (filters: Partial<AppState['filters']>) => void;
   removeFilter: (key: keyof AppState['filters']) => void;
   clearFilters: () => void;
   setSortBy: (sort: SortOption) => void;
+  setViewMode: (mode: ViewMode) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
   filters: {},
   sortBy: 'newest',
+  viewMode: 'flat',
   setFilters: (filters) =>
     set((state) => ({ filters: { ...state.filters, ...filters } })),
   removeFilter: (key) =>
@@ -29,4 +33,5 @@ export const useAppStore = create<AppState>((set) => ({
     }),
   clearFilters: () => set({ filters: {} }),
   setSortBy: (sortBy) => set({ sortBy }),
+  setViewMode: (viewMode) => set({ viewMode }),
 }));

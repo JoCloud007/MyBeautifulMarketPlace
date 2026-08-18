@@ -17,8 +17,8 @@ const createInstanceSchema = z.object({
   forecastId: z.string().uuid().optional(),
   applicationId: z.string().uuid(),
   productId: z.string().uuid(),
+  variantId: z.string().uuid().optional(),
   flavorId: z.string().uuid(),
-  lifecycleId: z.string().uuid().optional(),
   azCode: z.string().min(1),
   status: z.enum(['PENDING', 'PROVISIONING', 'RUNNING', 'STOPPED']).default('PENDING'),
   environment: z.enum(['PRD', 'DEV', 'STG']).default('DEV'),
@@ -32,21 +32,13 @@ const updateInstanceSchema = z.object({
   description: z.string().optional(),
   status: z.enum(['PENDING', 'PROVISIONING', 'RUNNING', 'STOPPED', 'TERMINATED']).optional(),
   environment: z.enum(['PRD', 'DEV', 'STG']).optional(),
-  lifecycleId: z.string().uuid().optional().nullable(),
+  variantId: z.string().uuid().optional().nullable(),
   ipAddress: ipSchema,
   hostname: hostnameSchema,
-  startedAt: z.coerce.date().optional(),
-  stoppedAt: z.coerce.date().optional(),
-  terminatedAt: z.coerce.date().optional(),
+  startedAt: z.coerce.date().nullable().optional(),
+  stoppedAt: z.coerce.date().nullable().optional(),
+  terminatedAt: z.coerce.date().nullable().optional(),
   metadata: metadataSchema,
-}).refine((data) => {
-  if (data.terminatedAt && data.status !== 'TERMINATED') {
-    return false;
-  }
-  return true;
-}, {
-  message: 'terminatedAt can only be set when status is TERMINATED',
-  path: ['terminatedAt'],
 });
 
 const idParamSchema = z.string().uuid();
@@ -54,8 +46,8 @@ const idParamSchema = z.string().uuid();
 const instanceInclude = {
   application: { include: { continuityLevel: true } },
   product: { include: { category: true } },
+  variant: { include: { os: true, osVersion: true, flavor: true } },
   flavor: true,
-  lifecycle: true,
   az: true,
   forecast: true,
 } as const;
@@ -142,9 +134,6 @@ router.post('/', async (req, res, next) => {
       if (!flavor) {
         throw Object.assign(new Error(`Flavor not found: ${data.flavorId}`), { status: 404 });
       }
-      if (flavor.productId !== data.productId) {
-        throw Object.assign(new Error(`Flavor ${data.flavorId} does not belong to product ${data.productId}`), { status: 409 });
-      }
       const az = await tx.availabilityZone.findUnique({ where: { code: data.azCode } });
       if (!az) {
         throw Object.assign(new Error(`Availability zone not found: ${data.azCode}`), { status: 404 });
@@ -155,13 +144,16 @@ router.post('/', async (req, res, next) => {
           throw Object.assign(new Error(`Forecast not found: ${data.forecastId}`), { status: 404 });
         }
       }
-      if (data.lifecycleId) {
-        const lifecycle = await tx.productLifecycle.findUnique({ where: { id: data.lifecycleId } });
-        if (!lifecycle) {
-          throw Object.assign(new Error(`Lifecycle not found: ${data.lifecycleId}`), { status: 404 });
+      if (data.variantId) {
+        const variant = await tx.productVariant.findUnique({ where: { id: data.variantId } });
+        if (!variant) {
+          throw Object.assign(new Error(`Variant not found: ${data.variantId}`), { status: 404 });
         }
-        if (lifecycle.productId !== data.productId) {
-          throw Object.assign(new Error(`Lifecycle ${data.lifecycleId} does not belong to product ${data.productId}`), { status: 409 });
+        if (variant.productId !== data.productId) {
+          throw Object.assign(new Error(`Variant ${data.variantId} does not belong to product ${data.productId}`), { status: 409 });
+        }
+        if (variant.flavorId !== data.flavorId) {
+          throw Object.assign(new Error(`Flavor ${data.flavorId} does not match the variant's flavor ${variant.flavorId}`), { status: 409 });
         }
       }
 
@@ -171,8 +163,8 @@ router.post('/', async (req, res, next) => {
         forecastId: data.forecastId,
         applicationId: data.applicationId,
         productId: data.productId,
+        variantId: data.variantId,
         flavorId: data.flavorId,
-        lifecycleId: data.lifecycleId,
         azCode: data.azCode,
         status: data.status,
         environment: data.environment,
@@ -204,13 +196,24 @@ router.patch('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Instance not found' });
     }
 
-    if (data.lifecycleId) {
-      const lifecycle = await prisma.productLifecycle.findUnique({ where: { id: data.lifecycleId } });
-      if (!lifecycle) {
-        return res.status(404).json({ error: `Lifecycle not found: ${data.lifecycleId}` });
+    if (data.terminatedAt !== undefined) {
+      const effectiveStatus = data.status ?? existing.status;
+      if (effectiveStatus !== 'TERMINATED') {
+        return res.status(400).json({ error: 'terminatedAt can only be set when status is TERMINATED' });
       }
-      if (lifecycle.productId !== existing.productId) {
-        return res.status(409).json({ error: `Lifecycle ${data.lifecycleId} does not belong to product ${existing.productId}` });
+    }
+
+    if (data.variantId) {
+      const variant = await prisma.productVariant.findUnique({ where: { id: data.variantId } });
+      if (!variant) {
+        return res.status(404).json({ error: `Variant not found: ${data.variantId}` });
+      }
+      if (variant.productId !== existing.productId) {
+        return res.status(409).json({ error: `Variant ${data.variantId} does not belong to product ${existing.productId}` });
+      }
+      const targetFlavorId = existing.flavorId;
+      if (variant.flavorId !== targetFlavorId) {
+        return res.status(409).json({ error: `Flavor ${targetFlavorId} does not match the variant's flavor ${variant.flavorId}` });
       }
     }
 

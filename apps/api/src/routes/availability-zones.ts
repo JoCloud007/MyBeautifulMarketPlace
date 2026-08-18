@@ -24,8 +24,8 @@ router.get('/', async (_req, res, next) => {
   try {
     const zones = await prisma.availabilityZone.findMany({
       include: {
-        productAvailabilities: {
-          include: { product: { select: { id: true, name: true, slug: true } } },
+        variantZones: {
+          include: { variant: { include: { product: { select: { id: true, name: true, slug: true } } } } },
         },
       },
       orderBy: { region: 'asc' },
@@ -44,8 +44,8 @@ router.get('/:id', async (req, res, next) => {
     const zone = await prisma.availabilityZone.findUnique({
       where: { id },
       include: {
-        productAvailabilities: {
-          include: { product: { select: { id: true, name: true, slug: true } } },
+        variantZones: {
+          include: { variant: { include: { product: { select: { id: true, name: true, slug: true } } } } },
         },
       },
     });
@@ -73,8 +73,8 @@ router.post('/', async (req, res, next) => {
     const zone = await prisma.availabilityZone.create({
       data,
       include: {
-        productAvailabilities: {
-          include: { product: { select: { id: true, name: true, slug: true } } },
+        variantZones: {
+          include: { variant: { include: { product: { select: { id: true, name: true, slug: true } } } } },
         },
       },
     });
@@ -103,8 +103,8 @@ router.patch('/:id', async (req, res, next) => {
       where: { id },
       data,
       include: {
-        productAvailabilities: {
-          include: { product: { select: { id: true, name: true, slug: true } } },
+        variantZones: {
+          include: { variant: { include: { product: { select: { id: true, name: true, slug: true } } } } },
         },
       },
     });
@@ -121,10 +121,10 @@ router.delete('/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
 
-    // Check for linked products, instances, and forecast lines
+    // Check for linked variants, instances, and forecast lines
     const zone = await prisma.availabilityZone.findUnique({
       where: { id },
-      include: { _count: { select: { productAvailabilities: true, instances: true, forecastLines: true } } },
+      include: { _count: { select: { variantZones: true, instances: true, forecastLines: true } } },
     });
 
     if (!zone) {
@@ -132,7 +132,7 @@ router.delete('/:id', async (req, res, next) => {
     }
 
     const blocks: string[] = [];
-    if (zone._count.productAvailabilities > 0) blocks.push('linked products');
+    if (zone._count.variantZones > 0) blocks.push('linked product variants');
     if (zone._count.instances > 0) blocks.push('instances');
     if (zone._count.forecastLines > 0) blocks.push('forecast lines');
 

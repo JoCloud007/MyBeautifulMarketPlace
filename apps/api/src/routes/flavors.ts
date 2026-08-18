@@ -11,7 +11,6 @@ const createFlavorSchema = z.object({
   vcpu: z.number().int().min(0, 'vCPU must be a non-negative integer'),
   ramGb: z.number().int().min(0, 'RAM must be a non-negative integer'),
   description: z.string().optional(),
-  productId: z.string().uuid('Invalid product ID'),
 });
 
 const updateFlavorSchema = z.object({
@@ -19,24 +18,14 @@ const updateFlavorSchema = z.object({
   vcpu: z.number().int().min(0).optional(),
   ramGb: z.number().int().min(0).optional(),
   description: z.string().optional(),
-  productId: z.string().uuid().optional(),
 });
 
 // GET /api/flavors
-router.get('/', async (req, res, next) => {
+router.get('/', async (_req, res, next) => {
   try {
-    const { productId } = req.query;
-    const where: any = {};
-
-    if (productId && typeof productId === 'string') {
-      where.productId = productId;
-    }
-
     const flavors = await prisma.flavor.findMany({
-      where,
       include: {
-        product: { include: { category: true } },
-        _count: { select: { forecastLines: true } },
+        _count: { select: { variants: true, forecastLines: true, instances: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -52,17 +41,8 @@ router.post('/', async (req, res, next) => {
   try {
     const data = createFlavorSchema.parse(req.body);
 
-    // Verify product exists
-    const product = await prisma.product.findUnique({ where: { id: data.productId } });
-    if (!product) {
-      return res.status(404).json({ error: 'Product not found' });
-    }
-
     const flavor = await prisma.flavor.create({
       data,
-      include: {
-        product: { include: { category: true } },
-      },
     });
 
     res.status(201).json(flavor);
@@ -75,11 +55,11 @@ router.post('/', async (req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
+    idParamSchema.parse(id);
     const flavor = await prisma.flavor.findUnique({
       where: { id },
       include: {
-        product: { include: { category: true } },
-        _count: { select: { forecastLines: true } },
+        _count: { select: { variants: true, forecastLines: true, instances: true } },
       },
     });
 
@@ -100,20 +80,9 @@ router.patch('/:id', async (req, res, next) => {
     idParamSchema.parse(id);
     const data = updateFlavorSchema.parse(req.body);
 
-    // If productId is being updated, verify the new product exists
-    if (data.productId) {
-      const product = await prisma.product.findUnique({ where: { id: data.productId } });
-      if (!product) {
-        return res.status(404).json({ error: 'Product not found' });
-      }
-    }
-
     const flavor = await prisma.flavor.update({
       where: { id },
       data,
-      include: {
-        product: { include: { category: true } },
-      },
     });
 
     res.json(flavor);
@@ -128,15 +97,23 @@ router.delete('/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
 
-    // Check if flavor has associated forecasts
     const flavor = await prisma.flavor.findUnique({
       where: { id },
-      include: { _count: { select: { forecastLines: true } } },
+      include: { _count: { select: { variants: true, forecastLines: true, instances: true } } },
     });
 
-    if (flavor && flavor._count.forecastLines > 0) {
+    if (!flavor) {
+      return res.status(404).json({ error: 'Flavor not found' });
+    }
+
+    const blocks: string[] = [];
+    if (flavor._count.variants > 0) blocks.push('variants');
+    if (flavor._count.forecastLines > 0) blocks.push('forecasts');
+    if (flavor._count.instances > 0) blocks.push('instances');
+
+    if (blocks.length > 0) {
       return res.status(409).json({
-        error: 'Cannot delete flavor with existing forecasts. Please delete forecasts first.',
+        error: `Cannot delete flavor with existing ${blocks.join(', ')}. Please delete them first.`,
       });
     }
 

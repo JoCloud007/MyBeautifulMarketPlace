@@ -10,8 +10,11 @@ import {
   ArrowUpDown,
   PackageOpen,
   ChevronRight,
+  LayoutGrid,
+  List,
+  ChevronDown,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
@@ -54,12 +57,71 @@ function AnimatedCard({ children, delay = 0 }: { children: React.ReactNode; dela
   );
 }
 
+function ProductCard({ product, index }: { product: any; index: number }) {
+  const Icon = iconMap[product.category?.icon || ''] || Server;
+  const isCompute = product.category?.slug === 'compute';
+
+  return (
+    <AnimatedCard delay={Math.min(index * 80, 400)}>
+      <Link to={`/products/${product.slug}`} className="group block h-full">
+        <Card className="h-full bg-slate-900 border-slate-800 transition-all duration-300 hover:border-blue-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-1">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
+                <Icon className="h-5 w-5 text-blue-500 transition-transform group-hover:scale-110" />
+              </div>
+              <Badge variant="secondary" className="text-xs bg-slate-800 text-slate-300 border-slate-700">
+                {product.category?.name}
+              </Badge>
+            </div>
+            <CardTitle className="text-lg text-white mt-3 group-hover:text-blue-400 transition-colors">
+              {product.name}
+            </CardTitle>
+            <CardDescription className="text-slate-400 line-clamp-2">
+              {product.description}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="flex flex-wrap items-center gap-2">
+              {isCompute && product.computeType && (
+                <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-400">
+                  {product.computeType}
+                </Badge>
+              )}
+              {isCompute && (
+                <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
+                  {product.variants?.length || 0} variant{product.variants?.length !== 1 ? 's' : ''}
+                </Badge>
+              )}
+              {!isCompute && product.os && (
+                <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
+                  {product.os}
+                </Badge>
+              )}
+              {product.dependencies && product.dependencies.length > 0 && (
+                <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
+                  {product.dependencies.length} dependency{product.dependencies.length > 1 ? 's' : ''}
+                </Badge>
+              )}
+            </div>
+            <div className="mt-4 flex items-center text-xs text-blue-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+              View details
+              <ChevronRight className="ml-1 h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
+    </AnimatedCard>
+  );
+}
+
 export default function Marketplace() {
-  const { filters, sortBy, setFilters, removeFilter, clearFilters, setSortBy } = useAppStore();
+  const { filters, sortBy, viewMode, setFilters, removeFilter, clearFilters, setSortBy, setViewMode } = useAppStore();
   const [products, setProducts] = useState<any[] | null>(null);
   const [categories, setCategories] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +148,12 @@ export default function Marketplace() {
         if (!cancelled) {
           setProducts(productsData);
           setCategories(categoriesData);
+          // Default expand all categories in grouped mode
+          const expanded: Record<string, boolean> = {};
+          categoriesData.forEach((cat: any) => {
+            expanded[cat.name] = true;
+          });
+          setExpandedCategories(expanded);
           setLoading(false);
         }
       })
@@ -115,6 +183,16 @@ export default function Marketplace() {
       if (sortBy === 'category') return (a.category?.name || '').localeCompare(b.category?.name || '');
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
+
+  const groupedProducts = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    sortedProducts.forEach((p: any) => {
+      const cat = p.category?.name || 'Uncategorized';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(p);
+    });
+    return groups;
+  }, [sortedProducts]);
 
   const hasError = error && !products;
 
@@ -148,6 +226,22 @@ export default function Marketplace() {
         setError(true);
         setLoading(false);
       });
+  };
+
+  const toggleCategory = (cat: string) => {
+    setExpandedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
+  };
+
+  const expandAll = () => {
+    const allExpanded: Record<string, boolean> = {};
+    Object.keys(groupedProducts).forEach((cat) => { allExpanded[cat] = true; });
+    setExpandedCategories(allExpanded);
+  };
+
+  const collapseAll = () => {
+    const allCollapsed: Record<string, boolean> = {};
+    Object.keys(groupedProducts).forEach((cat) => { allCollapsed[cat] = false; });
+    setExpandedCategories(allCollapsed);
   };
 
   return (
@@ -276,31 +370,71 @@ export default function Marketplace() {
               </div>
             )}
 
-            {/* Active Filter Chips */}
-            {activeFilterCount > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-slate-500">Active filters:</span>
-                {Object.entries(filters).map(([key, value]) => {
-                  if (!value) return null;
-                  let label = String(value);
-                  if (key === 'category') {
-                    const cat = categories?.find((c) => c.slug === value);
-                    if (cat) label = cat.name;
-                  }
-                  return (
-                    <Badge
-                      key={key}
-                      variant="secondary"
-                      className="cursor-pointer bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/20"
-                      onClick={() => removeFilter(key as keyof typeof filters)}
-                    >
-                      {key === 'search' ? `Search: "${label}"` : label}
-                      <X className="ml-1 h-3 w-3" />
-                    </Badge>
-                  );
-                })}
+            {/* View Toggle + Active Filters */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500">View:</span>
+                <div className="flex items-center bg-slate-900 border border-slate-700 rounded-md overflow-hidden">
+                  <button
+                    onClick={() => setViewMode('flat')}
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors',
+                      viewMode === 'flat'
+                        ? 'bg-slate-800 text-blue-400'
+                        : 'text-slate-400 hover:text-slate-200'
+                    )}
+                  >
+                    <List className="h-3.5 w-3.5" />
+                    List
+                  </button>
+                  <button
+                    onClick={() => setViewMode('grouped')}
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors',
+                      viewMode === 'grouped'
+                        ? 'bg-slate-800 text-blue-400'
+                        : 'text-slate-400 hover:text-slate-200'
+                    )}
+                  >
+                    <LayoutGrid className="h-3.5 w-3.5" />
+                    Grouped
+                  </button>
+                </div>
+                {viewMode === 'grouped' && !loading && (
+                  <div className="flex items-center gap-1 ml-2">
+                    <button onClick={expandAll} className="text-[10px] text-slate-500 hover:text-blue-400 uppercase tracking-wide">Expand</button>
+                    <span className="text-slate-700">·</span>
+                    <button onClick={collapseAll} className="text-[10px] text-slate-500 hover:text-blue-400 uppercase tracking-wide">Collapse</button>
+                  </div>
+                )}
               </div>
-            )}
+
+              {/* Active Filter Chips */}
+              {activeFilterCount > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-slate-500">Active filters:</span>
+                  {Object.entries(filters).map(([key, value]) => {
+                    if (!value) return null;
+                    let label = String(value);
+                    if (key === 'category') {
+                      const cat = categories?.find((c) => c.slug === value);
+                      if (cat) label = cat.name;
+                    }
+                    return (
+                      <Badge
+                        key={key}
+                        variant="secondary"
+                        className="cursor-pointer bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 border border-blue-500/20"
+                        onClick={() => removeFilter(key as keyof typeof filters)}
+                      >
+                        {key === 'search' ? `Search: "${label}"` : label}
+                        <X className="ml-1 h-3 w-3" />
+                      </Badge>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             {/* Results count */}
             <div className="text-sm text-slate-500">
@@ -315,7 +449,7 @@ export default function Marketplace() {
             </div>
           </div>
 
-          {/* Product Grid */}
+          {/* Product Grid / Grouped View */}
           {loading ? (
             <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -333,54 +467,46 @@ export default function Marketplace() {
                 </Button>
               )}
             </div>
-          ) : (
+          ) : viewMode === 'flat' ? (
             <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {sortedProducts.map((product, i) => {
-                const Icon = iconMap[product.category?.icon || ''] || Server;
+              {sortedProducts.map((product, i) => (
+                <ProductCard key={product.id} product={product} index={i} />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {Object.entries(groupedProducts).map(([categoryName, catProducts]) => {
+                const isExpanded = expandedCategories[categoryName] !== false;
+                const catInfo = categories?.find((c) => c.name === categoryName);
+                const CatIcon = iconMap[catInfo?.icon || ''] || Server;
                 return (
-                  <AnimatedCard key={product.id} delay={Math.min(i * 80, 400)}>
-                    <Link to={`/products/${product.slug}`} className="group block h-full">
-                      <Card className="h-full bg-slate-900 border-slate-800 transition-all duration-300 hover:border-blue-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-1">
-                        <CardHeader className="pb-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
-                              <Icon className="h-5 w-5 text-blue-500 transition-transform group-hover:scale-110" />
-                            </div>
-                            <Badge variant="secondary" className="text-xs bg-slate-800 text-slate-300 border-slate-700">
-                              {product.category?.name}
-                            </Badge>
-                          </div>
-                          <CardTitle className="text-lg text-white mt-3 group-hover:text-blue-400 transition-colors">
-                            {product.name}
-                          </CardTitle>
-                          <CardDescription className="text-slate-400 line-clamp-2">
-                            {product.description}
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="pt-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {product.os && (
-                              <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
-                                {product.os}
-                              </Badge>
-                            )}
-                            <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
-                              {product.flavors?.length || 0} flavors
-                            </Badge>
-                            {product.dependencies && product.dependencies.length > 0 && (
-                              <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
-                                {product.dependencies.length} dependency{product.dependencies.length > 1 ? 's' : ''}
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="mt-4 flex items-center text-xs text-blue-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                            View details
-                            <ChevronRight className="ml-1 h-3 w-3 transition-transform group-hover:translate-x-0.5" />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  </AnimatedCard>
+                  <div key={categoryName} className="border border-slate-800 rounded-xl bg-slate-900/50 overflow-hidden">
+                    <button
+                      onClick={() => toggleCategory(categoryName)}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-slate-900 hover:bg-slate-800/80 transition-colors text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <CatIcon className="h-5 w-5 text-blue-500" />
+                        <h3 className="text-sm font-semibold text-white">{categoryName}</h3>
+                        <Badge variant="outline" className="text-[10px] border-slate-700 text-slate-400">
+                          {catProducts.length} product{catProducts.length !== 1 ? 's' : ''}
+                        </Badge>
+                      </div>
+                      <ChevronDown
+                        className={cn(
+                          'h-4 w-4 text-slate-500 transition-transform duration-300',
+                          isExpanded ? 'rotate-0' : '-rotate-90'
+                        )}
+                      />
+                    </button>
+                    {isExpanded && (
+                      <div className="p-4 grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                        {catProducts.map((product, i) => (
+                          <ProductCard key={product.id} product={product} index={i} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>

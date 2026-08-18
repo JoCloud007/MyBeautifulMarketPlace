@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useParams, Link } from 'react-router-dom';
-import type { Product, Dependency, Flavor } from '@cloudmarket/shared-types';
+import type { Product, Dependency, Flavor, ProductVariant, OperatingSystem, OsVersion } from '@cloudmarket/shared-types';
 import { useProduct, useProducts } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
@@ -17,17 +17,16 @@ import {
   AlertTriangle,
   CheckCircle,
   FileText,
-  Map,
+  Map as MapIcon,
   GitBranch,
   ArrowUpRight,
   ArrowRight,
   Calendar,
   Box,
   Layers,
-  Zap,
   Send,
-  Globe,
-  MapPin,
+  Filter,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -39,10 +38,12 @@ const iconMap: Record<string, React.ElementType> = {
   Monitor,
 };
 
-const regionColors: Record<string, string> = {
-  Europe: '#3b82f6',
-  'North America': '#10b981',
-  'Asia-Pacific': '#f59e0b',
+const phaseColors: Record<string, string> = {
+  RELEASED: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+  NORMAL_SUPPORT: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  EXTENDED_SUPPORT: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  NO_SUPPORT: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+  EOL: 'bg-red-500/10 text-red-400 border-red-500/20',
 };
 
 function formatDate(dateStr: string) {
@@ -245,6 +246,12 @@ export default function ProductDetail() {
     product ? { category: product.category?.slug } : undefined
   );
 
+  // Variant filters for compute products
+  const [selectedOs, setSelectedOs] = React.useState('');
+  const [selectedVersion, setSelectedVersion] = React.useState('');
+  const [selectedFlavor, setSelectedFlavor] = React.useState('');
+  const [selectedVariantId, setSelectedVariantId] = React.useState<string | null>(null);
+
   if (isLoading) {
     return (
       <div className="space-y-6 animate-fade-in">
@@ -286,13 +293,64 @@ export default function ProductDetail() {
     );
   }
 
+  const isCompute = product.category?.slug === 'compute';
   const Icon = iconMap[product.category?.icon || ''] || Server;
-  const maxVcpu = Math.max(...(product.flavors?.map((f: Flavor) => f.vcpu) ?? [1]));
-  const maxRam = Math.max(...(product.flavors?.map((f: Flavor) => f.ramGb) ?? [1]));
+
+  // Unique flavors from variants for compute overview
+  const uniqueFlavors = React.useMemo(() => {
+    if (!isCompute || !product.variants) return [];
+    const map = new Map<string, Flavor>();
+    product.variants.forEach((v: ProductVariant) => {
+      if (v.flavor && !map.has(v.flavor.id)) map.set(v.flavor.id, v.flavor);
+    });
+    return Array.from(map.values());
+  }, [isCompute, product.variants]);
+
+  const maxVcpu = Math.max(...(uniqueFlavors.map((f) => f.vcpu) ?? [1]));
+  const maxRam = Math.max(...(uniqueFlavors.map((f) => f.ramGb) ?? [1]));
+
+  // Filtered variants
+  const filteredVariants = React.useMemo(() => {
+    if (!isCompute || !product.variants) return [];
+    return product.variants.filter((v: ProductVariant) => {
+      if (selectedOs && v.osId !== selectedOs) return false;
+      if (selectedVersion && v.osVersionId !== selectedVersion) return false;
+      if (selectedFlavor && v.flavorId !== selectedFlavor) return false;
+      return true;
+    });
+  }, [isCompute, product.variants, selectedOs, selectedVersion, selectedFlavor]);
+
+  // Unique filter options
+  const osOptions = React.useMemo(() => {
+    if (!isCompute || !product.variants) return [];
+    const map = new Map<string, OperatingSystem>();
+    product.variants.forEach((v: ProductVariant) => {
+      if (v.os && !map.has(v.os.id)) map.set(v.os.id, v.os);
+    });
+    return Array.from(map.values());
+  }, [isCompute, product.variants]);
+
+  const versionOptions = React.useMemo(() => {
+    if (!isCompute || !product.variants) return [];
+    const map = new Map<string, OsVersion>();
+    product.variants.forEach((v: ProductVariant) => {
+      if (v.osVersion && (!selectedOs || v.osId === selectedOs) && !map.has(v.osVersion.id)) {
+        map.set(v.osVersion.id, v.osVersion);
+      }
+    });
+    return Array.from(map.values());
+  }, [isCompute, product.variants, selectedOs]);
+
+  const flavorOptions = React.useMemo(() => {
+    if (!isCompute || !product.variants) return [];
+    const map = new Map<string, Flavor>();
+    product.variants.forEach((v: ProductVariant) => {
+      if (v.flavor && !map.has(v.flavor.id)) map.set(v.flavor.id, v.flavor);
+    });
+    return Array.from(map.values());
+  }, [isCompute, product.variants]);
 
   const related = relatedProducts?.filter((p: Product) => p.id !== product.id).slice(0, 3) ?? [];
-
-  const productAzs = product.availabilityZones?.map((az) => az.availabilityZone) ?? [];
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -316,7 +374,12 @@ export default function ProductDetail() {
                 <Badge variant="secondary" className="bg-slate-800 text-slate-300 border-slate-700">
                   {product.category?.name}
                 </Badge>
-                {product.os && (
+                {isCompute && product.computeType && (
+                  <Badge variant="outline" className="border-blue-500/50 text-blue-400">
+                    {product.computeType}
+                  </Badge>
+                )}
+                {!isCompute && product.os && (
                   <Badge variant="outline" className="border-slate-700 text-slate-400">
                     {product.os}
                   </Badge>
@@ -357,24 +420,40 @@ export default function ProductDetail() {
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-slate-900 border-slate-800 transition-colors hover:border-slate-700">
-            <CardContent className="flex items-center gap-3 py-4">
-              <Monitor className="h-5 w-5 text-blue-500" />
-              <div>
-                <p className="text-xs text-slate-500">Operating system</p>
-                <p className="text-sm font-medium text-white">{product.os || 'N/A'}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-slate-900 border-slate-800 transition-colors hover:border-slate-700">
-            <CardContent className="flex items-center gap-3 py-4">
-              <Zap className="h-5 w-5 text-blue-500" />
-              <div>
-                <p className="text-xs text-slate-500">Flavors</p>
-                <p className="text-sm font-medium text-white">{product.flavors?.length || 0} configurations</p>
-              </div>
-            </CardContent>
-          </Card>
+
+          {isCompute ? (
+            <>
+              <Card className="bg-slate-900 border-slate-800 transition-colors hover:border-slate-700">
+                <CardContent className="flex items-center gap-3 py-4">
+                  <Box className="h-5 w-5 text-blue-500" />
+                  <div>
+                    <p className="text-xs text-slate-500">Variants</p>
+                    <p className="text-sm font-medium text-white">{product.variants?.length || 0} configurations</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-slate-900 border-slate-800 transition-colors hover:border-slate-700">
+                <CardContent className="flex items-center gap-3 py-4">
+                  <Server className="h-5 w-5 text-blue-500" />
+                  <div>
+                    <p className="text-xs text-slate-500">Instances</p>
+                    <p className="text-sm font-medium text-white">{(product as any)._count?.instances || 0} deployed</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <Card className="bg-slate-900 border-slate-800 transition-colors hover:border-slate-700">
+              <CardContent className="flex items-center gap-3 py-4">
+                <Monitor className="h-5 w-5 text-blue-500" />
+                <div>
+                  <p className="text-xs text-slate-500">Operating system</p>
+                  <p className="text-sm font-medium text-white">{product.os || 'N/A'}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="bg-slate-900 border-slate-800 transition-colors hover:border-slate-700">
             <CardContent className="flex items-center gap-3 py-4">
               <Calendar className="h-5 w-5 text-blue-500" />
@@ -392,18 +471,71 @@ export default function ProductDetail() {
         <Tabs defaultValue="overview" className="w-full">
           <TabsList className="bg-slate-900 border border-slate-800 flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="overview" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Overview</TabsTrigger>
+            {isCompute && (
+              <TabsTrigger value="variants" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Variants</TabsTrigger>
+            )}
             <TabsTrigger value="documentation" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Documentation</TabsTrigger>
             <TabsTrigger value="roadmap" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Roadmap</TabsTrigger>
-            <TabsTrigger value="lifecycles" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Lifecycles</TabsTrigger>
-            <TabsTrigger value="options" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Options</TabsTrigger>
             <TabsTrigger value="upgrade-paths" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Upgrade Paths</TabsTrigger>
             <TabsTrigger value="dependencies" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Dependencies</TabsTrigger>
-            <TabsTrigger value="availability" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Availability</TabsTrigger>
           </TabsList>
 
           {/* Overview */}
           <TabsContent value="overview" className="mt-4 space-y-6 animate-fade-in">
-            <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+            {isCompute ? (
+              <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
+                <Card className="bg-slate-900 border-slate-800">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-white">
+                      <FileText className="h-5 w-5 text-blue-500" />
+                      Description
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-slate-400 leading-relaxed">{product.description}</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-slate-900 border-slate-800">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-white">
+                      <Cpu className="h-5 w-5 text-blue-500" />
+                      Available flavors
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {uniqueFlavors.map((flavor) => (
+                        <div
+                          key={flavor.id}
+                          className="rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 space-y-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-white">{flavor.name}</span>
+                            <span className="text-xs text-slate-500">{flavor.description}</span>
+                          </div>
+                          {flavor.vcpu > 0 && (
+                            <SpecBar label="vCPU" value={flavor.vcpu} max={maxVcpu} unit="cores" color="bg-blue-500" />
+                          )}
+                          {flavor.ramGb > 0 && (
+                            <SpecBar label="RAM" value={flavor.ramGb} max={maxRam} unit="GB" color="bg-emerald-500" />
+                          )}
+                          {flavor.vcpu === 0 && flavor.ramGb === 0 && (
+                            <p className="text-xs text-slate-500">{flavor.description}</p>
+                          )}
+                        </div>
+                      ))}
+                      {uniqueFlavors.length === 0 && (
+                        <div className="text-center py-8">
+                          <Cpu className="mx-auto h-8 w-8 text-slate-700" />
+                          <p className="mt-2 text-sm text-slate-500">No flavors configured.</p>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : (
               <Card className="bg-slate-900 border-slate-800">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-white">
@@ -415,41 +547,246 @@ export default function ProductDetail() {
                   <p className="text-slate-400 leading-relaxed">{product.description}</p>
                 </CardContent>
               </Card>
+            )}
+          </TabsContent>
 
+          {/* Variants */}
+          {isCompute && (
+            <TabsContent value="variants" className="mt-4 space-y-6 animate-fade-in">
+              {/* Filters */}
               <Card className="bg-slate-900 border-slate-800">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-white">
-                    <Cpu className="h-5 w-5 text-blue-500" />
-                    Available flavors
+                  <CardTitle className="flex items-center gap-2 text-white text-base">
+                    <Filter className="h-4 w-4 text-blue-500" />
+                    Filter variants
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    {product.flavors?.map((flavor: Flavor) => (
-                      <div
-                        key={flavor.id}
-                        className="rounded-lg border border-slate-800 bg-slate-950 px-4 py-3 space-y-2"
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="space-y-1">
+                      <label className="text-xs text-slate-500">Operating System</label>
+                      <select
+                        className="w-full h-10 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={selectedOs}
+                        onChange={(e) => { setSelectedOs(e.target.value); setSelectedVersion(''); }}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-white">{flavor.name}</span>
-                          <span className="text-xs text-slate-500">{flavor.description}</span>
-                        </div>
-                        {flavor.vcpu > 0 && (
-                          <SpecBar label="vCPU" value={flavor.vcpu} max={maxVcpu} unit="cores" color="bg-blue-500" />
-                        )}
-                        {flavor.ramGb > 0 && (
-                          <SpecBar label="RAM" value={flavor.ramGb} max={maxRam} unit="GB" color="bg-emerald-500" />
-                        )}
-                        {flavor.vcpu === 0 && flavor.ramGb === 0 && (
-                          <p className="text-xs text-slate-500">{flavor.description}</p>
-                        )}
-                      </div>
-                    ))}
+                        <option value="">All OS</option>
+                        {osOptions.map((os) => (
+                          <option key={os.id} value={os.id}>{os.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-slate-500">Version</label>
+                      <select
+                        className="w-full h-10 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={selectedVersion}
+                        onChange={(e) => setSelectedVersion(e.target.value)}
+                      >
+                        <option value="">All versions</option>
+                        {versionOptions.map((v) => (
+                          <option key={v.id} value={v.id}>{v.version}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-slate-500">Flavor</label>
+                      <select
+                        className="w-full h-10 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={selectedFlavor}
+                        onChange={(e) => setSelectedFlavor(e.target.value)}
+                      >
+                        <option value="">All flavors</option>
+                        {flavorOptions.map((f) => (
+                          <option key={f.id} value={f.id}>{f.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
-            </div>
-          </TabsContent>
+
+              {/* Variant grid */}
+              {filteredVariants.length > 0 ? (
+                <>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {filteredVariants.map((variant: ProductVariant) => (
+                    <Card
+                      key={variant.id}
+                      className={cn(
+                        'bg-slate-900 border-slate-800 transition-all cursor-pointer',
+                        selectedVariantId === variant.id
+                          ? 'border-blue-500/50 ring-1 ring-blue-500/20'
+                          : 'hover:border-slate-700'
+                      )}
+                      onClick={() => setSelectedVariantId(selectedVariantId === variant.id ? null : variant.id)}
+                    >
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
+                            {variant.os?.name}
+                          </Badge>
+                          {variant.isActive ? (
+                            <Badge variant="secondary" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                              Active
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs bg-slate-800 text-slate-500 border-slate-700">
+                              Inactive
+                            </Badge>
+                          )}
+                        </div>
+                        <CardTitle className="text-base text-white mt-2">{variant.name}</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4 pt-0">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-slate-500">Version</span>
+                            <span className="text-white">{variant.osVersion?.version}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-slate-500">Flavor</span>
+                            <span className="text-white">{variant.flavor?.name}</span>
+                          </div>
+                          {variant.flavor && (
+                            <>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-slate-500">vCPU</span>
+                                <span className="text-white">{variant.flavor.vcpu} cores</span>
+                              </div>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-slate-500">RAM</span>
+                                <span className="text-white">{variant.flavor.ramGb} GB</span>
+                              </div>
+                            </>
+                          )}
+                          {variant.continuityLevel && (
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-slate-500">Continuity</span>
+                              <span className="text-white">{variant.continuityLevel.name}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {variant.availabilityZones && variant.availabilityZones.length > 0 && (
+                          <div className="pt-3 border-t border-slate-800">
+                            <p className="text-xs text-slate-500 mb-2">Availability zones</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {variant.availabilityZones.map((az: any) => (
+                                <Badge
+                                  key={az.availabilityZone?.id || az.availabilityZoneId}
+                                  variant="outline"
+                                  className="text-[10px] border-slate-700 text-slate-400"
+                                >
+                                  {az.availabilityZone?.code || 'AZ'}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {variant.osVersion?.phase && (
+                          <div className="pt-1">
+                            <Badge
+                              variant="outline"
+                              className={cn('text-[10px]', phaseColors[variant.osVersion.phase] || 'border-slate-700 text-slate-400')}
+                            >
+                              {variant.osVersion.phase.replace('_', ' ')}
+                            </Badge>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Selected Variant Detail */}
+                {selectedVariantId && (() => {
+                  const variant = filteredVariants.find((v: ProductVariant) => v.id === selectedVariantId);
+                  if (!variant) return null;
+                  return (
+                    <Card className="bg-slate-900 border-blue-500/30 mt-6 animate-fade-in">
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-white flex items-center gap-2 text-base">
+                            <Server className="h-5 w-5 text-blue-500" />
+                            {variant.name} — Detail
+                          </CardTitle>
+                          <Button variant="ghost" size="sm" onClick={() => setSelectedVariantId(null)} className="text-slate-400 hover:text-white">
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">Operating System</p>
+                            <p className="text-sm font-medium text-white">{variant.os?.name}</p>
+                            <p className="text-xs text-slate-400">{variant.osVersion?.version}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">Flavor</p>
+                            <p className="text-sm font-medium text-white">{variant.flavor?.name}</p>
+                            <p className="text-xs text-slate-400">{variant.flavor?.vcpu} vCPU · {variant.flavor?.ramGb} GB RAM</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">Availability Zones</p>
+                            <div className="flex flex-wrap gap-1">
+                              {variant.availabilityZones && variant.availabilityZones.length > 0 ? (
+                                variant.availabilityZones.map((az: any) => (
+                                  <Badge key={az.availabilityZone?.id || az.availabilityZoneId} variant="outline" className="text-[10px] border-slate-700 text-slate-400">
+                                    {az.availabilityZone?.code || 'AZ'}
+                                  </Badge>
+                                ))
+                              ) : (
+                                <span className="text-xs text-slate-600">None</span>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">Lifecycle Phase</p>
+                            {variant.osVersion?.phase ? (
+                              <Badge variant="outline" className={cn('text-[10px]', phaseColors[variant.osVersion.phase] || 'border-slate-700 text-slate-400')}>
+                                {variant.osVersion.phase.replace('_', ' ')}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-slate-600">—</span>
+                            )}
+                          </div>
+                        </div>
+                        {variant.continuityLevel && (
+                          <div className="mt-4 pt-4 border-t border-slate-800">
+                            <p className="text-xs text-slate-500 mb-1">Continuity Level</p>
+                            <p className="text-sm font-medium text-white">{variant.continuityLevel.name}</p>
+                            <p className="text-xs text-slate-400">RTO: {variant.continuityLevel.rtoMinutes}min · RPO: {variant.continuityLevel.rpoMinutes}min</p>
+                          </div>
+                        )}
+                        <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Badge variant={variant.isActive ? 'secondary' : 'outline'} className={variant.isActive ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'text-slate-500 border-slate-700'}>
+                              {variant.isActive ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </div>
+                          <Link to={`/forecasts`}>
+                            <Button size="sm" className="gap-2 bg-blue-500 hover:bg-blue-600 min-h-[44px]">
+                              <Send className="h-4 w-4" />
+                              Request this variant
+                            </Button>
+                          </Link>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })()}
+              </>
+              ) : (
+                <div className="text-center py-12">
+                  <Box className="mx-auto h-10 w-10 text-slate-700" />
+                  <p className="mt-3 text-slate-500">No variants match the selected filters.</p>
+                </div>
+              )}
+            </TabsContent>
+          )}
 
           {/* Documentation */}
           <TabsContent value="documentation" className="mt-4 animate-fade-in">
@@ -480,7 +817,7 @@ export default function ProductDetail() {
             <Card className="bg-slate-900 border-slate-800">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-white">
-                  <Map className="h-5 w-5 text-blue-500" />
+                  <MapIcon className="h-5 w-5 text-blue-500" />
                   Roadmap
                 </CardTitle>
               </CardHeader>
@@ -491,83 +828,8 @@ export default function ProductDetail() {
                   </div>
                 ) : (
                   <div className="text-center py-12">
-                    <Map className="mx-auto h-10 w-10 text-slate-700" />
+                    <MapIcon className="mx-auto h-10 w-10 text-slate-700" />
                     <p className="mt-3 text-slate-500">No roadmap available for this product.</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Lifecycles */}
-          <TabsContent value="lifecycles" className="mt-4 animate-fade-in">
-            <Card className="bg-slate-900 border-slate-800">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-white">
-                  <Calendar className="h-5 w-5 text-blue-500" />
-                  Lifecycle Phases
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {product.lifecycles && product.lifecycles.length > 0 ? (
-                  <div className="space-y-3">
-                    {product.lifecycles.map((lc: any) => (
-                      <div key={lc.id} className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 px-4 py-3">
-                        <span className={`inline-block w-2 h-2 rounded-full ${
-                          lc.phase === 'RELEASED' ? 'bg-emerald-500' :
-                          lc.phase === 'NORMAL_SUPPORT' ? 'bg-blue-500' :
-                          lc.phase === 'EXTENDED_SUPPORT' ? 'bg-amber-500' :
-                          lc.phase === 'NO_SUPPORT' ? 'bg-orange-500' :
-                          'bg-red-500'
-                        }`} />
-                        <span className="font-medium text-white w-20">{lc.version}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {lc.phase.replace('_', ' ')}
-                        </Badge>
-                        <span className="text-slate-500 text-sm ml-auto">
-                          {new Date(lc.releaseDate).toLocaleDateString()} → {new Date(lc.eolDate).toLocaleDateString()}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <Calendar className="mx-auto h-10 w-10 text-slate-700" />
-                    <p className="mt-3 text-slate-500">No lifecycle data available for this product.</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Options */}
-          <TabsContent value="options" className="mt-4 animate-fade-in">
-            <Card className="bg-slate-900 border-slate-800">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-white">
-                  <Layers className="h-5 w-5 text-blue-500" />
-                  Product Options
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {product.options && product.options.length > 0 ? (
-                  <div className="space-y-3">
-                    {product.options.map((opt: any) => (
-                      <div key={opt.id} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <Badge variant="outline" className="text-xs text-slate-400 border-slate-700">{opt.type}</Badge>
-                          <span className="font-medium text-white">{opt.label}</span>
-                        </div>
-                        {opt.isDefault && (
-                          <Badge variant="secondary" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/20">Default</Badge>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <Layers className="mx-auto h-10 w-10 text-slate-700" />
-                    <p className="mt-3 text-slate-500">No options available for this product.</p>
                   </div>
                 )}
               </CardContent>
@@ -680,111 +942,6 @@ export default function ProductDetail() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
-
-          {/* Availability */}
-          <TabsContent value="availability" className="mt-4 space-y-6 animate-fade-in">
-            <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
-              <Card className="bg-slate-900 border-slate-800">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-white">
-                    <Globe className="h-5 w-5 text-blue-500" />
-                    Available in
-                  </CardTitle>
-                  <CardDescription className="text-slate-400">
-                    {productAzs.length} availability zone{productAzs.length !== 1 ? 's' : ''} across{' '}
-                    {new Set(productAzs.map((az) => az.region)).size} region
-                    {new Set(productAzs.map((az) => az.region)).size !== 1 ? 's' : ''}.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {productAzs.length > 0 ? (
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap gap-2">
-                        {productAzs.map((az) => (
-                          <Link
-                            key={az.id}
-                            to="/availability-zones"
-                            className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-slate-800"
-                            style={{
-                              borderColor: `${regionColors[az.region] || '#334155'}40`,
-                              color: regionColors[az.region] || '#94a3b8',
-                            }}
-                          >
-                            <MapPin className="h-3 w-3" />
-                            {az.name}
-                          </Link>
-                        ))}
-                      </div>
-                      <div className="mt-4 space-y-2">
-                        {productAzs.map((az) => (
-                          <div
-                            key={az.id}
-                            className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2"
-                          >
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="h-2.5 w-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: regionColors[az.region] || '#64748b' }}
-                              />
-                              <span className="text-sm text-white">{az.name}</span>
-                              <span className="text-xs text-slate-500">{az.city}, {az.country}</span>
-                            </div>
-                            <Badge
-                              variant="outline"
-                              className="text-[10px]"
-                              style={{
-                                borderColor: `${regionColors[az.region] || '#334155'}40`,
-                                color: regionColors[az.region] || '#94a3b8',
-                              }}
-                            >
-                              {az.code}
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <Globe className="mx-auto h-10 w-10 text-slate-700" />
-                      <p className="mt-3 text-slate-500">No availability zones linked to this product.</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Mini Map */}
-              <Card className="bg-slate-900 border-slate-800 overflow-hidden">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-white text-base">
-                    <MapPin className="h-5 w-5 text-blue-500" />
-                    Zone Map
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  {productAzs.length > 0 ? (
-                    <div className="relative h-[300px] w-full bg-slate-950 flex items-center justify-center">
-                      <div className="text-center">
-                        <Globe className="mx-auto h-12 w-12 text-slate-700" />
-                        <p className="mt-3 text-sm text-slate-500">{productAzs.length} availability zones</p>
-                        <div className="mt-2 flex flex-wrap gap-2 justify-center">
-                          {productAzs.map((az) => (
-                            <span key={az.id} className="text-xs px-2 py-1 rounded bg-slate-900 text-slate-400 border border-slate-800">
-                              {az.code}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <MapPin className="mx-auto h-10 w-10 text-slate-700" />
-                      <p className="mt-3 text-sm text-slate-500">No zones to display.</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
           </TabsContent>
         </Tabs>
       </AnimatedSection>

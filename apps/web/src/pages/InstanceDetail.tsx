@@ -95,10 +95,10 @@ export default function InstanceDetailPage() {
   });
 
   const eolWarning = useMemo(() => {
-    if (!instance?.lifecycle?.eolDate) return null;
-    const warning = getEolWarning(instance.lifecycle.eolDate);
+    if (!instance?.variant?.osVersion?.eolDate) return null;
+    const warning = getEolWarning(instance.variant.osVersion.eolDate);
     return warning;
-  }, [instance?.lifecycle?.eolDate]);
+  }, [instance?.variant?.osVersion?.eolDate]);
 
   if (isError) {
     return <QueryError message="Unable to load instance." onRetry={refetch} />;
@@ -120,7 +120,7 @@ export default function InstanceDetailPage() {
   const status = instance ? statusConfig[instance.status] : null;
   const StatusIcon = status?.icon || Clock4;
   const env = instance ? envConfig[instance.environment] || { label: instance.environment, color: 'border-slate-600 text-slate-500' } : null;
-  const phase = instance?.lifecycle?.phase ? phaseConfig[instance.lifecycle.phase] : null;
+  const phase = instance?.variant?.osVersion?.phase ? phaseConfig[instance.variant.osVersion.phase] : null;
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -232,7 +232,7 @@ export default function InstanceDetailPage() {
       </div>
 
       {/* Lifecycle & EOL */}
-      {instance?.lifecycle && (
+      {instance?.variant?.osVersion && (
         <AnimatedSection delay={300}>
           <Card className="bg-slate-900 border-slate-800">
             <CardHeader>
@@ -245,7 +245,7 @@ export default function InstanceDetailPage() {
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div>
                   <p className="text-xs text-slate-500">Version</p>
-                  <p className="text-lg font-bold text-white">{instance.lifecycle.version}</p>
+                  <p className="text-lg font-bold text-white">{instance.variant.osVersion.version}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Phase</p>
@@ -258,13 +258,13 @@ export default function InstanceDetailPage() {
                 <div>
                   <p className="text-xs text-slate-500">Normal Support End</p>
                   <p className="text-sm text-slate-300">
-                    {new Date(instance.lifecycle.normalSupportEnd).toLocaleDateString()}
+                    {new Date(instance.variant.osVersion.normalSupportEnd).toLocaleDateString()}
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500">Extended Support End</p>
                   <p className="text-sm text-slate-300">
-                    {new Date(instance.lifecycle.extendedSupportEnd).toLocaleDateString()}
+                    {new Date(instance.variant.osVersion.extendedSupportEnd).toLocaleDateString()}
                   </p>
                 </div>
               </div>
@@ -273,7 +273,7 @@ export default function InstanceDetailPage() {
                   <eolWarning.icon className={`h-5 w-5 ${eolWarning.color}`} />
                   <span className={`text-sm font-medium ${eolWarning.color}`}>{eolWarning.text}</span>
                   <span className="text-xs text-slate-500 ml-auto">
-                    EOL: {new Date(instance.lifecycle.eolDate).toLocaleDateString()}
+                    EOL: {new Date(instance.variant.osVersion.eolDate).toLocaleDateString()}
                   </span>
                 </div>
               )}

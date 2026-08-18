@@ -66,7 +66,7 @@ router.get('/:slug', async (req, res, next) => {
       include: {
         products: {
           where: { isActive: true },
-          include: { flavors: true, category: true },
+          include: { category: true, variants: { include: { flavor: true } } },
         },
       },
     });

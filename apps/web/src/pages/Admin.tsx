@@ -3,19 +3,12 @@ import {
   useAdminDashboard,
   useAdminProducts,
   useAdminCategories,
-  useAdminFlavors,
   useAdminDependencies,
   useAdminForecasts,
   useAdminUsers,
-  useCreateProduct,
-  useUpdateProduct,
-  useDeleteProduct,
   useCreateCategory,
   useUpdateCategory,
   useDeleteCategory,
-  useCreateFlavor,
-  useUpdateFlavor,
-  useDeleteFlavor,
   useCreateDependency,
   useUpdateDependency,
   useDeleteDependency,
@@ -32,7 +25,6 @@ import {
   useCreateInstance,
   useUpdateInstance,
   useDeleteInstance,
-  useProductLifecycles,
   useApplications,
   useCreateApplication,
   useUpdateApplication,
@@ -40,7 +32,12 @@ import {
   useContinuityLevels,
   useUpdateContinuityLevel,
   useProducts,
+  useFlavors,
+  useProductVariants,
 } from '@/hooks/useApi';
+import AdminOS from './AdminOS';
+import AdminProducts from './AdminProducts';
+import AdminFlavors from './AdminFlavors';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -77,8 +74,9 @@ import {
   MapPin,
   Shield,
   TrendingUp,
+  Monitor,
 } from 'lucide-react';
-import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Instance, InstanceStatus, Environment } from '@cloudmarket/shared-types';
+import type { ApprovalStatus, Category, Dependency, User, Forecast, AvailabilityZone, Instance, InstanceStatus, Environment } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ApprovalStatus, { label: string; color: string }> = {
   PENDING: { label: 'Pending', color: 'border-amber-500/20 text-amber-500' },
@@ -173,17 +171,17 @@ function ResponsiveTable({
 }
 
 // ============ DASHBOARD SECTION ============
-function DashboardSection() {
+function DashboardSection({ onNavigate }: { onNavigate: (tab: string) => void }) {
   const { data: dashboard, isLoading, isError, refetch } = useAdminDashboard();
 
   const counts = (dashboard as any)?.counts ?? {};
   const countCards = [
-    { label: 'Products', value: counts.products ?? 0, icon: Package, color: 'text-blue-400' },
-    { label: 'Categories', value: counts.categories ?? 0, icon: Layers, color: 'text-purple-400' },
-    { label: 'Forecasts', value: counts.forecasts ?? 0, icon: BarChart3, color: 'text-amber-400' },
-    { label: 'Users', value: counts.users ?? 0, icon: Users, color: 'text-emerald-400' },
-    { label: 'Applications', value: counts.applications ?? 0, icon: Activity, color: 'text-cyan-400' },
-    { label: 'Continuity Levels', value: counts.continuityLevels ?? 0, icon: CheckCircle, color: 'text-rose-400' },
+    { label: 'Products', value: counts.products ?? 0, icon: Package, color: 'text-blue-400', tab: 'products' },
+    { label: 'Categories', value: counts.categories ?? 0, icon: Layers, color: 'text-purple-400', tab: 'categories' },
+    { label: 'Forecasts', value: counts.forecasts ?? 0, icon: BarChart3, color: 'text-amber-400', tab: 'forecasts' },
+    { label: 'Users', value: counts.users ?? 0, icon: Users, color: 'text-emerald-400', tab: 'users' },
+    { label: 'Applications', value: counts.applications ?? 0, icon: Activity, color: 'text-cyan-400', tab: 'applications' },
+    { label: 'Continuity Levels', value: counts.continuityLevels ?? 0, icon: CheckCircle, color: 'text-rose-400', tab: 'continuity-levels' },
   ];
 
   if (isError) {
@@ -204,7 +202,10 @@ function DashboardSection() {
             const Icon = card.icon;
             return (
               <AnimatedSection key={card.label} delay={i * 80}>
-                <Card className="bg-slate-900 border-slate-800 transition-all duration-300 hover:border-slate-700 hover:-translate-y-0.5">
+                <Card
+                  className="bg-slate-900 border-slate-800 transition-all duration-300 hover:border-slate-700 hover:-translate-y-0.5 cursor-pointer"
+                  onClick={() => onNavigate(card.tab)}
+                >
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
                     <CardTitle className="text-sm font-medium text-slate-400">{card.label}</CardTitle>
                     <Icon className={cn('h-4 w-4', card.color)} />
@@ -274,194 +275,7 @@ function DashboardSection() {
 }
 
 // ============ PRODUCTS SECTION ============
-function ProductsSection() {
-  const { data: products, isLoading, isError, refetch } = useAdminProducts();
-  const { data: categories } = useAdminCategories();
-  const createProduct = useCreateProduct();
-  const updateProduct = useUpdateProduct();
-  const deleteProduct = useDeleteProduct();
-
-  const [isOpen, setIsOpen] = useState(false);
-  const [editing, setEditing] = useState<Product | null>(null);
-  const [form, setForm] = useState({
-    name: '', slug: '', description: '', categoryId: '', os: '', documentation: '', roadmap: '', isActive: true,
-  });
-  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
-
-  const resetForm = () => {
-    setForm({ name: '', slug: '', description: '', categoryId: '', os: '', documentation: '', roadmap: '', isActive: true });
-    setEditing(null);
-  };
-
-  const openCreate = () => { resetForm(); setIsOpen(true); };
-  const openEdit = (product: Product) => {
-    setEditing(product);
-    setForm({
-      name: product.name, slug: product.slug, description: product.description || '',
-      categoryId: product.categoryId, os: product.os || '', documentation: product.documentation || '',
-      roadmap: product.roadmap || '', isActive: product.isActive,
-    });
-    setIsOpen(true);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const payload = { ...form, slug: form.slug || form.name.toLowerCase().replace(/\s+/g, '-') };
-      if (editing) await updateProduct.mutateAsync({ id: editing.id, ...payload });
-      else await createProduct.mutateAsync(payload);
-      setIsOpen(false); resetForm();
-    } catch {
-      /* mutation error handled by hook onError */
-    }
-  };
-
-  const handleDelete = (id: string) => {
-    setConfirmDelete({ open: true, id });
-  };
-  const handleConfirmDelete = async () => {
-    try {
-      if (confirmDelete.id) {
-        await deleteProduct.mutateAsync(confirmDelete.id);
-      }
-    } catch {
-      /* mutation error handled by hook onError */
-    }
-    setConfirmDelete({ open: false, id: null });
-  };
-
-  if (isError) return <QueryError message="Unable to load products." onRetry={refetch} />;
-
-  const mobileCards = products?.map((product) => (
-    <MobileCard key={product.id}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="font-medium text-white">{product.name}</p>
-          <p className="text-sm text-slate-400">{product.category?.name}</p>
-        </div>
-        <Badge variant="outline" className={product.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
-          {product.isActive ? 'Active' : 'Inactive'}
-        </Badge>
-      </div>
-      <div className="mt-2 text-sm text-slate-500">
-        <span>{product.flavors?.length ?? 0} flavors</span>
-      </div>
-      <div className="mt-3 flex justify-end gap-1">
-        <Button size="sm" variant="ghost" onClick={() => openEdit(product)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
-          <Pencil className="h-4 w-4" />
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => handleDelete(product.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10">
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
-    </MobileCard>
-  ));
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]">
-          <Plus className="mr-2 h-4 w-4" /> Add
-        </Button>
-      </div>
-      <Card className="bg-slate-900 border-slate-800">
-        <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable
-            headers={['Name', 'Category', 'Flavors', 'Active']}
-            isLoading={isLoading}
-            emptyMessage="No products"
-            mobileCards={mobileCards}
-          >
-            {products?.map((product) => (
-              <tr key={product.id} className="hover:bg-slate-800/50 transition-colors">
-                <td className="py-3 font-medium text-white">{product.name}</td>
-                <td className="py-3 text-slate-400">{product.category?.name}</td>
-                <td className="py-3 text-slate-400">{product.flavors?.length ?? 0}</td>
-                <td className="py-3">
-                  <Badge variant="outline" className={product.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
-                    {product.isActive ? 'Active' : 'Inactive'}
-                  </Badge>
-                </td>
-                <td className="py-3 text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => openEdit(product)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => handleDelete(product.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </ResponsiveTable>
-        </CardContent>
-      </Card>
-
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-white">{editing ? 'Edit product' : 'New product'}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Name</label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Slug</label>
-              <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="auto-generated if empty" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Category</label>
-              <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
-                <option value="">Choose...</option>
-                {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">OS</label>
-              <Input value={form.os} onChange={(e) => setForm({ ...form, os: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Description</label>
-              <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="bg-slate-950 border-slate-700 text-white" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Documentation</label>
-              <Textarea value={form.documentation} onChange={(e) => setForm({ ...form, documentation: e.target.value })} rows={3} className="bg-slate-950 border-slate-700 text-white" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Roadmap</label>
-              <Textarea value={form.roadmap} onChange={(e) => setForm({ ...form, roadmap: e.target.value })} rows={3} className="bg-slate-950 border-slate-700 text-white" />
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="isActive" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
-              <label htmlFor="isActive" className="text-sm text-slate-300">Active</label>
-            </div>
-            <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
-              <Button type="submit" disabled={createProduct.isPending || updateProduct.isPending} className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">
-                {editing ? 'Save' : 'Create'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <ConfirmDialog
-        open={confirmDelete.open}
-        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
-        title="Delete Product"
-        description="Are you sure you want to delete this product? This action cannot be undone."
-        onConfirm={handleConfirmDelete}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
-        variant="destructive"
-      />
-    </div>
-  );
-}
+function ProductsSection() { return <AdminProducts />; }
 
 // ============ CATEGORIES SECTION ============
 function CategoriesSection() {
@@ -580,123 +394,7 @@ function CategoriesSection() {
 }
 
 // ============ FLAVORS SECTION ============
-function FlavorsSection() {
-  const { data: flavors, isLoading, isError, refetch } = useAdminFlavors();
-  const { data: products } = useAdminProducts();
-  const createFlavor = useCreateFlavor();
-  const updateFlavor = useUpdateFlavor();
-  const deleteFlavor = useDeleteFlavor();
-
-  const [isOpen, setIsOpen] = useState(false);
-  const [editing, setEditing] = useState<Flavor | null>(null);
-  const [form, setForm] = useState({ name: '', productId: '', vcpu: 0, ramGb: 0, description: '' });
-  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
-
-  const resetForm = () => { setForm({ name: '', productId: '', vcpu: 0, ramGb: 0, description: '' }); setEditing(null); };
-  const openCreate = () => { resetForm(); setIsOpen(true); };
-  const openEdit = (f: Flavor) => { setEditing(f); setForm({ name: f.name, productId: f.productId, vcpu: f.vcpu, ramGb: f.ramGb, description: f.description || '' }); setIsOpen(true); };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editing) await updateFlavor.mutateAsync({ id: editing.id, ...form });
-    else await createFlavor.mutateAsync(form);
-    setIsOpen(false); resetForm();
-  };
-
-  const handleDelete = (id: string) => {
-    setConfirmDelete({ open: true, id });
-  };
-  const handleConfirmDelete = async () => {
-    if (confirmDelete.id) {
-      await deleteFlavor.mutateAsync(confirmDelete.id);
-    }
-    setConfirmDelete({ open: false, id: null });
-  };
-
-  if (isError) return <QueryError message="Unable to load flavors." onRetry={refetch} />;
-
-  const mobileCards = flavors?.map((flavor) => (
-    <MobileCard key={flavor.id}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="font-medium text-white">{flavor.name}</p>
-          <p className="text-sm text-slate-400">{(flavor as any).product?.name}</p>
-        </div>
-      </div>
-      <div className="mt-2 text-sm text-slate-500">
-        {flavor.vcpu} vCPU · {flavor.ramGb} GB RAM
-      </div>
-      <div className="mt-3 flex justify-end gap-1">
-        <Button size="sm" variant="ghost" onClick={() => openEdit(flavor)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
-        <Button size="sm" variant="ghost" onClick={() => handleDelete(flavor.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
-      </div>
-    </MobileCard>
-  ));
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add</Button>
-      </div>
-      <Card className="bg-slate-900 border-slate-800">
-        <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Name', 'Product', 'vCPU', 'RAM', 'Description']} isLoading={isLoading} emptyMessage="No flavors" mobileCards={mobileCards}>
-            {flavors?.map((flavor) => (
-              <tr key={flavor.id} className="hover:bg-slate-800/50 transition-colors">
-                <td className="py-3 font-medium text-white">{flavor.name}</td>
-                <td className="py-3 text-slate-400">{(flavor as any).product?.name}</td>
-                <td className="py-3 text-slate-400">{flavor.vcpu}</td>
-                <td className="py-3 text-slate-400">{flavor.ramGb} GB</td>
-                <td className="py-3 text-slate-400 max-w-xs truncate">{flavor.description || '—'}</td>
-                <td className="py-3 text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => openEdit(flavor)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
-                    <Button size="sm" variant="ghost" onClick={() => handleDelete(flavor.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </ResponsiveTable>
-        </CardContent>
-      </Card>
-
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
-          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit flavor' : 'New flavor'}</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Product</label>
-              <Select value={form.productId} onChange={(e) => setForm({ ...form, productId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
-                <option value="">Choose...</option>
-                {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">vCPU</label><Input type="number" value={form.vcpu} onChange={(e) => setForm({ ...form, vcpu: parseInt(e.target.value) || 0 })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
-              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">RAM (GB)</label><Input type="number" value={form.ramGb} onChange={(e) => setForm({ ...form, ramGb: parseInt(e.target.value) || 0 })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
-            </div>
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white" /></div>
-            <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <ConfirmDialog
-        open={confirmDelete.open}
-        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
-        title="Delete Flavor"
-        description="Are you sure you want to delete this flavor? This action cannot be undone."
-        onConfirm={handleConfirmDelete}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
-        variant="destructive"
-      />
-    </div>
-  );
-}
+function FlavorsSection() { return <AdminFlavors />; }
 
 // ============ DEPENDENCIES SECTION ============
 function DependenciesSection() {
@@ -1272,17 +970,17 @@ export function _InstancesSection() {
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Instance | null>(null);
   const [form, setForm] = useState<{
-    name: string; description: string; applicationId: string; productId: string; flavorId: string; lifecycleId: string; azCode: string;
+    name: string; description: string; applicationId: string; productId: string; flavorId: string; variantId: string; azCode: string;
     status: InstanceStatus; environment: Environment; ipAddress: string; hostname: string; metadata: { osVersion?: string };
   }>({
-    name: '', description: '', applicationId: '', productId: '', flavorId: '', lifecycleId: '', azCode: '',
+    name: '', description: '', applicationId: '', productId: '', flavorId: '', variantId: '', azCode: '',
     status: 'PENDING' as InstanceStatus, environment: 'DEV' as Environment, ipAddress: '', hostname: '', metadata: {},
   });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [searchQuery, setSearchQuery] = useState('');
 
   const resetForm = () => {
-    setForm({ name: '', description: '', applicationId: '', productId: '', flavorId: '', lifecycleId: '', azCode: '',
+    setForm({ name: '', description: '', applicationId: '', productId: '', flavorId: '', variantId: '', azCode: '',
       status: 'PENDING' as InstanceStatus, environment: 'DEV' as Environment, ipAddress: '', hostname: '', metadata: {} });
     setEditing(null);
   };
@@ -1291,16 +989,15 @@ export function _InstancesSection() {
     setEditing(instance);
     setForm({
       name: instance.name, description: instance.description || '', applicationId: instance.applicationId,
-      productId: instance.productId, flavorId: instance.flavorId, lifecycleId: instance.lifecycleId || '', azCode: instance.azCode,
+      productId: instance.productId, flavorId: instance.flavorId, variantId: instance.variantId || '', azCode: instance.azCode,
       status: instance.status, environment: instance.environment, ipAddress: instance.ipAddress || '',
       hostname: instance.hostname || '', metadata: (instance.metadata as { osVersion?: string }) || {},
     });
     setIsOpen(true);
   };
 
-  const selectedProduct = products?.find((p) => p.id === form.productId);
-  const availableFlavors = selectedProduct?.flavors || [];
-  const { data: lifecycles } = useProductLifecycles(form.productId || '');
+  const { data: flavors } = useFlavors();
+  const { data: variants } = useProductVariants(form.productId || '');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1333,7 +1030,7 @@ export function _InstancesSection() {
       <div className="flex items-start justify-between">
         <div>
           <p className="font-medium text-white">{instance.name}</p>
-          <p className="text-sm text-slate-400">{instance.product?.name} {instance.lifecycle?.version ? `(${instance.lifecycle.version})` : ''} · {instance.flavor?.name}</p>
+          <p className="text-sm text-slate-400">{instance.product?.name} {instance.variant?.name ? `(${instance.variant.name})` : ''} · {instance.flavor?.name}</p>
         </div>
         <Badge variant="outline" className={instanceStatusConfig[instance.status].color}>
           {instanceStatusConfig[instance.status].label}
@@ -1367,7 +1064,7 @@ export function _InstancesSection() {
                 <td className="py-3 font-medium text-white">{instance.name}</td>
                 <td className="py-3 text-slate-400">{instance.application?.name}</td>
                 <td className="py-3 text-slate-400">{instance.product?.name}</td>
-                <td className="py-3 text-slate-400">{instance.lifecycle?.version || '—'}</td>
+                <td className="py-3 text-slate-400">{instance.variant?.name || '—'}</td>
                 <td className="py-3 text-slate-400">{instance.flavor?.name}</td>
                 <td className="py-3 text-slate-400">{instance.az?.code}</td>
                 <td className="py-3">
@@ -1421,14 +1118,14 @@ export function _InstancesSection() {
                 <label className="text-sm font-medium text-slate-300">Flavor</label>
                 <Select value={form.flavorId} onChange={(e) => setForm({ ...form, flavorId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                   <option value="">Select...</option>
-                  {availableFlavors.map((f) => <option key={f.id} value={f.id}>{f.name} ({f.vcpu}vCPU, {f.ramGb}GB)</option>)}
+                  {flavors?.map((f) => <option key={f.id} value={f.id}>{f.name} ({f.vcpu}vCPU, {f.ramGb}GB)</option>)}
                 </Select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Lifecycle Version</label>
-                <Select value={form.lifecycleId} onChange={(e) => setForm({ ...form, lifecycleId: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <label className="text-sm font-medium text-slate-300">Variant</label>
+                <Select value={form.variantId} onChange={(e) => setForm({ ...form, variantId: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                   <option value="">None</option>
-                  {lifecycles?.map((lc) => <option key={lc.id} value={lc.id}>{lc.version} ({lc.phase})</option>)}
+                  {variants?.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
                 </Select>
               </div>
               <div className="space-y-2">
@@ -1698,6 +1395,7 @@ export default function Admin() {
 
   const tabs = [
     { value: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+    { value: 'os', label: 'OS', icon: Monitor },
     { value: 'products', label: 'Products', icon: Package },
     { value: 'categories', label: 'Categories', icon: Layers },
     { value: 'flavors', label: 'Flavors', icon: Cpu },
@@ -1734,7 +1432,8 @@ export default function Admin() {
           })}
         </TabsList>
 
-        <TabsContent value="dashboard" className="animate-fade-in"><DashboardSection /></TabsContent>
+        <TabsContent value="dashboard" className="animate-fade-in"><DashboardSection onNavigate={setActiveTab} /></TabsContent>
+        <TabsContent value="os" className="animate-fade-in"><AdminOS /></TabsContent>
         <TabsContent value="products" className="animate-fade-in"><ProductsSection /></TabsContent>
         <TabsContent value="categories" className="animate-fade-in"><CategoriesSection /></TabsContent>
         <TabsContent value="flavors" className="animate-fade-in"><FlavorsSection /></TabsContent>

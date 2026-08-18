@@ -1,7 +1,6 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: cloudmarket-db
     env_file:
       - .env
     environment:
@@ -32,7 +31,6 @@ services:
         HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
         NO_PROXY: ${COMPOSE_NO_PROXY:-}
         NODE_TLS_REJECT_UNAUTHORIZED: ${COMPOSE_NODE_TLS_REJECT_UNAUTHORIZED:-1}
-    container_name: cloudmarket-api
     env_file:
       - .env
     environment:
@@ -73,7 +71,6 @@ services:
         HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
         NO_PROXY: ${COMPOSE_NO_PROXY:-}
         NODE_TLS_REJECT_UNAUTHORIZED: ${COMPOSE_NODE_TLS_REJECT_UNAUTHORIZED:-1}
-    container_name: cloudmarket-web
     env_file:
       - .env
     environment:

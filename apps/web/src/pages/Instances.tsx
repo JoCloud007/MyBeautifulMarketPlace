@@ -73,8 +73,8 @@ function InstanceCard({ instance }: { instance: Instance }) {
         <p>{instance.application?.name}</p>
         <p className="text-xs text-slate-500">{instance.az?.name}</p>
       </div>
-      {instance.lifecycle?.version && (
-        <p className="mt-1 text-xs text-purple-400">v{instance.lifecycle.version}</p>
+      {instance.variant?.osVersion?.version && (
+        <p className="mt-1 text-xs text-purple-400">v{instance.variant.osVersion.version}</p>
       )}
       {instance.description && (
         <p className="mt-2 text-xs text-slate-500 line-clamp-2">{instance.description}</p>
@@ -315,8 +315,8 @@ export default function InstancesPage() {
                                 <td className="py-3 text-slate-400">{instance.application?.name}</td>
                                 <td className="py-3 text-slate-400">{instance.product?.name}</td>
                                 <td className="py-3 text-slate-400">
-                                  {instance.lifecycle?.version ? (
-                                    <span className="text-purple-400">{instance.lifecycle.version}</span>
+                                  {instance.variant?.osVersion?.version ? (
+                                    <span className="text-purple-400">{instance.variant.osVersion.version}</span>
                                   ) : (
                                     '—'
                                   )}
