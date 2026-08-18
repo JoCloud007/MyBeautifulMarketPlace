@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { InstanceStatus } from '@prisma/client';
+import { InstanceStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db';
 
@@ -17,8 +17,8 @@ const createInstanceSchema = z.object({
   forecastId: z.string().uuid().optional(),
   applicationId: z.string().uuid(),
   productId: z.string().uuid(),
+  variantId: z.string().uuid().optional(),
   flavorId: z.string().uuid(),
-  lifecycleId: z.string().uuid().optional(),
   azCode: z.string().min(1),
   status: z.enum(['PENDING', 'PROVISIONING', 'RUNNING', 'STOPPED']).default('PENDING'),
   environment: z.enum(['PRD', 'DEV', 'STG']).default('DEV'),
@@ -32,7 +32,8 @@ const updateInstanceSchema = z.object({
   description: z.string().optional(),
   status: z.enum(['PENDING', 'PROVISIONING', 'RUNNING', 'STOPPED', 'TERMINATED']).optional(),
   environment: z.enum(['PRD', 'DEV', 'STG']).optional(),
-  lifecycleId: z.string().uuid().optional().nullable(),
+  variantId: z.string().uuid().optional().nullable(),
+  flavorId: z.string().uuid().optional(),
   ipAddress: ipSchema,
   hostname: hostnameSchema,
   startedAt: z.coerce.date().optional(),
@@ -54,8 +55,8 @@ const idParamSchema = z.string().uuid();
 const instanceInclude = {
   application: { include: { continuityLevel: true } },
   product: { include: { category: true } },
+  variant: { include: { os: true, osVersion: true } },
   flavor: true,
-  lifecycle: true,
   az: true,
   forecast: true,
 } as const;
@@ -66,6 +67,7 @@ router.get('/', async (req, res, next) => {
     const querySchema = z.object({
       applicationId: z.string().uuid().optional(),
       productId: z.string().uuid().optional(),
+      variantId: z.string().uuid().optional(),
       status: z.enum(['PENDING', 'PROVISIONING', 'RUNNING', 'STOPPED', 'TERMINATED']).optional(),
       environment: z.enum(['PRD', 'DEV', 'STG']).optional(),
     });
@@ -73,6 +75,7 @@ router.get('/', async (req, res, next) => {
     const where: any = {};
     if (parsed.applicationId) where.applicationId = parsed.applicationId;
     if (parsed.productId) where.productId = parsed.productId;
+    if (parsed.variantId) where.variantId = parsed.variantId;
     if (parsed.status) where.status = parsed.status;
     if (parsed.environment) where.environment = parsed.environment;
 
@@ -128,22 +131,22 @@ router.post('/', async (req, res, next) => {
   try {
     const data = createInstanceSchema.parse(req.body);
 
-    const instance = await prisma.$transaction(async (tx) => {
+    const instance = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // Validate relations
       const application = await tx.application.findUnique({ where: { id: data.applicationId } });
       if (!application) {
         throw Object.assign(new Error(`Application not found: ${data.applicationId}`), { status: 404 });
       }
-      const product = await tx.product.findUnique({ where: { id: data.productId } });
+      const product = await tx.product.findUnique({
+        where: { id: data.productId },
+        include: { category: true },
+      });
       if (!product) {
         throw Object.assign(new Error(`Product not found: ${data.productId}`), { status: 404 });
       }
       const flavor = await tx.flavor.findUnique({ where: { id: data.flavorId } });
       if (!flavor) {
         throw Object.assign(new Error(`Flavor not found: ${data.flavorId}`), { status: 404 });
-      }
-      if (flavor.productId !== data.productId) {
-        throw Object.assign(new Error(`Flavor ${data.flavorId} does not belong to product ${data.productId}`), { status: 409 });
       }
       const az = await tx.availabilityZone.findUnique({ where: { code: data.azCode } });
       if (!az) {
@@ -155,14 +158,23 @@ router.post('/', async (req, res, next) => {
           throw Object.assign(new Error(`Forecast not found: ${data.forecastId}`), { status: 404 });
         }
       }
-      if (data.lifecycleId) {
-        const lifecycle = await tx.productLifecycle.findUnique({ where: { id: data.lifecycleId } });
-        if (!lifecycle) {
-          throw Object.assign(new Error(`Lifecycle not found: ${data.lifecycleId}`), { status: 404 });
+
+      // Validate variant for compute products
+      if (product.category.slug === 'compute') {
+        if (!data.variantId) {
+          throw Object.assign(new Error('variantId is required for Compute products'), { status: 400 });
         }
-        if (lifecycle.productId !== data.productId) {
-          throw Object.assign(new Error(`Lifecycle ${data.lifecycleId} does not belong to product ${data.productId}`), { status: 409 });
+        const variant = await tx.productVariant.findFirst({
+          where: { id: data.variantId, productId: data.productId },
+        });
+        if (!variant) {
+          throw Object.assign(new Error(`Variant not found for this product`), { status: 404 });
         }
+        if (variant.flavorId !== data.flavorId) {
+          throw Object.assign(new Error('flavorId does not match the variant\'s flavor'), { status: 400 });
+        }
+      } else if (data.variantId) {
+        throw Object.assign(new Error('variantId can only be set for Compute products'), { status: 400 });
       }
 
       const createData: any = {
@@ -171,8 +183,8 @@ router.post('/', async (req, res, next) => {
         forecastId: data.forecastId,
         applicationId: data.applicationId,
         productId: data.productId,
+        variantId: data.variantId,
         flavorId: data.flavorId,
-        lifecycleId: data.lifecycleId,
         azCode: data.azCode,
         status: data.status,
         environment: data.environment,
@@ -199,18 +211,31 @@ router.patch('/:id', async (req, res, next) => {
     idParamSchema.parse(id);
     const data = updateInstanceSchema.parse(req.body);
 
-    const existing = await prisma.instance.findUnique({ where: { id } });
+    const existing = await prisma.instance.findUnique({
+      where: { id },
+      include: { product: { include: { category: true } } },
+    });
     if (!existing) {
       return res.status(404).json({ error: 'Instance not found' });
     }
 
-    if (data.lifecycleId) {
-      const lifecycle = await prisma.productLifecycle.findUnique({ where: { id: data.lifecycleId } });
-      if (!lifecycle) {
-        return res.status(404).json({ error: `Lifecycle not found: ${data.lifecycleId}` });
+    if (data.variantId !== undefined) {
+      if (existing.product.category.slug === 'compute' && !data.variantId) {
+        return res.status(400).json({ error: 'variantId is required for Compute products' });
       }
-      if (lifecycle.productId !== existing.productId) {
-        return res.status(409).json({ error: `Lifecycle ${data.lifecycleId} does not belong to product ${existing.productId}` });
+      if (data.variantId) {
+        if (existing.product.category.slug !== 'compute') {
+          return res.status(400).json({ error: 'variantId can only be set for Compute products' });
+        }
+        const variant = await prisma.productVariant.findFirst({
+          where: { id: data.variantId, productId: existing.productId },
+        });
+        if (!variant) {
+          return res.status(404).json({ error: 'Variant not found for this product' });
+        }
+        if (data.flavorId && variant.flavorId !== data.flavorId) {
+          return res.status(400).json({ error: 'flavorId does not match the variant\'s flavor' });
+        }
       }
     }
 

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
-import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone, Application, ContinuityLevel, ProductLifecycle, ProductOption, UpgradePath, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats } from '@cloudmarket/shared-types';
+import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, UpgradePath, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats } from '@cloudmarket/shared-types';
 
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
 
@@ -213,10 +213,10 @@ export function useDeleteCategory() {
 
 // ========== FLAVORS ==========
 
-export function useFlavors(productId?: string) {
+export function useFlavors() {
   return useQuery<Flavor[]>({
-    queryKey: ['flavors', productId],
-    queryFn: () => fetchJson('/flavors', productId ? { productId } : undefined),
+    queryKey: ['flavors'],
+    queryFn: () => fetchJson('/flavors'),
     retry: 3,
     retryDelay: 2000,
   });
@@ -764,30 +764,38 @@ export function useUpdateContinuityLevel() {
   });
 }
 
-// ========== PRODUCT LIFECYCLES ==========
+// ========== OPERATING SYSTEMS ==========
 
-export function useProductLifecycles(productId: string) {
-  return useQuery<ProductLifecycle[]>({
-    queryKey: ['product-lifecycles', productId],
-    queryFn: () => fetchJson(`/products/${productId}/lifecycles`),
-    enabled: !!productId,
+export function useOperatingSystems() {
+  return useQuery<OperatingSystem[]>({
+    queryKey: ['operating-systems'],
+    queryFn: () => fetchJson('/os'),
     retry: 3,
     retryDelay: 2000,
   });
 }
 
-export function useCreateProductLifecycle() {
+export function useOperatingSystem(id: string) {
+  return useQuery<OperatingSystem>({
+    queryKey: ['operating-system', id],
+    queryFn: () => fetchJson(`/os/${id}`),
+    enabled: !!id,
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreateOS() {
   const queryClient = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
   return useMutation({
-    mutationFn: async ({ productId, ...payload }: { productId: string } & Partial<ProductLifecycle>) => {
-      const { data } = await api.post(`/products/${productId}/lifecycles`, payload);
+    mutationFn: async (payload: Partial<OperatingSystem>) => {
+      const { data } = await api.post('/os', payload);
       return data;
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['product-lifecycles', variables.productId] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      addToast('Lifecycle created successfully', 'success');
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['operating-systems'] });
+      addToast('OS created successfully', 'success');
     },
     onError: (err: any) => {
       addToast(err.response?.data?.message || 'Error during creation', 'error');
@@ -795,36 +803,20 @@ export function useCreateProductLifecycle() {
   });
 }
 
-export function useDeleteProductLifecycle() {
+export function useUpdateOS() {
   const queryClient = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
   return useMutation({
-    mutationFn: async ({ productId, lifecycleId }: { productId: string; lifecycleId: string }) => {
-      await api.delete(`/products/${productId}/lifecycles/${lifecycleId}`);
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['product-lifecycles', variables.productId] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      addToast('Lifecycle deleted', 'success');
-    },
-    onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Unable to delete this lifecycle', 'error');
-    },
-  });
-}
-
-export function useUpdateProductLifecycle() {
-  const queryClient = useQueryClient();
-  const addToast = useToastStore((s) => s.addToast);
-  return useMutation({
-    mutationFn: async ({ productId, lifecycleId, ...payload }: { productId: string; lifecycleId: string } & Partial<ProductLifecycle>) => {
-      const { data } = await api.patch(`/products/${productId}/lifecycles/${lifecycleId}`, payload);
+    mutationFn: async ({ id, ...payload }: { id: string } & Partial<OperatingSystem>) => {
+      const { data } = await api.put(`/os/${id}`, payload);
       return data;
     },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['product-lifecycles', variables.productId] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      addToast('Lifecycle updated', 'success');
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData(['operating-systems'], (old: OperatingSystem[] | undefined) =>
+        old?.map((o) => (o.id === variables.id ? data : o)) ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['operating-systems'] });
+      addToast('OS updated', 'success');
     },
     onError: (err: any) => {
       addToast(err.response?.data?.message || 'Error during update', 'error');
@@ -832,30 +824,50 @@ export function useUpdateProductLifecycle() {
   });
 }
 
-// ========== PRODUCT OPTIONS ==========
+export function useDeleteOS() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/os/${id}`);
+    },
+    onSuccess: (_data, id) => {
+      queryClient.setQueryData(['operating-systems'], (old: OperatingSystem[] | undefined) =>
+        old?.filter((o) => o.id !== id) ?? []
+      );
+      queryClient.invalidateQueries({ queryKey: ['operating-systems'] });
+      addToast('OS deleted', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Unable to delete this OS', 'error');
+    },
+  });
+}
 
-export function useProductOptions(productId: string) {
-  return useQuery<ProductOption[]>({
-    queryKey: ['product-options', productId],
-    queryFn: () => fetchJson(`/products/${productId}/options`),
-    enabled: !!productId,
+// ========== OS VERSIONS ==========
+
+export function useOSVersions(osId: string) {
+  return useQuery<OsVersion[]>({
+    queryKey: ['os-versions', osId],
+    queryFn: () => fetchJson(`/os/${osId}/versions`),
+    enabled: !!osId,
     retry: 3,
     retryDelay: 2000,
   });
 }
 
-export function useCreateProductOption() {
+export function useCreateOSVersion() {
   const queryClient = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
   return useMutation({
-    mutationFn: async ({ productId, ...payload }: { productId: string } & Partial<ProductOption>) => {
-      const { data } = await api.post(`/products/${productId}/options`, payload);
+    mutationFn: async ({ osId, ...payload }: { osId: string } & Partial<OsVersion>) => {
+      const { data } = await api.post(`/os/${osId}/versions`, payload);
       return data;
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['product-options', variables.productId] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      addToast('Option created successfully', 'success');
+      queryClient.invalidateQueries({ queryKey: ['os-versions', variables.osId] });
+      queryClient.invalidateQueries({ queryKey: ['operating-systems'] });
+      addToast('Version created successfully', 'success');
     },
     onError: (err: any) => {
       addToast(err.response?.data?.message || 'Error during creation', 'error');
@@ -863,20 +875,110 @@ export function useCreateProductOption() {
   });
 }
 
-export function useDeleteProductOption() {
+export function useUpdateOSVersion() {
   const queryClient = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
   return useMutation({
-    mutationFn: async ({ productId, optionId }: { productId: string; optionId: string }) => {
-      await api.delete(`/products/${productId}/options/${optionId}`);
+    mutationFn: async ({ osId, versionId, ...payload }: { osId: string; versionId: string } & Partial<OsVersion>) => {
+      const { data } = await api.put(`/os/${osId}/versions/${versionId}`, payload);
+      return data;
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['product-options', variables.productId] });
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      addToast('Option deleted', 'success');
+      queryClient.invalidateQueries({ queryKey: ['os-versions', variables.osId] });
+      queryClient.invalidateQueries({ queryKey: ['operating-systems'] });
+      addToast('Version updated', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Unable to delete this option', 'error');
+      addToast(err.response?.data?.message || 'Error during update', 'error');
+    },
+  });
+}
+
+export function useDeleteOSVersion() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ osId, versionId }: { osId: string; versionId: string }) => {
+      await api.delete(`/os/${osId}/versions/${versionId}`);
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['os-versions', variables.osId] });
+      queryClient.invalidateQueries({ queryKey: ['operating-systems'] });
+      addToast('Version deleted', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Unable to delete this version', 'error');
+    },
+  });
+}
+
+// ========== PRODUCT VARIANTS ==========
+
+export function useProductVariants(productId: string) {
+  return useQuery<ProductVariant[]>({
+    queryKey: ['product-variants', productId],
+    queryFn: () => fetchJson(`/products/${productId}/variants`),
+    enabled: !!productId,
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreateVariant() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ productId, ...payload }: { productId: string } & Partial<ProductVariant>) => {
+      const { data } = await api.post(`/products/${productId}/variants`, payload);
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['product-variants', variables.productId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-products'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Variant created successfully', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error during creation', 'error');
+    },
+  });
+}
+
+export function useUpdateVariant() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & Partial<ProductVariant>) => {
+      const { data } = await api.put(`/variants/${id}`, payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product-variants'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-products'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Variant updated', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error during update', 'error');
+    },
+  });
+}
+
+export function useDeleteVariant() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/variants/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product-variants'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-products'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Variant deleted', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Unable to delete this variant', 'error');
     },
   });
 }

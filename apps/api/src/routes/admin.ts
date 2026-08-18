@@ -9,11 +9,11 @@ const productSchema = z.object({
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
   description: z.string().optional(),
   categoryId: z.string().uuid(),
+  computeType: z.enum(['PHYSICAL', 'VIRTUAL']).optional().nullable(),
   os: z.string().optional(),
   documentation: z.string().optional(),
   roadmap: z.string().optional(),
   isActive: z.boolean().optional(),
-  availabilityZoneIds: z.array(z.string().uuid()).optional(),
 });
 
 const flavorSchema = z.object({
@@ -25,7 +25,7 @@ const flavorSchema = z.object({
 
 const categorySchema = z.object({
   name: z.string().min(1),
-  slug: z.string().min(1),
+  slug: z.string().min(1).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
   description: z.string().optional(),
   icon: z.string().optional(),
 });
@@ -80,13 +80,11 @@ router.get('/dashboard', async (_req, res, next) => {
 // GET /api/admin/products
 router.get('/products', async (_req, res, next) => {
   try {
-    // Prisma initialized
     const products = await prisma.product.findMany({
       include: {
         category: true,
-        flavors: true,
-        availabilityZones: { include: { availabilityZone: true } },
-        _count: { select: { forecastLines: true } },
+        variants: { include: { os: true, osVersion: true, flavor: true, availabilityZones: { include: { availabilityZone: true } }, continuityLevel: true } },
+        _count: { select: { forecastLines: true, variants: true, instances: true } },
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -100,7 +98,6 @@ router.get('/products', async (_req, res, next) => {
 router.post('/products', async (req, res, next) => {
   try {
     const data = productSchema.parse(req.body);
-    const { availabilityZoneIds, ...productData } = data;
 
     // Check for duplicate slug
     const existing = await prisma.product.findUnique({ where: { slug: data.slug } });
@@ -108,22 +105,21 @@ router.post('/products', async (req, res, next) => {
       return res.status(409).json({ error: 'A product with this slug already exists' });
     }
 
-    // Validate availabilityZoneIds exist
-    if (availabilityZoneIds && availabilityZoneIds.length > 0) {
-      const zones = await prisma.availabilityZone.findMany({ where: { id: { in: availabilityZoneIds } } });
-      if (zones.length !== availabilityZoneIds.length) {
-        return res.status(400).json({ error: 'One or more availability zones do not exist' });
-      }
+    // Validate computeType constraint
+    const category = await prisma.category.findUnique({ where: { id: data.categoryId } });
+    if (!category) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+    if (category.slug === 'compute' && !data.computeType) {
+      return res.status(400).json({ error: 'computeType is required for Compute category products' });
+    }
+    if (data.computeType && category.slug !== 'compute') {
+      return res.status(400).json({ error: 'computeType can only be set for Compute category products' });
     }
 
     const product = await prisma.product.create({
-      data: {
-        ...productData,
-        availabilityZones: availabilityZoneIds
-          ? { create: availabilityZoneIds.map((id) => ({ availabilityZoneId: id })) }
-          : undefined,
-      },
-      include: { category: true, flavors: true, availabilityZones: { include: { availabilityZone: true } } },
+      data,
+      include: { category: true, variants: { include: { os: true, flavor: true } } },
     });
     res.status(201).json(product);
   } catch (err) {
@@ -137,7 +133,6 @@ router.patch('/products/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
     const data = productSchema.partial().parse(req.body);
-    const { availabilityZoneIds, ...productData } = data;
 
     // Check for duplicate slug if updating slug
     if (data.slug) {
@@ -147,30 +142,30 @@ router.patch('/products/:id', async (req, res, next) => {
       }
     }
 
-    if (availabilityZoneIds) {
-      // Validate new availabilityZoneIds exist before deleting old ones
-      if (availabilityZoneIds.length > 0) {
-        const zones = await prisma.availabilityZone.findMany({ where: { id: { in: availabilityZoneIds } } });
-        if (zones.length !== availabilityZoneIds.length) {
-          return res.status(400).json({ error: 'One or more availability zones do not exist' });
-        }
+    // Validate computeType constraint and clear when category changes to non-compute
+    const existingProduct = await prisma.product.findUnique({ where: { id }, include: { category: true } });
+    if (!existingProduct) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+    let targetCategory: typeof existingProduct.category | null = existingProduct.category;
+    if (data.categoryId) {
+      targetCategory = await prisma.category.findUnique({ where: { id: data.categoryId } });
+      if (!targetCategory) {
+        return res.status(400).json({ error: 'Category not found' });
       }
     }
-
-    const product = await prisma.$transaction(async (tx) => {
-      if (availabilityZoneIds) {
-        await tx.productAvailabilityZone.deleteMany({ where: { productId: id } });
+    if (targetCategory.slug === 'compute') {
+      if (data.computeType === undefined && !existingProduct.computeType) {
+        return res.status(400).json({ error: 'computeType is required for Compute category products' });
       }
-      return tx.product.update({
-        where: { id },
-        data: {
-          ...productData,
-          availabilityZones: availabilityZoneIds
-            ? { create: availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) }
-            : undefined,
-        },
-        include: { category: true, flavors: true, availabilityZones: { include: { availabilityZone: true } } },
-      });
+    } else {
+      data.computeType = null;
+    }
+
+    const product = await prisma.product.update({
+      where: { id },
+      data,
+      include: { category: true, variants: { include: { os: true, osVersion: true, flavor: true, availabilityZones: { include: { availabilityZone: true } }, continuityLevel: true } } },
     });
     res.json(product);
   } catch (err) {
@@ -190,16 +185,13 @@ router.delete('/products/:id', async (req, res, next) => {
       include: {
         _count: {
           select: {
-            flavors: true,
+            variants: true,
             dependencies: true,
             dependentProducts: true,
             forecastLines: true,
             instances: true,
-            options: true,
-            lifecycles: true,
             upgradeFrom: true,
             upgradeTo: true,
-            availabilityZones: true,
           },
         },
       },
@@ -210,16 +202,13 @@ router.delete('/products/:id', async (req, res, next) => {
     }
 
     const blocks: string[] = [];
-    if (product._count.flavors > 0) blocks.push('flavors');
+    if (product._count.variants > 0) blocks.push('variants');
     if (product._count.dependencies > 0) blocks.push('dependencies');
     if (product._count.dependentProducts > 0) blocks.push('dependent products');
     if (product._count.forecastLines > 0) blocks.push('forecast lines');
     if (product._count.instances > 0) blocks.push('instances');
-    if (product._count.options > 0) blocks.push('options');
-    if (product._count.lifecycles > 0) blocks.push('lifecycles');
     if (product._count.upgradeFrom > 0) blocks.push('upgrade paths');
     if (product._count.upgradeTo > 0) blocks.push('dependent upgrade paths');
-    if (product._count.availabilityZones > 0) blocks.push('availability zones');
 
     if (blocks.length > 0) {
       return res.status(409).json({
@@ -229,28 +218,6 @@ router.delete('/products/:id', async (req, res, next) => {
 
     await prisma.product.delete({ where: { id } });
     res.status(204).send();
-  } catch (err) {
-    next(err);
-  }
-});
-
-// POST /api/admin/products/:id/flavors
-router.post('/products/:id/flavors', async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    idParamSchema.parse(id);
-
-    // Verify product exists
-    const product = await prisma.product.findUnique({ where: { id } });
-    if (!product) {
-      return res.status(404).json({ error: 'Product not found' });
-    }
-
-    const data = flavorSchema.parse(req.body);
-    const flavor = await prisma.flavor.create({
-      data: { ...data, productId: id },
-    });
-    res.status(201).json(flavor);
   } catch (err) {
     next(err);
   }
@@ -346,7 +313,7 @@ router.delete('/categories/:id', async (req, res, next) => {
 router.get('/flavors', async (_req, res, next) => {
   try {
     const flavors = await prisma.flavor.findMany({
-      include: { product: { include: { category: true } }, _count: { select: { forecastLines: true } } },
+      include: { _count: { select: { variants: true, forecastLines: true, instances: true } } },
       orderBy: { createdAt: 'desc' },
     });
     res.json(flavors);
@@ -364,7 +331,7 @@ router.patch('/flavors/:id', async (req, res, next) => {
     const flavor = await prisma.flavor.update({
       where: { id },
       data,
-      include: { product: { include: { category: true } } },
+      include: { _count: { select: { variants: true } } },
     });
     res.json(flavor);
   } catch (err) {
@@ -378,13 +345,14 @@ router.delete('/flavors/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
 
-    // Check if flavor has associated forecasts or instances
+    // Check if flavor has associated forecasts, instances, or variants
     const flavor = await prisma.flavor.findUnique({
       where: { id },
-      include: { _count: { select: { forecastLines: true, instances: true } } },
+      include: { _count: { select: { forecastLines: true, instances: true, variants: true } } },
     });
 
     const blocks: string[] = [];
+    if (flavor && flavor._count.variants > 0) blocks.push('variants');
     if (flavor && flavor._count.forecastLines > 0) blocks.push('forecasts');
     if (flavor && flavor._count.instances > 0) blocks.push('instances');
 

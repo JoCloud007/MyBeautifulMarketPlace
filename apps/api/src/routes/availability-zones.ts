@@ -23,11 +23,6 @@ const idParamSchema = z.string().uuid();
 router.get('/', async (_req, res, next) => {
   try {
     const zones = await prisma.availabilityZone.findMany({
-      include: {
-        productAvailabilities: {
-          include: { product: { select: { id: true, name: true, slug: true } } },
-        },
-      },
       orderBy: { region: 'asc' },
     });
     res.json(zones);
@@ -43,11 +38,6 @@ router.get('/:id', async (req, res, next) => {
     idParamSchema.parse(id);
     const zone = await prisma.availabilityZone.findUnique({
       where: { id },
-      include: {
-        productAvailabilities: {
-          include: { product: { select: { id: true, name: true, slug: true } } },
-        },
-      },
     });
 
     if (!zone) {
@@ -72,11 +62,6 @@ router.post('/', async (req, res, next) => {
 
     const zone = await prisma.availabilityZone.create({
       data,
-      include: {
-        productAvailabilities: {
-          include: { product: { select: { id: true, name: true, slug: true } } },
-        },
-      },
     });
 
     res.status(201).json(zone);
@@ -102,11 +87,6 @@ router.patch('/:id', async (req, res, next) => {
     const zone = await prisma.availabilityZone.update({
       where: { id },
       data,
-      include: {
-        productAvailabilities: {
-          include: { product: { select: { id: true, name: true, slug: true } } },
-        },
-      },
     });
 
     res.json(zone);
@@ -124,7 +104,7 @@ router.delete('/:id', async (req, res, next) => {
     // Check for linked products, instances, and forecast lines
     const zone = await prisma.availabilityZone.findUnique({
       where: { id },
-      include: { _count: { select: { productAvailabilities: true, instances: true, forecastLines: true } } },
+      include: { _count: { select: { variantZones: true, instances: true, forecastLines: true } } },
     });
 
     if (!zone) {
@@ -132,7 +112,7 @@ router.delete('/:id', async (req, res, next) => {
     }
 
     const blocks: string[] = [];
-    if (zone._count.productAvailabilities > 0) blocks.push('linked products');
+    if (zone._count.variantZones > 0) blocks.push('linked variants');
     if (zone._count.instances > 0) blocks.push('instances');
     if (zone._count.forecastLines > 0) blocks.push('forecast lines');
 

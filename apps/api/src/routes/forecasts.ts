@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ApprovalStatus } from '@prisma/client';
+import { ApprovalStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db';
 
@@ -204,7 +204,7 @@ router.post('/', async (req, res, next) => {
   try {
     const data = createForecastSchema.parse(req.body);
 
-    const forecast = await prisma.$transaction(async (tx) => {
+    const forecast = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // Validate application exists
       const application = await tx.application.findUnique({
         where: { id: data.applicationId },
@@ -218,15 +218,13 @@ router.post('/', async (req, res, next) => {
       const azCodes = [...new Set(data.lines.map((l) => l.azCode))];
       const productIds = [...new Set(data.lines.map((l) => l.productId))];
 
-      const [flavors, azs, offerings] = await Promise.all([
+      const [flavors, azs] = await Promise.all([
         tx.flavor.findMany({ where: { id: { in: flavorIds } } }),
         tx.availabilityZone.findMany({ where: { code: { in: azCodes } } }),
-        tx.productAvailabilityZone.findMany({ where: { productId: { in: productIds } } }),
       ]);
 
       const flavorMap = new Map(flavors.map((f) => [f.id, f]));
       const azMap = new Map(azs.map((z) => [z.code, z]));
-      const offeringSet = new Set(offerings.map((o) => `${o.productId}:${o.availabilityZoneId}`));
 
       // Validate each line and group HA/MULTI_AZ lines by product for resiliency validation
       const azsByProduct = new Map<string, Set<string>>();
@@ -235,15 +233,9 @@ router.post('/', async (req, res, next) => {
         if (!flavor) {
           throw Object.assign(new Error(`Flavor not found: ${line.flavorId}`), { status: 404 });
         }
-        if (flavor.productId !== line.productId) {
-          throw Object.assign(new Error(`Flavor ${line.flavorId} does not belong to product ${line.productId}`), { status: 409 });
-        }
         const az = azMap.get(line.azCode);
         if (!az) {
           throw Object.assign(new Error(`Availability zone not found: ${line.azCode}`), { status: 404 });
-        }
-        if (!offeringSet.has(`${line.productId}:${az.id}`)) {
-          throw Object.assign(new Error(`Product ${line.productId} is not available in zone ${line.azCode}`), { status: 409 });
         }
 
         if (line.resiliency === 'HA' || line.resiliency === 'MULTI_AZ') {
@@ -276,11 +268,11 @@ router.post('/', async (req, res, next) => {
           environment: data.environment,
           lines: {
             create: data.lines.map((line) => ({
-              productId: line.productId,
-              flavorId: line.flavorId,
-              azCode: line.azCode,
+              product: { connect: { id: line.productId } },
+              flavor: { connect: { id: line.flavorId } },
+              az: { connect: { code: line.azCode } },
               quantity: line.quantity,
-              metadata: line.metadata || undefined,
+              metadata: (line.metadata ?? undefined) as any,
               resiliency: line.resiliency || 'STANDARD',
             })),
           },

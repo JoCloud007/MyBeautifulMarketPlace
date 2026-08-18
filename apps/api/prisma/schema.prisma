@@ -20,148 +20,175 @@ model Category {
 }
 
 model Product {
-  id                String                      @id @default(uuid())
+  id                String         @id @default(uuid())
   name              String
-  slug              String                      @unique
+  slug              String         @unique
   description       String?
   categoryId        String
-  category          Category                    @relation(fields: [categoryId], references: [id])
-  flavors           Flavor[]
-  dependencies      Dependency[]                @relation("ProductDependencies")
-  dependentProducts Dependency[]                @relation("ProductDependents")
+  category          Category       @relation(fields: [categoryId], references: [id])
+  computeType       ComputeType?
+  variants          ProductVariant[]
+  dependencies      Dependency[]   @relation("ProductDependencies")
+  dependentProducts Dependency[]   @relation("ProductDependents")
   forecastLines     ForecastLine[]
-  availabilityZones ProductAvailabilityZone[]
-  options           ProductOption[]
-  lifecycles        ProductLifecycle[]
-  upgradeFrom       UpgradePath[]               @relation("UpgradeFrom")
-  upgradeTo         UpgradePath[]               @relation("UpgradeTo")
+  upgradeFrom       UpgradePath[]  @relation("UpgradeFrom")
+  upgradeTo         UpgradePath[]  @relation("UpgradeTo")
   instances         Instance[]
   documentation     String?
   roadmap           String?
   os                String?
-  isActive          Boolean                     @default(true)
-  createdAt         DateTime                    @default(now())
-  updatedAt         DateTime                    @updatedAt
+  isActive          Boolean        @default(true)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 }
 
-model ProductOption {
-  id         String        @id @default(uuid())
-  productId  String
-  product    Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
-  type       OptionType
-  value      String
-  label      String
-  isDefault  Boolean       @default(false)
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-
-  @@unique([productId, type, value])
+model OperatingSystem {
+  id        String          @id @default(uuid())
+  family    String
+  name      String
+  slug      String          @unique
+  isActive  Boolean         @default(true)
+  versions  OsVersion[]
+  variants  ProductVariant[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 }
 
-model ProductLifecycle {
-  id                String          @id @default(uuid())
-  productId         String
-  product           Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
-  version           String
-  releaseDate       DateTime
-  normalSupportEnd  DateTime
+model OsVersion {
+  id                 String          @id @default(uuid())
+  osId               String
+  os                 OperatingSystem @relation(fields: [osId], references: [id], onDelete: Cascade)
+  version            String
+  releaseDate        DateTime
+  normalSupportEnd   DateTime
   extendedSupportEnd DateTime
-  eolDate           DateTime
-  phase             LifecyclePhase  @default(RELEASED)
-  osFamily          String?
-  osName            String?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  instances         Instance[]
+  eolDate            DateTime
+  phase              LifecyclePhase  @default(RELEASED)
+  isActive           Boolean         @default(true)
+  variants           ProductVariant[]
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
-  @@unique([productId, version])
+  @@unique([osId, version])
+}
+
+model ProductVariant {
+  id                String                           @id @default(uuid())
+  productId         String
+  product           Product                          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name              String
+  osId              String
+  os                OperatingSystem                  @relation(fields: [osId], references: [id])
+  osVersionId       String
+  osVersion         OsVersion                        @relation(fields: [osVersionId], references: [id])
+  flavorId          String
+  flavor            Flavor                           @relation(fields: [flavorId], references: [id])
+  availabilityZones ProductVariantAvailabilityZone[]
+  continuityLevelId String?
+  continuityLevel   ContinuityLevel?                 @relation(fields: [continuityLevelId], references: [id])
+  instances         Instance[]
+  forecastLines     ForecastLine[]
+  isActive          Boolean                          @default(true)
+  createdAt         DateTime                         @default(now())
+  updatedAt         DateTime                         @updatedAt
+
+  @@unique([productId, name])
+}
+
+model ProductVariantAvailabilityZone {
+  variantId          String
+  variant            ProductVariant   @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  availabilityZoneId String
+  availabilityZone   AvailabilityZone @relation(fields: [availabilityZoneId], references: [id], onDelete: Cascade)
+
+  @@id([variantId, availabilityZoneId])
 }
 
 model UpgradePath {
-  id               String        @id @default(uuid())
-  fromProductId    String
-  fromProduct      Product       @relation("UpgradeFrom", fields: [fromProductId], references: [id])
-  toProductId      String
-  toProduct        Product       @relation("UpgradeTo", fields: [toProductId], references: [id])
-  fromVersion      String
-  toVersion        String
-  migrationType    MigrationType
-  notes            String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id            String        @id @default(uuid())
+  fromProductId String
+  fromProduct   Product       @relation("UpgradeFrom", fields: [fromProductId], references: [id])
+  toProductId   String
+  toProduct     Product       @relation("UpgradeTo", fields: [toProductId], references: [id])
+  fromVersion   String
+  toVersion     String
+  migrationType MigrationType
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 }
 
 model Flavor {
-  id          String    @id @default(uuid())
-  name        String
-  vcpu        Int
-  ramGb       Int
-  description String?
-  productId   String
-  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id            String           @id @default(uuid())
+  name          String           @unique
+  vcpu          Int
+  ramGb         Int
+  description   String?
+  variants      ProductVariant[]
   forecastLines ForecastLine[]
-  instances   Instance[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  instances     Instance[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 }
 
 model Dependency {
-  id          String           @id @default(uuid())
+  id          String         @id @default(uuid())
   productId   String
-  product     Product          @relation("ProductDependents", fields: [productId], references: [id])
+  product     Product        @relation("ProductDependents", fields: [productId], references: [id])
   dependsOnId String
-  dependsOn   Product          @relation("ProductDependencies", fields: [dependsOnId], references: [id])
+  dependsOn   Product        @relation("ProductDependencies", fields: [dependsOnId], references: [id])
   type        DependencyType
   description String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
   @@unique([productId, dependsOnId])
 }
 
 model Application {
-  id                String           @id @default(uuid())
-  name              String           @unique
-  description       String?
-  continuityLevelId String
-  continuityLevel   ContinuityLevel  @relation(fields: [continuityLevelId], references: [id])
-  owner             String
-  forecasts         Forecast[]
-  instances         Instance[]
+  id                 String              @id @default(uuid())
+  name               String              @unique
+  description        String?
+  continuityLevelId  String
+  continuityLevel    ContinuityLevel     @relation(fields: [continuityLevelId], references: [id])
+  owner              String
+  forecasts          Forecast[]
+  instances          Instance[]
   maintenanceWindows MaintenanceWindow[]
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 }
 
 model ContinuityLevel {
-  id          String        @id @default(uuid())
-  name        String        @unique
-  rtoMinutes  Int
-  rpoMinutes  Int
-  description String?
-  color       String        @default("green")
+  id           String        @id @default(uuid())
+  name         String        @unique
+  rtoMinutes   Int
+  rpoMinutes   Int
+  description  String?
+  color        String        @default("green")
   applications Application[]
-  createdAt   DateTime      @default(now())
+  variants     ProductVariant[]
+  createdAt    DateTime      @default(now())
 }
 
 model Forecast {
-  id             String         @id @default(uuid())
-  requestedBy    String
-  requesterEmail String
-  targetDate     DateTime?
-  status         ApprovalStatus @default(PENDING)
-  justification  String?
-  reviewedBy     String?
-  reviewedAt     DateTime?
+  id              String         @id @default(uuid())
+  requestedBy     String
+  requesterEmail  String
+  targetDate      DateTime?
+  status          ApprovalStatus @default(PENDING)
+  justification   String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
   rejectionReason String?
-  requestedAt    DateTime       @default(now())
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  lines          ForecastLine[]
-  instances      Instance[]
-  applicationId  String
-  application    Application   @relation(fields: [applicationId], references: [id])
-  environment    Environment    @default(DEV)
+  requestedAt     DateTime       @default(now())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  lines           ForecastLine[]
+  instances       Instance[]
+  applicationId   String
+  application     Application    @relation(fields: [applicationId], references: [id])
+  environment     Environment    @default(DEV)
 }
 
 model ForecastLine {
@@ -170,6 +197,8 @@ model ForecastLine {
   forecast   Forecast         @relation(fields: [forecastId], references: [id], onDelete: Cascade)
   productId  String
   product    Product          @relation(fields: [productId], references: [id])
+  variantId  String?
+  variant    ProductVariant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
   flavorId   String
   flavor     Flavor           @relation(fields: [flavorId], references: [id])
   azCode     String
@@ -180,31 +209,20 @@ model ForecastLine {
 }
 
 model AvailabilityZone {
-  id                    String                      @id @default(uuid())
-  code                  String                      @unique
-  name                  String
-  city                  String
-  country               String
-  region                String
-  latitude              Float
-  longitude             Float
-  isActive              Boolean                     @default(true)
-  productAvailabilities ProductAvailabilityZone[]
-  forecastLines         ForecastLine[]
-  instances             Instance[]
-  createdAt             DateTime                    @default(now())
-  updatedAt             DateTime                    @updatedAt
-}
-
-model ProductAvailabilityZone {
-  id                 String           @id @default(uuid())
-  productId          String
-  product            Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
-  availabilityZoneId String
-  availabilityZone   AvailabilityZone @relation(fields: [availabilityZoneId], references: [id], onDelete: Cascade)
-  createdAt          DateTime         @default(now())
-
-  @@unique([productId, availabilityZoneId])
+  id            String                           @id @default(uuid())
+  code          String                           @unique
+  name          String
+  city          String
+  country       String
+  region        String
+  latitude      Float
+  longitude     Float
+  isActive      Boolean                          @default(true)
+  variantZones  ProductVariantAvailabilityZone[]
+  forecastLines ForecastLine[]
+  instances     Instance[]
+  createdAt     DateTime                         @default(now())
+  updatedAt     DateTime                         @updatedAt
 }
 
 model User {
@@ -214,6 +232,11 @@ model User {
   role      UserRole @default(USER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum ComputeType {
+  PHYSICAL
+  VIRTUAL
 }
 
 enum DependencyType {
@@ -242,12 +265,6 @@ enum ResiliencyLevel {
   STANDARD
   HA
   MULTI_AZ
-}
-
-enum OptionType {
-  OS_VERSION
-  EDITION
-  FEATURE
 }
 
 enum LifecyclePhase {
@@ -310,64 +327,64 @@ model Backup {
 }
 
 model Instance {
-  id            String         @id @default(uuid())
-  name          String
-  description   String?
-  forecastId    String?
-  forecast      Forecast?      @relation(fields: [forecastId], references: [id], onDelete: SetNull)
-  applicationId String
-  application   Application    @relation(fields: [applicationId], references: [id])
-  productId     String
-  product       Product        @relation(fields: [productId], references: [id])
-  flavorId      String
-  flavor        Flavor         @relation(fields: [flavorId], references: [id])
-  lifecycleId   String?
-  lifecycle     ProductLifecycle? @relation(fields: [lifecycleId], references: [id], onDelete: SetNull)
-  azCode        String
-  az            AvailabilityZone @relation(fields: [azCode], references: [code])
-  status        InstanceStatus @default(PENDING)
-  environment   Environment    @default(DEV)
-  ipAddress     String?
-  hostname      String?
-  metadata      Json?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  startedAt     DateTime?
-  stoppedAt     DateTime?
-  terminatedAt  DateTime?
-  healthChecks  HealthCheck[]
+  id                 String            @id @default(uuid())
+  name               String
+  description        String?
+  forecastId         String?
+  forecast           Forecast?         @relation(fields: [forecastId], references: [id], onDelete: SetNull)
+  applicationId      String
+  application        Application       @relation(fields: [applicationId], references: [id])
+  productId          String
+  product            Product           @relation(fields: [productId], references: [id])
+  variantId          String?
+  variant            ProductVariant?   @relation(fields: [variantId], references: [id])
+  flavorId           String
+  flavor             Flavor            @relation(fields: [flavorId], references: [id])
+  azCode             String
+  az                 AvailabilityZone  @relation(fields: [azCode], references: [code])
+  status             InstanceStatus    @default(PENDING)
+  environment        Environment       @default(DEV)
+  ipAddress          String?
+  hostname           String?
+  metadata           Json?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  startedAt          DateTime?
+  stoppedAt          DateTime?
+  terminatedAt       DateTime?
+  healthChecks       HealthCheck[]
   maintenanceWindows MaintenanceWindow[]
-  backups       Backup[]
+  backups            Backup[]
 }
 
 model HealthCheck {
-  id              String      @id @default(uuid())
-  instanceId      String
-  instance        Instance    @relation(fields: [instanceId], references: [id], onDelete: Cascade)
-  status          HealthStatus @default(HEALTHY)
-  cpuPercent      Float       @default(0)
-  memoryPercent   Float       @default(0)
-  diskPercent     Float       @default(0)
-  responseTimeMs  Int         @default(0)
-  checkedAt       DateTime    @default(now())
-  createdAt       DateTime    @default(now())
+  id             String       @id @default(uuid())
+  instanceId     String
+  instance       Instance     @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  status         HealthStatus @default(HEALTHY)
+  cpuPercent     Float        @default(0)
+  memoryPercent  Float        @default(0)
+  diskPercent    Float        @default(0)
+  responseTimeMs Int          @default(0)
+  checkedAt      DateTime     @default(now())
+  createdAt      DateTime     @default(now())
 
   @@index([instanceId, checkedAt])
 }
 
 model MaintenanceWindow {
-  id              String             @id @default(uuid())
+  id              String            @id @default(uuid())
   instanceId      String?
-  instance        Instance?          @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  instance        Instance?         @relation(fields: [instanceId], references: [id], onDelete: SetNull)
   applicationId   String?
-  application     Application?       @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  application     Application?      @relation(fields: [applicationId], references: [id], onDelete: SetNull)
   title           String
   description     String?
   startTime       DateTime
   endTime         DateTime
-  status          MaintenanceStatus  @default(SCHEDULED)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  status          MaintenanceStatus @default(SCHEDULED)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
   @@index([instanceId])
   @@index([applicationId])

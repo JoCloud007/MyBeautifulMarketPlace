@@ -17,10 +17,9 @@ export declare enum ResiliencyLevel {
     HA = "HA",
     MULTI_AZ = "MULTI_AZ"
 }
-export declare enum OptionType {
-    OS_VERSION = "OS_VERSION",
-    EDITION = "EDITION",
-    FEATURE = "FEATURE"
+export declare enum ComputeType {
+    PHYSICAL = "PHYSICAL",
+    VIRTUAL = "VIRTUAL"
 }
 export declare enum LifecyclePhase {
     RELEASED = "RELEASED",
@@ -62,27 +61,56 @@ export interface Category {
     createdAt: string;
     updatedAt: string;
 }
-export interface ProductOption {
+export interface OperatingSystem {
     id: string;
-    productId: string;
-    type: OptionType;
-    value: string;
-    label: string;
-    isDefault: boolean;
+    family: string;
+    name: string;
+    slug: string;
+    isActive: boolean;
+    versions: OsVersion[];
     createdAt: string;
     updatedAt: string;
 }
-export interface ProductLifecycle {
+export interface OsVersion {
     id: string;
-    productId: string;
+    osId: string;
+    os: OperatingSystem;
     version: string;
     releaseDate: string;
     normalSupportEnd: string;
     extendedSupportEnd: string;
     eolDate: string;
     phase: LifecyclePhase;
+    isActive: boolean;
     createdAt: string;
     updatedAt: string;
+}
+export interface ProductVariant {
+    id: string;
+    productId: string;
+    product: Product;
+    name: string;
+    osId: string;
+    os: OperatingSystem;
+    osVersionId: string;
+    osVersion: OsVersion;
+    flavorId: string;
+    flavor: Flavor;
+    availabilityZones: ProductVariantAvailabilityZone[];
+    continuityLevelId: string | null;
+    continuityLevel: ContinuityLevel | null;
+    instances: Instance[];
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface ProductVariantAvailabilityZone {
+    id: string;
+    variantId: string;
+    variant: ProductVariant;
+    availabilityZoneId: string;
+    availabilityZone: AvailabilityZone;
+    createdAt: string;
 }
 export interface UpgradePath {
     id: string;
@@ -102,12 +130,10 @@ export interface Product {
     description: string | null;
     categoryId: string;
     category: Category;
-    flavors: Flavor[];
+    computeType: ComputeType | null;
+    variants: ProductVariant[];
     dependencies: Dependency[];
     dependentProducts: Dependency[];
-    availabilityZones: ProductAvailabilityZone[];
-    options: ProductOption[];
-    lifecycles: ProductLifecycle[];
     upgradeFrom: UpgradePath[];
     upgradeTo: UpgradePath[];
     documentation: string | null;
@@ -117,21 +143,12 @@ export interface Product {
     createdAt: string;
     updatedAt: string;
 }
-export interface ProductAvailabilityZone {
-    id: string;
-    productId: string;
-    availabilityZoneId: string;
-    availabilityZone: AvailabilityZone;
-    code?: string;
-    createdAt: string;
-}
 export interface Flavor {
     id: string;
     name: string;
     vcpu: number;
     ramGb: number;
     description: string | null;
-    productId: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -175,10 +192,10 @@ export interface Instance {
     application: Application;
     productId: string;
     product: Product;
+    variantId: string | null;
+    variant: ProductVariant | null;
     flavorId: string;
     flavor: Flavor;
-    lifecycleId: string | null;
-    lifecycle: ProductLifecycle | null;
     azCode: string;
     az: AvailabilityZone;
     status: InstanceStatus;
@@ -268,20 +285,13 @@ export interface AvailabilityZone {
     isActive: boolean;
     createdAt: string;
     updatedAt: string;
-    productAvailabilities?: {
-        id: string;
-        product: {
-            slug: string;
-            name: string;
-        };
-    }[];
 }
 export interface ProductFilters {
     category?: string;
+    computeType?: string;
     os?: string;
     flavor?: string;
     search?: string;
-    availabilityZoneIds?: string;
 }
 export interface ForecastStats {
     total: number;

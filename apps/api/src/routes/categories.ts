@@ -38,20 +38,21 @@ router.post('/', async (req, res, next) => {
   try {
     const data = createCategorySchema.parse(req.body);
 
-    // Check for duplicate slug
-    const existing = await prisma.category.findUnique({ where: { slug: data.slug } });
-    if (existing) {
-      return res.status(409).json({ error: 'A category with this slug already exists' });
+    try {
+      const category = await prisma.category.create({
+        data,
+        include: {
+          _count: { select: { products: true } },
+        },
+      });
+
+      res.status(201).json(category);
+    } catch (err: any) {
+      if (err.code === 'P2002') {
+        return res.status(409).json({ error: 'A category with this slug or name already exists' });
+      }
+      throw err;
     }
-
-    const category = await prisma.category.create({
-      data,
-      include: {
-        _count: { select: { products: true } },
-      },
-    });
-
-    res.status(201).json(category);
   } catch (err) {
     next(err);
   }
@@ -61,12 +62,13 @@ router.post('/', async (req, res, next) => {
 router.get('/:slug', async (req, res, next) => {
   try {
     const { slug } = req.params;
+    z.string().min(1).regex(/^[a-z0-9-]+$/).parse(slug);
     const category = await prisma.category.findUnique({
       where: { slug },
       include: {
         products: {
           where: { isActive: true },
-          include: { flavors: true, category: true },
+          include: { category: true, variants: { include: { os: true, osVersion: true, flavor: true } } },
         },
       },
     });

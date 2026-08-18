@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   useForecasts, useForecastStats, useCreateForecast, useUpdateForecast, useDeleteForecast,
-  useProducts, useApplications, useContinuityLevels,
+  useProducts, useApplications, useContinuityLevels, useFlavors, useAvailabilityZones,
 } from '@/hooks/useApi';
 import { TrendChart, StatusDonut, ResourceBarChart, DemandHeatmap } from '@/components/Charts';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
@@ -136,19 +136,8 @@ export default function Forecasts() {
   const { data: products } = useProducts();
   const { data: applications } = useApplications();
   const { data: continuityLevels } = useContinuityLevels();
-  const [zones, setZones] = useState<any[] | null>(null);
-  useEffect(() => {
-    const url = `${import.meta.env.VITE_API_URL || ''}/api/availability-zones`;
-    fetch(url)
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`Failed to load availability zones: ${r.status}`);
-        const contentType = r.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) throw new Error('Invalid response format');
-        return r.json();
-      })
-      .then(data => setZones(data))
-      .catch(() => setZones([]));
-  }, []);
+  const { data: allFlavors } = useFlavors();
+  const { data: zones } = useAvailabilityZones();
   const createForecast = useCreateForecast();
   const updateForecast = useUpdateForecast();
   const deleteForecast = useDeleteForecast();
@@ -171,7 +160,7 @@ export default function Forecasts() {
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const selectedDraftProduct = products?.find((p) => p.id === draftLine.productId);
-  const selectedDraftFlavor = selectedDraftProduct?.flavors.find((f: any) => f.id === draftLine.flavorId);
+  const selectedDraftFlavor = allFlavors?.find((f) => f.id === draftLine.flavorId);
   const selectedApp = applications?.find((a) => a.id === formData.applicationId);
   const appContinuityLevel = continuityLevels?.find((cl) => cl.id === selectedApp?.continuityLevelId);
 
@@ -206,7 +195,7 @@ export default function Forecasts() {
   const addLine = () => {
     if (!draftLine.productId || !draftLine.flavorId || Object.keys(draftLine.azSelections).length === 0) return;
     const p = products?.find((pr) => pr.id === draftLine.productId);
-    const f = p?.flavors.find((fl: any) => fl.id === draftLine.flavorId);
+    const f = allFlavors?.find((fl) => fl.id === draftLine.flavorId);
     if (!p || !f) return;
     const newLines = Object.entries(draftLine.azSelections).map(([azCode, quantity]) => ({
       productId: draftLine.productId,
@@ -558,7 +547,7 @@ export default function Forecasts() {
                         <tbody>
                           {lines.map((line, idx) => {
                             const p = products?.find((pr) => pr.id === line.productId);
-                            const f = p?.flavors.find((fl: any) => fl.id === line.flavorId);
+                            const f = allFlavors?.find((fl) => fl.id === line.flavorId);
                             return (
                               <tr key={idx} className="border-b border-slate-800 last:border-0">
                                 <td className="py-2 px-3 text-white">{p?.name}</td>
@@ -622,7 +611,7 @@ export default function Forecasts() {
                     <div className="space-y-2">
                       <label className="text-xs text-slate-400 uppercase tracking-wide">2. Flavor</label>
                       <div className="grid grid-cols-3 gap-2">
-                        {selectedDraftProduct.flavors.map((f: any) => (
+                        {allFlavors?.map((f) => (
                           <button
                             key={f.id}
                             type="button"
@@ -641,28 +630,16 @@ export default function Forecasts() {
                     </div>
                   )}
 
-                  {/* Step 3: OS Version (from product options) */}
-                  {selectedDraftProduct?.options?.some((opt: any) => opt.type === 'OS_VERSION') && (
+                  {/* Step 3: OS Version */}
+                  {selectedDraftProduct && (
                     <div className="space-y-2">
-                      <label className="text-xs text-slate-400 uppercase tracking-wide">3. Operating System</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {selectedDraftProduct?.options
-                          ?.filter((opt: any) => opt.type === 'OS_VERSION')
-                          .map((opt: any) => (
-                            <button
-                              key={opt.value}
-                              type="button"
-                              onClick={() => setDraftLine({ ...draftLine, osVersion: opt.value })}
-                              className={`p-2 rounded-lg border text-xs font-medium transition-all ${
-                                draftLine.osVersion === opt.value
-                                  ? 'border-blue-500 bg-blue-500/10 text-blue-400'
-                                  : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-500'
-                              }`}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
-                      </div>
+                      <label className="text-xs text-slate-400 uppercase tracking-wide">3. Operating System Version</label>
+                      <Input
+                        value={draftLine.osVersion}
+                        onChange={(e) => setDraftLine({ ...draftLine, osVersion: e.target.value })}
+                        placeholder="e.g. debian-12, windows-server-2022"
+                        className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+                      />
                     </div>
                   )}
 
@@ -697,13 +674,7 @@ export default function Forecasts() {
                     <div className="space-y-2">
                       <label className="text-xs text-slate-400 uppercase tracking-wide">5. Regions & Quantities</label>
                       <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-3 space-y-2">
-                        {zones
-                          ?.filter((z) =>
-                            selectedDraftProduct?.availabilityZones?.some(
-                              (az: any) => az.availabilityZone?.code === z.code || az.code === z.code
-                            )
-                          )
-                          .map((z) => {
+                        {zones?.map((z) => {
                             const isSelected = draftLine.azSelections[z.code] !== undefined;
                             return (
                               <div key={z.id} className="flex items-center gap-3">
@@ -888,7 +859,7 @@ export default function Forecasts() {
                   )}
                   {lines.map((line, idx) => {
                     const p = products?.find((pr) => pr.id === line.productId);
-                    const f = p?.flavors.find((fl: any) => fl.id === line.flavorId);
+                    const f = allFlavors?.find((fl) => fl.id === line.flavorId);
                     return (
                       <div key={idx} className="space-y-1">
                         <div className="flex justify-between text-sm">

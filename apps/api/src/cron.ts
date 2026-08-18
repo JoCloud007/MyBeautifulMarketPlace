@@ -3,12 +3,12 @@ import { PrismaClient, LifecyclePhase } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-/** Update lifecycle phases based on current date */
+/** Update OS version lifecycle phases based on current date */
 export async function updateLifecyclePhases() {
   const now = new Date();
 
-  // RELEASED -> NORMAL_SUPPORT (product has been released)
-  await prisma.productLifecycle.updateMany({
+  // RELEASED -> NORMAL_SUPPORT (version has been released)
+  await prisma.osVersion.updateMany({
     where: {
       phase: LifecyclePhase.RELEASED,
       releaseDate: { lte: now },
@@ -17,7 +17,7 @@ export async function updateLifecyclePhases() {
   });
 
   // NORMAL_SUPPORT -> EXTENDED_SUPPORT (normal support has ended)
-  await prisma.productLifecycle.updateMany({
+  await prisma.osVersion.updateMany({
     where: {
       phase: LifecyclePhase.NORMAL_SUPPORT,
       normalSupportEnd: { lt: now },
@@ -26,7 +26,7 @@ export async function updateLifecyclePhases() {
   });
 
   // EXTENDED_SUPPORT -> NO_SUPPORT (extended support has ended)
-  await prisma.productLifecycle.updateMany({
+  await prisma.osVersion.updateMany({
     where: {
       phase: LifecyclePhase.EXTENDED_SUPPORT,
       extendedSupportEnd: { lt: now },
@@ -35,7 +35,7 @@ export async function updateLifecyclePhases() {
   });
 
   // NO_SUPPORT -> EOL (when eolDate has passed)
-  await prisma.productLifecycle.updateMany({
+  await prisma.osVersion.updateMany({
     where: {
       phase: LifecyclePhase.NO_SUPPORT,
       eolDate: { lt: now },
@@ -43,7 +43,7 @@ export async function updateLifecyclePhases() {
     data: { phase: LifecyclePhase.EOL },
   });
 
-  console.log(`[${new Date().toISOString()}] Lifecycle phases updated`);
+  console.log(`[${new Date().toISOString()}] OS version lifecycle phases updated`);
 }
 
 /** Start all cron jobs */

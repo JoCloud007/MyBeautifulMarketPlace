@@ -33,6 +33,9 @@ RUN npm run build -w packages/shared-types
 
 WORKDIR /app/apps/api
 
+# Generate Prisma Client for the current schema
+RUN npx prisma generate
+
 EXPOSE 3001
 
 CMD ["npx", "tsx", "watch", "src/index.ts"]

@@ -23,6 +23,8 @@ import { backupRoutes } from './routes/backups';
 import { complianceRoutes } from './routes/compliance';
 import { topologyRoutes } from './routes/topology';
 import { maintenanceOrchestratorRoutes } from './routes/maintenance-orchestrator';
+import { osRoutes } from './routes/os';
+import { variantRoutes } from './routes/variants';
 import { startCronJobs } from './cron';
 
 dotenv.config();
@@ -63,6 +65,8 @@ app.use('/api/backups', backupRoutes);
 app.use('/api/compliance', complianceRoutes);
 app.use('/api/topology', topologyRoutes);
 app.use('/api/maintenance-orchestrator', maintenanceOrchestratorRoutes);
+app.use('/api/os', osRoutes);
+app.use('/api/variants', variantRoutes);
 
 // Conditional admin API key protection (fail-closed: requires key if set)
 const adminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {

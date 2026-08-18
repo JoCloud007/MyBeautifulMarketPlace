@@ -11,7 +11,7 @@ import {
   PackageOpen,
   ChevronRight,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
@@ -28,9 +28,6 @@ const iconMap: Record<string, React.ElementType> = {
   Server,
   Monitor,
 };
-
-const osOptions = ['Linux', 'Windows', 'ESXi'];
-const flavorOptions = ['Small', 'Medium', 'Large', 'XL'];
 
 const sortLabels: Record<string, string> = {
   newest: 'Newest',
@@ -60,6 +57,7 @@ export default function Marketplace() {
   const [categories, setCategories] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [groupByCategory, setGroupByCategory] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,9 +101,8 @@ export default function Marketplace() {
 
   const filteredProducts = products?.filter((p: any) => {
     if (filters.category && p.category?.slug !== filters.category) return false;
-    if (filters.os && p.os !== filters.os) return false;
+    if (filters.computeType && p.computeType !== filters.computeType) return false;
     if (filters.search && !p.name.toLowerCase().includes(filters.search.toLowerCase())) return false;
-    if (filters.flavor && p.flavor !== filters.flavor) return false;
     return true;
   }) ?? [];
 
@@ -115,6 +112,17 @@ export default function Marketplace() {
       if (sortBy === 'category') return (a.category?.name || '').localeCompare(b.category?.name || '');
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
+
+  const groupedProducts = useMemo(() => {
+    if (!groupByCategory) return null;
+    const map: Record<string, any[]> = {};
+    for (const p of sortedProducts) {
+      const cat = p.category?.name || 'Uncategorized';
+      if (!map[cat]) map[cat] = [];
+      map[cat].push(p);
+    }
+    return map;
+  }, [sortedProducts, groupByCategory]);
 
   const hasError = error && !products;
 
@@ -150,6 +158,59 @@ export default function Marketplace() {
       });
   };
 
+  const renderProductCard = (product: any, index: number) => {
+    const Icon = iconMap[product.category?.icon || ''] || Server;
+    const isCompute = product.category?.slug === 'compute';
+    const variantCount = product.variants?.length ?? 0;
+    return (
+      <AnimatedCard key={product.id} delay={Math.min(index * 80, 400)}>
+        <Link to={`/products/${product.slug}`} className="group block h-full">
+          <Card className="h-full bg-slate-900 border-slate-800 transition-all duration-300 hover:border-blue-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-1">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
+                  <Icon className="h-5 w-5 text-blue-500 transition-transform group-hover:scale-110" />
+                </div>
+                <Badge variant="secondary" className="text-xs bg-slate-800 text-slate-300 border-slate-700">
+                  {product.category?.name}
+                </Badge>
+              </div>
+              <CardTitle className="text-lg text-white mt-3 group-hover:text-blue-400 transition-colors">
+                {product.name}
+              </CardTitle>
+              <CardDescription className="text-slate-400 line-clamp-2">
+                {product.description}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="flex flex-wrap items-center gap-2">
+                {isCompute && product.computeType && (
+                  <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
+                    {product.computeType}
+                  </Badge>
+                )}
+                {isCompute && (
+                  <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
+                    {variantCount} variant{variantCount !== 1 ? 's' : ''}
+                  </Badge>
+                )}
+                {product.dependencies && product.dependencies.length > 0 && (
+                  <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
+                    {product.dependencies.length} dependency{product.dependencies.length > 1 ? 's' : ''}
+                  </Badge>
+                )}
+              </div>
+              <div className="mt-4 flex items-center text-xs text-blue-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                View details
+                <ChevronRight className="ml-1 h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+      </AnimatedCard>
+    );
+  };
+
   return (
     <div className="space-y-6 sm:space-y-8">
       {/* Header */}
@@ -181,28 +242,13 @@ export default function Marketplace() {
               </div>
               <div className="flex gap-2 flex-wrap items-center">
                 <select
-                  value={filters.os || ''}
-                  onChange={(e) => setFilters({ os: e.target.value || undefined })}
+                  value={filters.computeType || ''}
+                  onChange={(e) => setFilters({ computeType: e.target.value || undefined })}
                   className="h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-900 px-3 text-sm text-white"
                 >
-                  <option value="">All OS</option>
-                  {osOptions.map((os) => (
-                    <option key={os} value={os}>
-                      {os}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={filters.flavor || ''}
-                  onChange={(e) => setFilters({ flavor: e.target.value || undefined })}
-                  className="h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-900 px-3 text-sm text-white"
-                >
-                  <option value="">All flavors</option>
-                  {flavorOptions.map((fl) => (
-                    <option key={fl} value={fl}>
-                      {fl}
-                    </option>
-                  ))}
+                  <option value="">All Types</option>
+                  <option value="PHYSICAL">Physical</option>
+                  <option value="VIRTUAL">Virtual</option>
                 </select>
                 <div className="relative">
                   <select
@@ -218,6 +264,19 @@ export default function Marketplace() {
                   </select>
                   <ArrowUpDown className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 pointer-events-none" />
                 </div>
+                <Button
+                  size="sm"
+                  variant={groupByCategory ? 'default' : 'outline'}
+                  onClick={() => setGroupByCategory(!groupByCategory)}
+                  className={cn(
+                    'min-h-[36px]',
+                    groupByCategory
+                      ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                      : 'border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white'
+                  )}
+                >
+                  Group by Category
+                </Button>
                 {activeFilterCount > 0 && (
                   <Button variant="ghost" size="sm" onClick={clearFilters} className="text-slate-400 hover:text-white min-h-[44px]">
                     <X className="h-4 w-4 mr-1" />
@@ -333,56 +392,25 @@ export default function Marketplace() {
                 </Button>
               )}
             </div>
+          ) : groupByCategory && groupedProducts ? (
+            <div className="space-y-8 animate-fade-in">
+              {Object.entries(groupedProducts).map(([categoryName, catProducts]) => (
+                <div key={categoryName}>
+                  <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    {categoryName}
+                    <Badge variant="secondary" className="text-xs bg-slate-800 text-slate-300 border-slate-700">
+                      {catProducts.length}
+                    </Badge>
+                  </h2>
+                  <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                    {catProducts.map((product, i) => renderProductCard(product, i))}
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {sortedProducts.map((product, i) => {
-                const Icon = iconMap[product.category?.icon || ''] || Server;
-                return (
-                  <AnimatedCard key={product.id} delay={Math.min(i * 80, 400)}>
-                    <Link to={`/products/${product.slug}`} className="group block h-full">
-                      <Card className="h-full bg-slate-900 border-slate-800 transition-all duration-300 hover:border-blue-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-1">
-                        <CardHeader className="pb-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
-                              <Icon className="h-5 w-5 text-blue-500 transition-transform group-hover:scale-110" />
-                            </div>
-                            <Badge variant="secondary" className="text-xs bg-slate-800 text-slate-300 border-slate-700">
-                              {product.category?.name}
-                            </Badge>
-                          </div>
-                          <CardTitle className="text-lg text-white mt-3 group-hover:text-blue-400 transition-colors">
-                            {product.name}
-                          </CardTitle>
-                          <CardDescription className="text-slate-400 line-clamp-2">
-                            {product.description}
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent className="pt-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {product.os && (
-                              <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
-                                {product.os}
-                              </Badge>
-                            )}
-                            <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
-                              {product.flavors?.length || 0} flavors
-                            </Badge>
-                            {product.dependencies && product.dependencies.length > 0 && (
-                              <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
-                                {product.dependencies.length} dependency{product.dependencies.length > 1 ? 's' : ''}
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="mt-4 flex items-center text-xs text-blue-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                            View details
-                            <ChevronRight className="ml-1 h-3 w-3 transition-transform group-hover:translate-x-0.5" />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  </AnimatedCard>
-                );
-              })}
+              {sortedProducts.map((product, i) => renderProductCard(product, i))}
             </div>
           )}
         </>

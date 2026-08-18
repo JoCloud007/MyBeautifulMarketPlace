@@ -8,6 +8,7 @@ interface AppState {
     os?: string;
     flavor?: string;
     search?: string;
+    computeType?: string;
   };
   sortBy: SortOption;
   setFilters: (filters: Partial<AppState['filters']>) => void;
