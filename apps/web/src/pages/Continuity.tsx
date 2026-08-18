@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useApplications, useContinuityLevels, useInstances, useHealthChecks, useMaintenanceWindows } from '@/hooks/useApi';
+import { useApplications, useContinuityLevels, useHealthChecks, useMaintenanceWindows } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -47,15 +47,14 @@ const continuityColor: Record<string, string> = {
 export default function ContinuityPage() {
   const { data: applications, isLoading: appsLoading, isError: appsError } = useApplications();
   const { data: continuityLevels, isLoading: clLoading } = useContinuityLevels();
-  const { data: instances, isLoading: instLoading } = useInstances();
   const { data: healthChecks, isLoading: hcLoading } = useHealthChecks();
   const { data: maintenanceWindows, isLoading: mwLoading } = useMaintenanceWindows();
 
-  const isLoading = appsLoading || clLoading || instLoading || hcLoading || mwLoading;
+  const isLoading = appsLoading || clLoading || hcLoading || mwLoading;
   const isError = appsError;
 
   const stats = useMemo(() => {
-    if (!applications || !instances || !healthChecks || !maintenanceWindows) return null;
+    if (!applications || !healthChecks || !maintenanceWindows) return null;
 
     const appHealthMap = new Map<string, HealthStatus>();
     for (const check of healthChecks) {
@@ -76,14 +75,13 @@ export default function ContinuityPage() {
 
     return {
       totalApps: applications.length,
-      totalInstances: instances.length,
       healthyApps,
       degradedApps,
       unhealthyApps,
       upcomingMaintenance: upcomingMw.length,
       avgRto: continuityLevels ? Math.round(continuityLevels.reduce((sum, cl) => sum + cl.rtoMinutes, 0) / (continuityLevels.length || 1)) : 0,
     };
-  }, [applications, instances, healthChecks, maintenanceWindows, continuityLevels]);
+  }, [applications, healthChecks, maintenanceWindows, continuityLevels]);
 
   const appsByContinuity = useMemo(() => {
     if (!applications || !continuityLevels) return [];
@@ -133,7 +131,6 @@ export default function ContinuityPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-white">{stats?.totalApps}</div>
-                <p className="text-xs text-slate-500 mt-1">{stats?.totalInstances} instances total</p>
               </CardContent>
             </Card>
           </AnimatedSection>
@@ -214,7 +211,6 @@ export default function ContinuityPage() {
                     ) : (
                       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                         {cl.apps.map((app) => {
-                          const appInstances = instances?.filter((i) => i.applicationId === app.id) ?? [];
                           const appHealth = healthChecks?.filter((h) => h.instance?.applicationId === app.id) ?? [];
                           const worstHealth = appHealth.length > 0
                             ? appHealth.some((h) => h.status === 'UNHEALTHY')
@@ -228,7 +224,6 @@ export default function ContinuityPage() {
                               <div className={`w-2 h-2 rounded-full ${worstHealth === 'UNHEALTHY' ? 'bg-red-500' : worstHealth === 'DEGRADED' ? 'bg-amber-500' : worstHealth === 'HEALTHY' ? 'bg-emerald-500' : 'bg-slate-600'}`} />
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium text-white truncate">{app.name}</p>
-                                <p className="text-xs text-slate-500">{appInstances.length} instances</p>
                               </div>
                               {worstHealth && (
                                 <span className={`text-xs ${healthColor[worstHealth]}`}>
