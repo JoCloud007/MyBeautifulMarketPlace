@@ -1,15 +1,7 @@
 import request from 'supertest';
 import express from 'express';
 import { adminRoutes } from '../routes/admin';
-
-var prismaMock: any = {};
-
-jest.mock('@prisma/client', () => ({
-  PrismaClient: jest.fn().mockImplementation(() => {
-    console.log('DEBUG mock factory called, prismaMock keys:', Object.keys(prismaMock));
-    return prismaMock;
-  }),
-}));
+import { prismaMock } from '../__mocks__/@prisma/client';
 
 function createApp() {
   const app = express();
@@ -87,6 +79,9 @@ describe('Admin Routes', () => {
       count: jest.fn(),
       findMany: jest.fn(),
     };
+    prismaMock.zone = {
+      count: jest.fn(),
+    };
     prismaMock.productAvailabilityZone = {
       deleteMany: jest.fn(),
     };
@@ -115,6 +110,9 @@ describe('Admin Routes', () => {
       prismaMock.forecast.count.mockResolvedValue(3);
       prismaMock.user.count.mockResolvedValue(2);
       prismaMock.availabilityZone.count.mockResolvedValue(5);
+      prismaMock.zone.count.mockResolvedValue(2);
+      prismaMock.application.count.mockResolvedValue(0);
+      prismaMock.continuityLevel.count.mockResolvedValue(0);
       prismaMock.forecast.findMany.mockResolvedValue([
         { id: 'f1', lines: [{ product: { name: 'VM' }, flavor: { name: 'Small' } }] },
       ]);
@@ -123,7 +121,7 @@ describe('Admin Routes', () => {
       const res = await request(app).get('/api/admin/dashboard');
 
       expect(res.status).toBe(200);
-      expect(res.body.counts).toEqual({ products: 8, categories: 4, forecasts: 3, users: 2, availabilityZones: 5, applications: 0, continuityLevels: 0 });
+      expect(res.body.counts).toEqual({ products: 8, categories: 4, forecasts: 3, users: 2, availabilityZones: 5, zones: 2, applications: 0, continuityLevels: 0 });
       expect(res.body.recentForecasts).toHaveLength(1);
     });
   });

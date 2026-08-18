@@ -62,6 +62,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { MultiPickupInput } from '@/components/ui/multi-pickup';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -156,7 +157,7 @@ function ResponsiveTable({
     );
   }
 
-  if (!children) {
+  if (!children || (Array.isArray(children) && children.length === 0)) {
     return (
       <div className="text-center py-12">
         <p className="text-lg font-medium text-slate-400">{emptyMessage}</p>
@@ -489,27 +490,12 @@ function OSSection() {
                 <option value="ON_DEMAND">On Demand</option>
               </Select>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Zones</label>
-              <div className="flex flex-wrap gap-2">
-                {allZones?.map((z) => (
-                  <label key={z.id} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.zoneIds.includes(z.id)}
-                      onChange={(e) => {
-                        const ids = e.target.checked
-                          ? [...form.zoneIds, z.id]
-                          : form.zoneIds.filter((id) => id !== z.id);
-                        setForm({ ...form, zoneIds: ids });
-                      }}
-                      className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600"
-                    />
-                    {z.name}
-                  </label>
-                ))}
-              </div>
-            </div>
+            <MultiPickupInput
+              label="Zones"
+              values={form.zoneIds}
+              onChange={(ids) => setForm({ ...form, zoneIds: ids })}
+              options={allZones?.map((z) => ({ id: z.id, label: z.name })) ?? []}
+            />
             <div className="flex items-center gap-2">
               <input type="checkbox" id="osActive" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
               <label htmlFor="osActive" className="text-sm text-slate-300">Active</label>
@@ -779,25 +765,12 @@ function ProductsSection() {
               <Textarea value={form.roadmap} onChange={(e) => setForm({ ...form, roadmap: e.target.value })} rows={3} className="bg-slate-950 border-slate-700 text-white" />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Zones</label>
-              <div className="flex flex-wrap gap-2">
-                {allZones?.map((z) => (
-                  <label key={z.id} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.zoneIds.includes(z.id)}
-                      onChange={(e) => {
-                        const ids = e.target.checked
-                          ? [...form.zoneIds, z.id]
-                          : form.zoneIds.filter((id) => id !== z.id);
-                        setForm({ ...form, zoneIds: ids });
-                      }}
-                      className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600"
-                    />
-                    {z.name}
-                  </label>
-                ))}
-              </div>
+              <MultiPickupInput
+                label="Zones"
+                values={form.zoneIds}
+                onChange={(ids) => setForm({ ...form, zoneIds: ids })}
+                options={allZones?.map((z) => ({ id: z.id, label: z.name })) ?? []}
+              />
             </div>
             <div className="flex items-center gap-2">
               <input type="checkbox" id="isActive" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
@@ -1033,27 +1006,12 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
                 ))}
               </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Zones</label>
-              <div className="flex flex-wrap gap-2">
-                {allZones?.map((z) => (
-                  <label key={z.id} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={variantForm.zoneIds.includes(z.id)}
-                      onChange={(e) => {
-                        const ids = e.target.checked
-                          ? [...variantForm.zoneIds, z.id]
-                          : variantForm.zoneIds.filter((id) => id !== z.id);
-                        setVariantForm({ ...variantForm, zoneIds: ids });
-                      }}
-                      className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600"
-                    />
-                    {z.name}
-                  </label>
-                ))}
-              </div>
-            </div>
+            <MultiPickupInput
+              label="Zones"
+              values={variantForm.zoneIds}
+              onChange={(ids) => setVariantForm({ ...variantForm, zoneIds: ids })}
+              options={allZones?.map((z) => ({ id: z.id, label: z.name })) ?? []}
+            />
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-300">Continuity Level</label>
               <Select value={variantForm.continuityLevelId} onChange={(e) => setVariantForm({ ...variantForm, continuityLevelId: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
@@ -1308,27 +1266,12 @@ function FlavorsSection() {
               <div className="space-y-2"><label className="text-sm font-medium text-slate-300">RAM (GB)</label><Input type="number" value={form.ramGb} onChange={(e) => setForm({ ...form, ramGb: parseInt(e.target.value) || 0 })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             </div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white" /></div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Zones</label>
-              <div className="flex flex-wrap gap-2">
-                {allZones?.map((z) => (
-                  <label key={z.id} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={form.zoneIds.includes(z.id)}
-                      onChange={(e) => {
-                        const ids = e.target.checked
-                          ? [...form.zoneIds, z.id]
-                          : form.zoneIds.filter((id) => id !== z.id);
-                        setForm({ ...form, zoneIds: ids });
-                      }}
-                      className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600"
-                    />
-                    {z.name}
-                  </label>
-                ))}
-              </div>
-            </div>
+            <MultiPickupInput
+              label="Zones"
+              values={form.zoneIds}
+              onChange={(ids) => setForm({ ...form, zoneIds: ids })}
+              options={allZones?.map((z) => ({ id: z.id, label: z.name })) ?? []}
+            />
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
               <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
