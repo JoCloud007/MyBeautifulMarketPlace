@@ -104,6 +104,7 @@ export interface ProductVariant {
     flavorId: string;
     flavor: Flavor;
     availabilityZones: ProductVariantAvailabilityZone[];
+    zones: ProductVariantZone[];
     continuityLevelId: string | null;
     continuityLevel: ContinuityLevel | null;
     instances: Instance[];
@@ -117,6 +118,26 @@ export interface ProductVariantAvailabilityZone {
     variant: ProductVariant;
     availabilityZoneId: string;
     availabilityZone: AvailabilityZone;
+}
+export interface Zone {
+    id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    isActive: boolean;
+    availabilityZones: ZoneAvailabilityZone[];
+    createdAt: string;
+    updatedAt: string;
+}
+export interface ZoneAvailabilityZone {
+    zoneId: string;
+    availabilityZoneId: string;
+    availabilityZone: AvailabilityZone;
+}
+export interface ProductVariantZone {
+    variantId: string;
+    zoneId: string;
+    zone: Zone;
 }
 export interface UpgradePath {
     id: string;
@@ -312,6 +333,7 @@ export interface AdminDashboard {
         forecasts: number;
         users: number;
         availabilityZones: number;
+        zones: number;
         applications: number;
         continuityLevels: number;
     };

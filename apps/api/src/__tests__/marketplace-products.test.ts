@@ -61,7 +61,7 @@ describe('Product Routes — Marketplace Feature', () => {
           slug: 'virtual-machine',
           category: { id: CAT_COMPUTE, name: 'Compute', slug: 'compute' },
           computeType: 'VIRTUAL',
-          variants: [{ id: 'v1', name: 'Debian 12 - Small', os: { name: 'Debian' }, flavor: { name: 'Small' } }],
+          variants: [{ id: 'v1', name: 'Debian 12 - Small', os: { name: 'Debian' }, flavor: { name: 'Small' }, zones: [] }],
           dependencies: [],
           dependentProducts: [],
           upgradeFrom: [],

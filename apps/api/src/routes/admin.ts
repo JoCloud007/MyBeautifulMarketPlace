@@ -50,12 +50,13 @@ const idParamSchema = z.string().uuid();
 // GET /api/admin/dashboard
 router.get('/dashboard', async (_req, res, next) => {
   try {
-    const [productCount, categoryCount, forecastCount, userCount, azCount, applicationCount, continuityLevelCount] = await Promise.all([
+    const [productCount, categoryCount, forecastCount, userCount, azCount, zoneCount, applicationCount, continuityLevelCount] = await Promise.all([
       prisma.product.count(),
       prisma.category.count(),
       prisma.forecast.count(),
       prisma.user.count(),
       prisma.availabilityZone.count(),
+      prisma.zone.count(),
       prisma.application.count(),
       prisma.continuityLevel.count(),
     ]);
@@ -67,7 +68,7 @@ router.get('/dashboard', async (_req, res, next) => {
     });
 
     res.json({
-      counts: { products: productCount, categories: categoryCount, forecasts: forecastCount, users: userCount, availabilityZones: azCount, applications: applicationCount, continuityLevels: continuityLevelCount },
+      counts: { products: productCount, categories: categoryCount, forecasts: forecastCount, users: userCount, availabilityZones: azCount, zones: zoneCount, applications: applicationCount, continuityLevels: continuityLevelCount },
       recentForecasts,
     });
   } catch (err) {
@@ -83,7 +84,7 @@ router.get('/products', async (_req, res, next) => {
     const products = await prisma.product.findMany({
       include: {
         category: true,
-        variants: { include: { os: true, osVersion: true, flavor: true, availabilityZones: { include: { availabilityZone: true } }, continuityLevel: true } },
+        variants: { include: { os: true, osVersion: true, flavor: true, availabilityZones: { include: { availabilityZone: true } }, zones: { include: { zone: true } }, continuityLevel: true } },
         _count: { select: { forecastLines: true, variants: true, instances: true } },
       },
       orderBy: { updatedAt: 'desc' },
@@ -165,7 +166,7 @@ router.patch('/products/:id', async (req, res, next) => {
     const product = await prisma.product.update({
       where: { id },
       data,
-      include: { category: true, variants: { include: { os: true, osVersion: true, flavor: true, availabilityZones: { include: { availabilityZone: true } }, continuityLevel: true } } },
+      include: { category: true, variants: { include: { os: true, osVersion: true, flavor: true, availabilityZones: { include: { availabilityZone: true } }, zones: { include: { zone: true } }, continuityLevel: true } } },
     });
     res.json(product);
   } catch (err) {

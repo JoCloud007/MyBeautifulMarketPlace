@@ -85,6 +85,7 @@ model ProductVariant {
   flavorId          String
   flavor            Flavor                           @relation(fields: [flavorId], references: [id])
   availabilityZones ProductVariantAvailabilityZone[]
+  zones             ProductVariantZone[]
   continuityLevelId String?
   continuityLevel   ContinuityLevel?                 @relation(fields: [continuityLevelId], references: [id])
   instances         Instance[]
@@ -221,10 +222,41 @@ model AvailabilityZone {
   longitude     Float
   isActive      Boolean                          @default(true)
   variantZones  ProductVariantAvailabilityZone[]
+  zones         ZoneAvailabilityZone[]
   forecastLines ForecastLine[]
   instances     Instance[]
   createdAt     DateTime                         @default(now())
   updatedAt     DateTime                         @updatedAt
+}
+
+model Zone {
+  id                  String               @id @default(uuid())
+  name                String               @unique
+  slug                String               @unique
+  description         String?
+  isActive            Boolean              @default(true)
+  availabilityZones   ZoneAvailabilityZone[]
+  variants            ProductVariantZone[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model ZoneAvailabilityZone {
+  zoneId             String
+  zone               Zone             @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  availabilityZoneId String
+  availabilityZone   AvailabilityZone @relation(fields: [availabilityZoneId], references: [id], onDelete: Cascade)
+
+  @@id([zoneId, availabilityZoneId])
+}
+
+model ProductVariantZone {
+  variantId   String
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  zoneId      String
+  zone        Zone           @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@id([variantId, zoneId])
 }
 
 model User {

@@ -68,12 +68,32 @@ describe('Product Variant API', () => {
       expect(schema).toContain('variants          ProductVariant[]');
     });
 
-    test('ProductVariant links OS, Version, Flavor, AZs', () => {
+    test('ProductVariant links OS, Version, Flavor, AZs, Zones', () => {
       expect(schema).toContain('model ProductVariant');
       expect(schema).toContain('osId              String');
       expect(schema).toContain('osVersionId       String');
       expect(schema).toContain('flavorId          String');
       expect(schema).toContain('availabilityZones ProductVariantAvailabilityZone[]');
+      expect(schema).toContain('zones             ProductVariantZone[]');
+    });
+
+    test('Zone model exists with required fields', () => {
+      expect(schema).toContain('model Zone');
+      expect(schema).toContain('name                String');
+      expect(schema).toContain('slug                String');
+      expect(schema).toContain('isActive            Boolean');
+      expect(schema).toContain('availabilityZones   ZoneAvailabilityZone[]');
+      expect(schema).toContain('variants            ProductVariantZone[]');
+    });
+
+    test('ZoneAvailabilityZone join table exists', () => {
+      expect(schema).toContain('model ZoneAvailabilityZone');
+      expect(schema).toContain('@@id([zoneId, availabilityZoneId])');
+    });
+
+    test('ProductVariantZone join table exists', () => {
+      expect(schema).toContain('model ProductVariantZone');
+      expect(schema).toContain('@@id([variantId, zoneId])');
     });
 
     test('Flavor is global (no productId)', () => {

@@ -7,6 +7,9 @@ async function main() {
 
   // Clean existing data
   try {
+    await prisma.productVariantZone.deleteMany();
+    await prisma.zoneAvailabilityZone.deleteMany();
+    await prisma.zone.deleteMany();
     await prisma.forecast.deleteMany();
     await prisma.healthCheck.deleteMany();
     await prisma.maintenanceWindow.deleteMany();
@@ -53,6 +56,18 @@ async function main() {
   });
 
   const allAzs = [parisAz1, parisAz2, london, newYork, singapore, hongKong];
+
+  // Create Zones
+  const zoneToto = await prisma.zone.create({
+    data: { name: 'bubble-toto', slug: 'bubble-toto', isActive: true }
+  });
+  const zoneProd = await prisma.zone.create({
+    data: { name: 'bubble-prod', slug: 'bubble-prod', isActive: true }
+  });
+
+  // Link zones to AZs
+  await prisma.zoneAvailabilityZone.create({ data: { zoneId: zoneToto.id, availabilityZoneId: parisAz1.id } });
+  await prisma.zoneAvailabilityZone.create({ data: { zoneId: zoneProd.id, availabilityZoneId: parisAz2.id } });
 
   // Create Continuity Levels
   const clLow = await prisma.continuityLevel.create({
@@ -300,6 +315,7 @@ async function main() {
               { availabilityZoneId: singapore.id },
             ],
           },
+          zones: { create: [{ zoneId: zoneToto.id }] },
         },
       });
       vmVariants.push(variant);
@@ -326,6 +342,7 @@ async function main() {
               { availabilityZoneId: newYork.id },
             ],
           },
+          zones: { create: [{ zoneId: zoneProd.id }] },
         },
       });
       hpcVariants.push(variant);

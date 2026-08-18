@@ -28,6 +28,10 @@ import {
   useCreateAvailabilityZone,
   useUpdateAvailabilityZone,
   useDeleteAvailabilityZone,
+  useZones,
+  useCreateZone,
+  useUpdateZone,
+  useDeleteZone,
   useInstances,
   useCreateInstance,
   useUpdateInstance,
@@ -90,7 +94,7 @@ import {
   ChevronRight,
   Box,
 } from 'lucide-react';
-import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType } from '@cloudmarket/shared-types';
+import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ApprovalStatus, { label: string; color: string }> = {
   PENDING: { label: 'Pending', color: 'border-amber-500/20 text-amber-500' },
@@ -196,6 +200,7 @@ function DashboardSection({ onNavigate }: { onNavigate: (tab: string) => void })
     { label: 'Users', value: counts.users ?? 0, icon: Users, color: 'text-emerald-400', tab: 'users' },
     { label: 'Applications', value: counts.applications ?? 0, icon: Activity, color: 'text-cyan-400', tab: 'applications' },
     { label: 'Continuity Levels', value: counts.continuityLevels ?? 0, icon: CheckCircle, color: 'text-rose-400', tab: 'continuity-levels' },
+    { label: 'Zones', value: counts.zones ?? 0, icon: Box, color: 'text-indigo-400', tab: 'zones' },
   ];
 
   if (isError) {
@@ -205,13 +210,13 @@ function DashboardSection({ onNavigate }: { onNavigate: (tab: string) => void })
   return (
     <div className="space-y-6">
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, i) => (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
+          {Array.from({ length: 7 }).map((_, i) => (
             <Skeleton key={i} className="h-28 rounded-lg bg-slate-800 animate-pulse-soft" />
           ))}
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
           {countCards.map((card, i) => {
             const Icon = card.icon;
             return (
@@ -759,6 +764,7 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
   const { data: allFlavors } = useFlavors();
   const { data: allOS } = useOperatingSystems();
   const { data: allAZs } = useAvailabilityZones();
+  const { data: allZones } = useZones();
   const { data: allCL } = useContinuityLevels();
   const createVariant = useCreateVariant();
   const updateVariant = useUpdateVariant();
@@ -767,11 +773,11 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
   const [variantOpen, setVariantOpen] = useState(false);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
   const [variantForm, setVariantForm] = useState({
-    name: '', osId: '', osVersionId: '', flavorId: '', availabilityZoneIds: [] as string[], continuityLevelId: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType,
+    name: '', osId: '', osVersionId: '', flavorId: '', availabilityZoneIds: [] as string[], zoneIds: [] as string[], continuityLevelId: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType,
   });
 
   const resetVariantForm = () => {
-    setVariantForm({ name: '', osId: '', osVersionId: '', flavorId: '', availabilityZoneIds: [], continuityLevelId: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType });
+    setVariantForm({ name: '', osId: '', osVersionId: '', flavorId: '', availabilityZoneIds: [], zoneIds: [], continuityLevelId: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType });
     setEditingVariant(null);
   };
 
@@ -784,6 +790,7 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
       osVersionId: v.osVersionId,
       flavorId: v.flavorId,
       availabilityZoneIds: v.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [],
+      zoneIds: v.zones?.map((z: any) => z.zoneId) ?? [],
       continuityLevelId: v.continuityLevelId || '',
       isActive: v.isActive,
       availabilityType: (v.availabilityType as AvailabilityType) || 'STANDARD',
@@ -953,6 +960,27 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
                       className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600"
                     />
                     {az.code}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Zones</label>
+              <div className="flex flex-wrap gap-2">
+                {allZones?.map((z) => (
+                  <label key={z.id} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={variantForm.zoneIds.includes(z.id)}
+                      onChange={(e) => {
+                        const ids = e.target.checked
+                          ? [...variantForm.zoneIds, z.id]
+                          : variantForm.zoneIds.filter((id) => id !== z.id);
+                        setVariantForm({ ...variantForm, zoneIds: ids });
+                      }}
+                      className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600"
+                    />
+                    {z.name}
                   </label>
                 ))}
               </div>
@@ -1773,6 +1801,176 @@ function AvailabilityZonesSection() {
   );
 }
 
+// ============ ZONES SECTION ============
+function ZonesSection() {
+  const { data: zones, isLoading, isError, refetch } = useZones();
+  const { data: allAZs } = useAvailabilityZones();
+  const createZone = useCreateZone();
+  const updateZone = useUpdateZone();
+  const deleteZone = useDeleteZone();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<Zone | null>(null);
+  const [form, setForm] = useState({
+    name: '', slug: '', description: '', isActive: true, availabilityZoneIds: [] as string[],
+  });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const resetForm = () => {
+    setForm({ name: '', slug: '', description: '', isActive: true, availabilityZoneIds: [] });
+    setEditing(null);
+  };
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (z: Zone) => {
+    setEditing(z);
+    setForm({
+      name: z.name,
+      slug: z.slug,
+      description: z.description || '',
+      isActive: z.isActive,
+      availabilityZoneIds: z.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [],
+    });
+    setIsOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload: any = { ...form };
+    if (!payload.description) delete payload.description;
+    if (editing) await updateZone.mutateAsync({ id: editing.id, ...payload });
+    else await createZone.mutateAsync(payload);
+    setIsOpen(false); resetForm();
+  };
+
+  const handleDelete = (id: string) => {
+    setConfirmDelete({ open: true, id });
+  };
+  const handleConfirmDelete = async () => {
+    if (confirmDelete.id) {
+      await deleteZone.mutateAsync(confirmDelete.id);
+    }
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  const filtered = zones?.filter((z) =>
+    z.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    z.slug.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (isError) return <QueryError message="Unable to load zones." onRetry={refetch} />;
+
+  const mobileCards = filtered?.map((z) => (
+    <MobileCard key={z.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{z.name}</p>
+          <p className="text-sm text-slate-400">{z.slug}</p>
+        </div>
+        <Badge variant="outline" className={z.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+          {z.isActive ? 'Active' : 'Inactive'}
+        </Badge>
+      </div>
+      <div className="mt-2 text-sm text-slate-500">
+        <p>{z.availabilityZones?.length ?? 0} AZ(s)</p>
+      </div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openEdit(z)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => handleDelete(z.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <Input placeholder="Search by name or slug..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]" />
+        </div>
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add</Button>
+      </div>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable headers={['Name', 'Slug', 'AZs', 'Active']} isLoading={isLoading} emptyMessage="No zones" mobileCards={mobileCards}>
+            {filtered?.map((z) => (
+              <tr key={z.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{z.name}</td>
+                <td className="py-3 text-slate-400">{z.slug}</td>
+                <td className="py-3 text-slate-400">{z.availabilityZones?.length ?? 0}</td>
+                <td className="py-3">
+                  <Badge variant="outline" className={z.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+                    {z.isActive ? 'Active' : 'Inactive'}
+                  </Badge>
+                </td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(z)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(z.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit zone' : 'New zone'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Slug</label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            </div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Availability Zones</label>
+              <div className="flex flex-wrap gap-2">
+                {allAZs?.map((az) => (
+                  <label key={az.id} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.availabilityZoneIds.includes(az.id)}
+                      onChange={(e) => {
+                        const ids = e.target.checked
+                          ? [...form.availabilityZoneIds, az.id]
+                          : form.availabilityZoneIds.filter((id) => id !== az.id);
+                        setForm({ ...form, availabilityZoneIds: ids });
+                      }}
+                      className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600"
+                    />
+                    {az.code}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="zone-active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
+              <label htmlFor="zone-active" className="text-sm font-medium text-slate-300">Active</label>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete Zone"
+        description="Are you sure you want to delete this zone? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
+    </div>
+  );
+}
+
 // ============ INSTANCES SECTION ============
 const instanceStatusConfig: Record<InstanceStatus, { label: string; color: string }> = {
   PENDING: { label: 'Pending', color: 'border-slate-500/20 text-slate-400' },
@@ -2232,6 +2430,7 @@ export default function Admin() {
     { value: 'continuity-levels', label: 'Continuity', icon: TrendingUp },
     { value: 'forecasts', label: 'Forecasts', icon: Activity },
     { value: 'users', label: 'Users', icon: UserCog },
+    { value: 'zones', label: 'Zones', icon: Box },
     { value: 'availability-zones', label: 'Availability Zones', icon: MapPin },
   ];
 
@@ -2270,6 +2469,7 @@ export default function Admin() {
         <TabsContent value="continuity-levels" className="animate-fade-in"><ContinuityLevelsSection /></TabsContent>
         <TabsContent value="forecasts" className="animate-fade-in"><ForecastsAdminSection /></TabsContent>
         <TabsContent value="users" className="animate-fade-in"><UsersSection /></TabsContent>
+        <TabsContent value="zones" className="animate-fade-in"><ZonesSection /></TabsContent>
         <TabsContent value="availability-zones" className="animate-fade-in"><AvailabilityZonesSection /></TabsContent>
       </Tabs>
     </div>

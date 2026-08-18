@@ -50,6 +50,7 @@ describe('Variant Routes — Marketplace Feature', () => {
       delete: jest.fn(),
     };
     prismaMock.productVariantAvailabilityZone = { deleteMany: jest.fn() };
+    prismaMock.productVariantZone = { deleteMany: jest.fn() };
     prismaMock.$transaction = jest.fn(async (fn: any) => fn(prismaMock));
     jest.clearAllMocks();
   });

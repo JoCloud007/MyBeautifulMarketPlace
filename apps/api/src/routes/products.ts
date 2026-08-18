@@ -74,6 +74,7 @@ router.get('/', async (req, res, next) => {
             osVersion: true,
             flavor: true,
             availabilityZones: { include: { availabilityZone: true } },
+            zones: { include: { zone: true } },
             continuityLevel: true,
           },
         },
@@ -127,6 +128,7 @@ router.post('/', async (req, res, next) => {
               osVersion: true,
               flavor: true,
               availabilityZones: { include: { availabilityZone: true } },
+              zones: { include: { zone: true } },
               continuityLevel: true,
             },
           },
@@ -158,6 +160,7 @@ const createVariantSchema = z.object({
   osVersionId: z.string().uuid('Invalid OS version ID'),
   flavorId: z.string().uuid('Invalid flavor ID'),
   availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
+  zoneIds: z.array(z.string().uuid()).max(50).optional(),
   continuityLevelId: z.string().uuid().optional().nullable(),
   isActive: z.boolean().optional(),
   availabilityType: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
@@ -181,6 +184,7 @@ router.get('/:id/variants', async (req, res, next) => {
         osVersion: true,
         flavor: true,
         availabilityZones: { include: { availabilityZone: true } },
+        zones: { include: { zone: true } },
         continuityLevel: true,
         _count: { select: { instances: true } },
       },
@@ -248,6 +252,19 @@ router.post('/:id/variants', async (req, res, next) => {
       }
     }
 
+    if (data.zoneIds && data.zoneIds.length > 0) {
+      const uniqueZoneIds = [...new Set(data.zoneIds)];
+      if (uniqueZoneIds.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'Duplicate zone IDs are not allowed' });
+      }
+      const zones = await prisma.zone.findMany({
+        where: { id: { in: data.zoneIds } },
+      });
+      if (zones.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'One or more zones do not exist' });
+      }
+    }
+
     const variant = await prisma.productVariant.create({
       data: {
         productId: id,
@@ -261,12 +278,16 @@ router.post('/:id/variants', async (req, res, next) => {
         availabilityZones: data.availabilityZoneIds
           ? { create: data.availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) }
           : undefined,
+        zones: data.zoneIds
+          ? { create: data.zoneIds.map((zid) => ({ zoneId: zid })) }
+          : undefined,
       },
       include: {
         os: true,
         osVersion: true,
         flavor: true,
         availabilityZones: { include: { availabilityZone: true } },
+        zones: { include: { zone: true } },
         continuityLevel: true,
       },
     });
@@ -293,6 +314,7 @@ router.get('/:slug', async (req, res, next) => {
             osVersion: true,
             flavor: true,
             availabilityZones: { include: { availabilityZone: true } },
+            zones: { include: { zone: true } },
             continuityLevel: true,
           },
         },
@@ -370,6 +392,7 @@ router.patch('/:id', async (req, res, next) => {
             osVersion: true,
             flavor: true,
             availabilityZones: { include: { availabilityZone: true } },
+            zones: { include: { zone: true } },
             continuityLevel: true,
           },
         },
