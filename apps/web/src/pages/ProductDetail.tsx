@@ -31,7 +31,6 @@ import {
   MapPin,
   Filter,
   HardDrive,
-  Shield,
   X,
   Search,
   ChevronDown,
@@ -310,101 +309,6 @@ function PickupInput({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function VariantCard({ variant }: { variant: ProductVariant }) {
-  const azs = variant.availabilityZones?.map((az: any) => az.availabilityZone) ?? [];
-  return (
-    <div className="rounded-lg border border-slate-800 bg-slate-950 p-4 transition-colors hover:border-slate-700">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-white">{variant.name}</span>
-            <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-400 bg-blue-500/10">
-              <Monitor className="h-3 w-3 mr-1" />
-              {variant.os?.name} {variant.osVersion?.version}
-            </Badge>
-            <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
-              {variant.flavor?.name}
-            </Badge>
-            {variant.availabilityType && variant.availabilityType !== 'STANDARD' && (
-              <Badge variant="outline" className={cn(
-                'text-xs',
-                variant.availabilityType === 'RECOMMENDED' && 'border-emerald-500/20 text-emerald-500 bg-emerald-500/10',
-                variant.availabilityType === 'RESTRICTED' && 'border-red-500/20 text-red-500 bg-red-500/10',
-                variant.availabilityType === 'ON_DEMAND' && 'border-amber-500/20 text-amber-500 bg-amber-500/10',
-              )}>
-                {variant.availabilityType === 'RECOMMENDED' && <Star className="h-3 w-3 mr-1" />}
-                {variant.availabilityType === 'RESTRICTED' && <Lock className="h-3 w-3 mr-1" />}
-                {variant.availabilityType === 'ON_DEMAND' && <Clock className="h-3 w-3 mr-1" />}
-                {variant.availabilityType.replace('_', ' ')}
-              </Badge>
-            )}
-            {variant.isActive ? (
-              <Badge variant="outline" className="text-xs border-emerald-500/20 text-emerald-500">
-                Active
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="text-xs border-slate-600 text-slate-500">
-                Inactive
-              </Badge>
-            )}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
-            <span className="flex items-center gap-1">
-              <HardDrive className="h-3.5 w-3.5 text-slate-500" />
-              {variant.flavor?.vcpu} vCPU · {variant.flavor?.ramGb} GB
-            </span>
-            {(variant.priority || 0) > 0 && (
-              <span className="flex items-center gap-1 text-amber-400">
-                <Zap className="h-3.5 w-3.5" />
-                Priority {variant.priority}
-              </span>
-            )}
-            {variant.continuityLevel && (
-              <span className="flex items-center gap-1">
-                <Shield className="h-3.5 w-3.5 text-slate-500" />
-                <span style={{ color: variant.continuityLevel.color }}>{variant.continuityLevel.name}</span>
-              </span>
-            )}
-          </div>
-          {azs.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {azs.map((az: any) => (
-                <Badge
-                  key={az.id}
-                  variant="secondary"
-                  className="text-[10px] bg-slate-900 text-slate-400 border-slate-800"
-                >
-                  <MapPin className="h-2.5 w-2.5 mr-0.5" />
-                  {az.code}
-                </Badge>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-      {variant.osVersion && (
-        <div className="mt-3 pt-3 border-t border-slate-800/50">
-          <div className="flex items-center gap-3 text-xs text-slate-500">
-            <span>Release: {formatDate(variant.osVersion.releaseDate)}</span>
-            <span>·</span>
-            <span className={cn(
-              variant.osVersion.phase === 'EOL' ? 'text-red-400' :
-              variant.osVersion.phase === 'NO_SUPPORT' ? 'text-orange-400' :
-              variant.osVersion.phase === 'EXTENDED_SUPPORT' ? 'text-amber-400' :
-              variant.osVersion.phase === 'NORMAL_SUPPORT' ? 'text-blue-400' :
-              'text-emerald-400'
-            )}>
-              {variant.osVersion.phase.replace('_', ' ')}
-            </span>
-            <span>·</span>
-            <span>EOL: {formatDate(variant.osVersion.eolDate)}</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -856,10 +760,67 @@ export default function ProductDetail() {
                 </CardContent>
               </Card>
 
-              {/* Variant List */}
-              <div className="space-y-3">
+              {/* Variant List — grouped by flavor */}
+              <div className="space-y-4">
                 {filteredVariants.length > 0 ? (
-                  filteredVariants.map((v) => <VariantCard key={v.id} variant={v} />)
+                  Array.from(new Map(filteredVariants.map(v => [v.flavorId, v.flavor])).values()).map((flavor: any) => {
+                    const flavorVariants = filteredVariants.filter(v => v.flavorId === flavor.id);
+                    return (
+                      <div key={flavor.id} className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                        <div className="flex flex-col sm:flex-row gap-4">
+                          {/* Flavor — big square */}
+                          <div className="sm:w-48 shrink-0 flex flex-col items-center justify-center rounded-lg bg-slate-900 border border-slate-800 p-4 text-center">
+                            <Cpu className="h-8 w-8 text-blue-500 mb-2" />
+                            <span className="font-bold text-white text-lg">{flavor.name}</span>
+                            <span className="text-sm text-slate-400 mt-1">{flavor.vcpu} vCPU · {flavor.ramGb} GB</span>
+                          </div>
+                          {/* OS variants as tags/tiles */}
+                          <div className="flex-1 space-y-2">
+                            {flavorVariants.map((variant) => (
+                              <div key={variant.id} className="flex items-center gap-2 flex-wrap">
+                                <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-400 bg-blue-500/10">
+                                  <Monitor className="h-3 w-3 mr-1" />
+                                  {variant.os?.name} {variant.osVersion?.version}
+                                </Badge>
+                                {(variant.priority || 0) > 0 && (
+                                  <span className="text-xs text-amber-400 flex items-center gap-1">
+                                    <Zap className="h-3 w-3" />
+                                    Priority {variant.priority}
+                                  </span>
+                                )}
+                                {variant.availabilityType && variant.availabilityType !== 'STANDARD' && (
+                                  <Badge variant="outline" className={cn(
+                                    'text-xs',
+                                    variant.availabilityType === 'RECOMMENDED' && 'border-emerald-500/20 text-emerald-500 bg-emerald-500/10',
+                                    variant.availabilityType === 'RESTRICTED' && 'border-red-500/20 text-red-500 bg-red-500/10',
+                                    variant.availabilityType === 'ON_DEMAND' && 'border-amber-500/20 text-amber-500 bg-amber-500/10',
+                                  )}>
+                                    {variant.availabilityType === 'RECOMMENDED' && <Star className="h-3 w-3 mr-1" />}
+                                    {variant.availabilityType === 'RESTRICTED' && <Lock className="h-3 w-3 mr-1" />}
+                                    {variant.availabilityType === 'ON_DEMAND' && <Clock className="h-3 w-3 mr-1" />}
+                                    {variant.availabilityType.replace('_', ' ')}
+                                  </Badge>
+                                )}
+                                <Badge variant="outline" className={variant.isActive ? 'text-xs border-emerald-500/20 text-emerald-500' : 'text-xs border-slate-600 text-slate-500'}>
+                                  {variant.isActive ? 'Active' : 'Inactive'}
+                                </Badge>
+                                {variant.continuityLevel && (
+                                  <Badge variant="outline" className="text-xs" style={{ color: variant.continuityLevel.color, borderColor: `${variant.continuityLevel.color}40` }}>
+                                    {variant.continuityLevel.name}
+                                  </Badge>
+                                )}
+                                {variant.availabilityZones?.length > 0 && (
+                                  <span className="text-xs text-slate-500">
+                                    {variant.availabilityZones.map((az: any) => az.availabilityZone?.code).join(', ')}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
                 ) : (
                   <div className="text-center py-12 rounded-lg border border-slate-800 bg-slate-950">
                     <Filter className="mx-auto h-10 w-10 text-slate-700" />
