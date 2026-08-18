@@ -234,7 +234,6 @@ async function main() {
       zones: { create: [{ zoneId: zoneToto.id }, { zoneId: zoneProd.id }] },
       documentation: '# Virtual Machine\n\n## Overview\nConfigurable virtual machine with selectable operating system.\n\n## Specifications\n- OS: selectable (Debian, Windows Server, RHEL)\n- vCPU: 2–16\n- RAM: 4–32 GB',
       roadmap: '## Roadmap\n- Q3 2024: ARM64 support\n- Q4 2024: GPU instance option\n- Q1 2025: Confidential computing',
-      flavors: { connect: [{ id: flavorRecords['Small'].id }, { id: flavorRecords['Medium'].id }, { id: flavorRecords['Large'].id }, { id: flavorRecords['XL'].id }] },
     },
   });
 
@@ -249,7 +248,6 @@ async function main() {
       zones: { create: [{ zoneId: zoneProd.id }] },
       documentation: '# Bare Metal HPC\n\n## Overview\nDedicated bare metal servers for HPC workloads.\n\n## Specifications\n- CPU: AMD EPYC / Intel Xeon\n- GPU: NVIDIA A100/H100 options\n- Network: InfiniBand HDR',
       roadmap: '## Roadmap\n- Q3 2024: NVIDIA H200 support\n- Q4 2024: Liquid cooling option',
-      flavors: { connect: [{ id: flavorRecords['Small'].id }, { id: flavorRecords['Medium'].id }, { id: flavorRecords['Large'].id }, { id: flavorRecords['XL'].id }] },
     },
   });
 
@@ -262,7 +260,6 @@ async function main() {
       zones: { create: [{ zoneId: zoneToto.id }] },
       documentation: '# Object Storage\n\n## Overview\nScalable S3-compatible object storage service.\n\n## Features\n- S3 API compatible\n- Multi-region replication\n- Lifecycle policies\n- Versioning support',
       roadmap: '## Roadmap\n- Q3 2024: Glacier-like archive tier\n- Q4 2024: Object lock (WORM)',
-      flavors: { connect: [{ id: flavorRecords['Storage Small'].id }, { id: flavorRecords['Storage Medium'].id }, { id: flavorRecords['Storage Large'].id }, { id: flavorRecords['Storage XL'].id }] },
     },
   });
 
@@ -275,7 +272,6 @@ async function main() {
       zones: { create: [{ zoneId: zoneProd.id }] },
       documentation: '# NAS Storage\n\n## Overview\nEnterprise NAS with multiple protocol support.\n\n## Features\n- NFS v4.2\n- SMB 3.1.1\n- iSCSI\n- Snapshots & replication',
       roadmap: '## Roadmap\n- Q3 2024: NVMe-oF support\n- Q4 2024: Automated tiering',
-      flavors: { connect: [{ id: flavorRecords['Storage Small'].id }, { id: flavorRecords['Storage Medium'].id }, { id: flavorRecords['Storage Large'].id }, { id: flavorRecords['Storage XL'].id }] },
     },
   });
 
@@ -289,7 +285,6 @@ async function main() {
       zones: { create: [{ zoneId: zoneToto.id }] },
       documentation: '# VMware vSphere\n\n## Overview\nEnterprise virtualization platform.\n\n## Specifications\n- Version: vSphere 8.0 U2\n- vCenter included\n- vSAN ready',
       roadmap: '## Roadmap\n- Q3 2024: vSphere 8.0 U3\n- Q4 2024: Confidential VMs',
-      flavors: { connect: [{ id: flavorRecords['Storage Small'].id }, { id: flavorRecords['Storage Medium'].id }, { id: flavorRecords['Storage Large'].id }, { id: flavorRecords['Storage XL'].id }] },
     },
   });
 
@@ -302,7 +297,6 @@ async function main() {
       os: 'Windows',
       documentation: '# Citrix VDI\n\n## Overview\nVirtual desktop infrastructure powered by Citrix.\n\n## Features\n- HDX protocol\n- GPU acceleration\n- Multi-site brokering',
       roadmap: '## Roadmap\n- Q3 2024: Citrix DaaS integration\n- Q4 2024: WebRTC redirection',
-      flavors: { connect: [{ id: flavorRecords['Small'].id }, { id: flavorRecords['Medium'].id }, { id: flavorRecords['Large'].id }, { id: flavorRecords['XL'].id }] },
     },
   });
 

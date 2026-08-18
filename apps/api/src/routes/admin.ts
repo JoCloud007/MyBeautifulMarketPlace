@@ -148,14 +148,21 @@ router.post('/products', async (req, res, next) => {
 
     const { zoneIds, ...productData } = data;
 
-    const product = await prisma.product.create({
-      data: {
-        ...productData,
-        zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
-      },
-      include: { category: true, variants: { include: { os: true, flavor: true } }, zones: { include: { zone: true } } },
-    });
-    res.status(201).json(product);
+    try {
+      const product = await prisma.product.create({
+        data: {
+          ...productData,
+          zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+        },
+        include: { category: true, variants: { include: { os: true, flavor: true } }, zones: { include: { zone: true } } },
+      });
+      res.status(201).json(product);
+    } catch (err: any) {
+      if (err.code === 'P2002') {
+        return res.status(409).json({ error: 'A product with this slug already exists' });
+      }
+      throw err;
+    }
   } catch (err) {
     next(err);
   }
@@ -168,7 +175,7 @@ router.patch('/products/:id', async (req, res, next) => {
     idParamSchema.parse(id);
     const data = productSchema.partial().parse(req.body);
 
-    const existingProduct = await prisma.product.findUnique({ where: { id } });
+    const existingProduct = await prisma.product.findUnique({ where: { id }, include: { category: true } });
     if (!existingProduct) {
       return res.status(404).json({ error: 'Product not found' });
     }
@@ -181,10 +188,6 @@ router.patch('/products/:id', async (req, res, next) => {
     }
 
     // Validate computeType constraint and clear when category changes to non-compute
-    const existingProduct = await prisma.product.findUnique({ where: { id }, include: { category: true } });
-    if (!existingProduct) {
-      return res.status(404).json({ error: 'Product not found' });
-    }
     let targetCategory: typeof existingProduct.category | null = existingProduct.category;
     if (data.categoryId) {
       targetCategory = await prisma.category.findUnique({ where: { id: data.categoryId } });
@@ -193,7 +196,7 @@ router.patch('/products/:id', async (req, res, next) => {
       }
     }
     if (targetCategory.slug === 'compute') {
-      if (data.computeType === undefined && !existingProduct.computeType) {
+      if ((data.computeType === undefined ? existingProduct.computeType : data.computeType) == null) {
         return res.status(400).json({ error: 'computeType is required for Compute category products' });
       }
     } else {
@@ -216,20 +219,22 @@ router.patch('/products/:id', async (req, res, next) => {
 
     const { zoneIds, ...productData } = data;
 
-    // Handle zone links update
-    if (zoneIds) {
-      await prisma.productZone.deleteMany({ where: { productId: id } });
+    try {
+      const product = await prisma.product.update({
+        where: { id },
+        data: {
+          ...productData,
+          zones: zoneIds ? { deleteMany: {}, create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+        },
+        include: { category: true, variants: { include: { os: { include: { zones: { include: { zone: true } } } }, osVersion: true, flavor: { include: { zones: { include: { zone: true } } } }, availabilityZones: { include: { availabilityZone: true } }, zones: { include: { zone: true } }, continuityLevel: true } }, zones: { include: { zone: true } } },
+      });
+      res.json(product);
+    } catch (err: any) {
+      if (err.code === 'P2002') {
+        return res.status(409).json({ error: 'A product with this slug already exists' });
+      }
+      throw err;
     }
-
-    const product = await prisma.product.update({
-      where: { id },
-      data: {
-        ...productData,
-        zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
-      },
-      include: { category: true, variants: { include: { os: { include: { zones: { include: { zone: true } } } }, osVersion: true, flavor: { include: { zones: { include: { zone: true } } } }, availabilityZones: { include: { availabilityZone: true } }, zones: { include: { zone: true } }, continuityLevel: true } }, zones: { include: { zone: true } } },
-    });
-    res.json(product);
   } catch (err) {
     next(err);
   }

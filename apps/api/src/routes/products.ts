@@ -187,18 +187,6 @@ router.post('/', async (req, res, next) => {
   }
 });
 
-const createVariantSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  osId: z.string().uuid('Invalid OS ID'),
-  osVersionId: z.string().uuid('Invalid OS version ID'),
-  flavorId: z.string().uuid('Invalid flavor ID'),
-  availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
-  zoneIds: z.array(z.string().uuid()).max(50).optional(),
-  continuityLevelId: z.string().uuid().optional().nullable(),
-  isActive: z.boolean().optional(),
-  availabilityType: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
-});
-
 // GET /api/products/:id/variants
 router.get('/:id/variants', async (req, res, next) => {
   try {
