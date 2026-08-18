@@ -292,7 +292,6 @@ async function main() {
           flavorId: flavorRecords[flavorName].id,
           continuityLevelId: clModerate.id,
           isActive: true,
-          priority: isRecommended ? 10 : isRestricted ? 0 : 5,
           availabilityType: isRecommended ? 'RECOMMENDED' : isRestricted ? 'RESTRICTED' : 'STANDARD',
           availabilityZones: {
             create: [
@@ -320,7 +319,6 @@ async function main() {
           flavorId: flavorRecords[flavorName].id,
           continuityLevelId: clSerious.id,
           isActive: true,
-          priority: isOnDemand ? 0 : 8,
           availabilityType: isOnDemand ? 'ON_DEMAND' : 'RECOMMENDED',
           availabilityZones: {
             create: [

@@ -121,19 +121,16 @@ export interface ProductVariant {
   continuityLevel: ContinuityLevel | null;
   instances: Instance[];
   isActive: boolean;
-  priority: number;
   availabilityType: AvailabilityType;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface ProductVariantAvailabilityZone {
-  id: string;
   variantId: string;
   variant: ProductVariant;
   availabilityZoneId: string;
   availabilityZone: AvailabilityZone;
-  createdAt: string;
 }
 
 export interface UpgradePath {

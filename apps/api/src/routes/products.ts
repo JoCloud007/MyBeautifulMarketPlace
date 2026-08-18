@@ -16,8 +16,8 @@ const createProductSchema = z.object({
   description: z.string().optional(),
   categoryId: z.string().uuid('Invalid category ID'),
   computeType: z.enum(['PHYSICAL', 'VIRTUAL']).optional(),
-  documentation: z.string().optional(),
-  roadmap: z.string().optional(),
+  documentation: z.string().optional().nullable(),
+  roadmap: z.string().optional().nullable(),
   os: z.string().optional(),
   isActive: z.boolean().optional(),
 });
@@ -30,8 +30,8 @@ const updateProductSchema = z.object({
   description: z.string().optional(),
   categoryId: z.string().uuid().optional(),
   computeType: z.enum(['PHYSICAL', 'VIRTUAL']).optional().nullable(),
-  documentation: z.string().optional(),
-  roadmap: z.string().optional(),
+  documentation: z.string().optional().nullable(),
+  roadmap: z.string().optional().nullable(),
   os: z.string().optional().nullable(),
   isActive: z.boolean().optional(),
 });
@@ -160,7 +160,6 @@ const createVariantSchema = z.object({
   availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
   continuityLevelId: z.string().uuid().optional().nullable(),
   isActive: z.boolean().optional(),
-  priority: z.number().int().min(0).max(100).optional(),
   availabilityType: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
 });
 
@@ -258,7 +257,6 @@ router.post('/:id/variants', async (req, res, next) => {
         flavorId: data.flavorId,
         continuityLevelId: data.continuityLevelId,
         isActive: data.isActive,
-        priority: data.priority,
         availabilityType: data.availabilityType,
         availabilityZones: data.availabilityZoneIds
           ? { create: data.availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) }

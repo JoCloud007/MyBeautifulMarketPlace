@@ -738,11 +738,11 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
   const [variantOpen, setVariantOpen] = useState(false);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
   const [variantForm, setVariantForm] = useState({
-    name: '', osId: '', osVersionId: '', flavorId: '', availabilityZoneIds: [] as string[], continuityLevelId: '', isActive: true, priority: 0, availabilityType: 'STANDARD' as AvailabilityType,
+    name: '', osId: '', osVersionId: '', flavorId: '', availabilityZoneIds: [] as string[], continuityLevelId: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType,
   });
 
   const resetVariantForm = () => {
-    setVariantForm({ name: '', osId: '', osVersionId: '', flavorId: '', availabilityZoneIds: [], continuityLevelId: '', isActive: true, priority: 0, availabilityType: 'STANDARD' as AvailabilityType });
+    setVariantForm({ name: '', osId: '', osVersionId: '', flavorId: '', availabilityZoneIds: [], continuityLevelId: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType });
     setEditingVariant(null);
   };
 
@@ -757,7 +757,6 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
       availabilityZoneIds: v.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [],
       continuityLevelId: v.continuityLevelId || '',
       isActive: v.isActive,
-      priority: v.priority || 0,
       availabilityType: (v.availabilityType as AvailabilityType) || 'STANDARD',
     });
     setVariantOpen(true);
@@ -808,7 +807,6 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
                       <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">{v.os?.name} {v.osVersion?.version}</Badge>
                       <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">{v.flavor?.name}</Badge>
                       {v.continuityLevel && <Badge variant="outline" className="text-xs border-slate-700" style={{ color: v.continuityLevel.color, borderColor: `${v.continuityLevel.color}40` }}>{v.continuityLevel.name}</Badge>}
-                      {(v.priority || 0) > 0 && <Badge variant="outline" className="text-xs border-amber-500/20 text-amber-500">Priority {v.priority}</Badge>}
                       {v.availabilityType && v.availabilityType !== 'STANDARD' && (
                         <Badge variant="outline" className={
                           v.availabilityType === 'RECOMMENDED' ? 'text-xs border-emerald-500/20 text-emerald-500' :
@@ -838,13 +836,46 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
           )}
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <h3 className="text-lg font-semibold text-white">Product Details</h3>
           <div className="space-y-2 text-sm text-slate-400">
             {product.documentation && <div><span className="text-slate-500">Documentation:</span> Available</div>}
-            {product.roadmap && <div><span className="text-slate-500">Roadmap:</span> Available</div>}
             {product.os && <div><span className="text-slate-500">OS:</span> {product.os}</div>}
           </div>
+          {product.roadmap && (
+            <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+              <h4 className="text-sm font-medium text-white mb-3">Roadmap</h4>
+              <div className="text-sm text-slate-300 whitespace-pre-line">{product.roadmap}</div>
+            </div>
+          )}
+          {variants && variants.length > 0 && (
+            <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+              <h4 className="text-sm font-medium text-white mb-3">Release Timeline</h4>
+              <div className="space-y-3">
+                {Array.from(new Map(variants.map((v: ProductVariant) => [v.osVersionId, v])).values())
+                  .filter((v: any) => v.osVersion?.releaseDate)
+                  .sort((a: any, b: any) => new Date(b.osVersion.releaseDate).getTime() - new Date(a.osVersion.releaseDate).getTime())
+                  .map((v: any) => (
+                    <div key={v.osVersionId} className="flex items-center gap-3">
+                      <div className="h-2.5 w-2.5 rounded-full bg-blue-500 shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm text-white">{v.os?.name} {v.osVersion?.version}</p>
+                        <p className="text-xs text-slate-500">
+                          Released {new Date(v.osVersion.releaseDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                          {v.osVersion.phase !== 'ACTIVE' && ` · ${v.osVersion.phase}`}
+                          {v.osVersion.eolDate && ` · EOL ${new Date(v.osVersion.eolDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className={
+                        v.osVersion.phase === 'EOL' ? 'text-xs text-red-400 border-red-500/30' :
+                        v.osVersion.phase === 'DEPRECATED' ? 'text-xs text-amber-400 border-amber-500/30' :
+                        'text-xs text-green-400 border-green-500/30'
+                      }>{v.osVersion.phase}</Badge>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -908,20 +939,8 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
               <input type="checkbox" id="vIsActive" checked={variantForm.isActive} onChange={(e) => setVariantForm({ ...variantForm, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
               <label htmlFor="vIsActive" className="text-sm text-slate-300">Active</label>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Priority</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={variantForm.priority}
-                  onChange={(e) => setVariantForm({ ...variantForm, priority: parseInt(e.target.value) || 0 })}
-                  className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white min-h-[44px]"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Availability</label>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Availability</label>
                 <Select
                   value={variantForm.availabilityType}
                   onChange={(e) => setVariantForm({ ...variantForm, availabilityType: e.target.value as AvailabilityType })}
@@ -933,7 +952,6 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
                   <option value="ON_DEMAND">On Demand</option>
                 </Select>
               </div>
-            </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button type="button" variant="outline" onClick={() => setVariantOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
               <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editingVariant ? 'Save' : 'Create'}</Button>

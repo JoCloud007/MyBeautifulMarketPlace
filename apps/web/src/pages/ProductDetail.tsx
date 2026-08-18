@@ -326,12 +326,14 @@ export default function ProductDetail() {
   const [osFilter, setOsFilter] = useState('');
   const [versionFilter, setVersionFilter] = useState('');
   const [flavorFilter, setFlavorFilter] = useState('');
+  const [azFilter, setAzFilter] = useState('');
 
   // Reset filters when product changes
   useEffect(() => {
     setOsFilter('');
     setVersionFilter('');
     setFlavorFilter('');
+    setAzFilter('');
   }, [slug]);
 
   if (isLoading) {
@@ -383,16 +385,11 @@ export default function ProductDetail() {
   const osOptions = Array.from(new Map(variants.map(v => [v.osId, v.os])).values());
   const flavorOptions = Array.from(new Map(variants.map(v => [v.flavorId, v.flavor])).values());
 
-  // Filtered variants — sort by priority descending, then by name
-  const sortedVariants = [...variants].sort((a, b) => {
-    const pDiff = (b.priority || 0) - (a.priority || 0);
-    return pDiff !== 0 ? pDiff : (a.name || '').localeCompare(b.name || '');
-  });
-
-  const filteredVariants = sortedVariants.filter((v) => {
+  const filteredVariants = variants.filter((v) => {
     if (osFilter && v.osId !== osFilter) return false;
     if (versionFilter && v.osVersionId !== versionFilter) return false;
     if (flavorFilter && v.flavorId !== flavorFilter) return false;
+    if (azFilter && !v.availabilityZones?.some((az: any) => az.availabilityZoneId === azFilter)) return false;
     return true;
   });
 
@@ -441,11 +438,6 @@ export default function ProductDetail() {
                 {isCompute && product.computeType && (
                   <Badge variant="outline" className="border-slate-700 text-slate-400">
                     {product.computeType}
-                  </Badge>
-                )}
-                {product.os && (
-                  <Badge variant="outline" className="border-slate-700 text-slate-400">
-                    {product.os}
                   </Badge>
                 )}
                 <Badge
@@ -527,6 +519,69 @@ export default function ProductDetail() {
           </Card>
         </div>
       </AnimatedSection>
+
+      {/* Filters — always visible for compute products */}
+      {isCompute && (
+        <AnimatedSection delay={150}>
+          <Card className="bg-slate-900 border-slate-800">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base text-white">
+                <Filter className="h-4 w-4 text-blue-500" />
+                Filter Variants
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <PickupInput
+                  label="Operating System"
+                  value={osFilter}
+                  onChange={(val) => { setOsFilter(val); setVersionFilter(''); }}
+                  options={osOptions.map((os) => ({ id: os.id, label: `${os.name} (${os.family})` }))}
+                  placeholder="Search OS..."
+                />
+                <PickupInput
+                  label="Version"
+                  value={versionFilter}
+                  onChange={setVersionFilter}
+                  options={versionOptions.map((v) => ({ id: v.id, label: versionLabels.get(v.id) || v.version }))}
+                  placeholder="Search version..."
+                />
+                <PickupInput
+                  label="Flavor"
+                  value={flavorFilter}
+                  onChange={setFlavorFilter}
+                  options={flavorOptions.map((f) => ({ id: f.id, label: `${f.name} (${f.vcpu}vCPU, ${f.ramGb}GB)` }))}
+                  placeholder="Search flavor..."
+                />
+                <PickupInput
+                  label="Availability Zone"
+                  value={azFilter}
+                  onChange={setAzFilter}
+                  options={uniqueAzs.map((az: any) => ({ id: az.id, label: `${az.code} (${az.region})` }))}
+                  placeholder="Search AZ..."
+                />
+                {(osFilter || versionFilter || flavorFilter || azFilter) && (
+                  <div className="flex items-end">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setOsFilter(''); setVersionFilter(''); setFlavorFilter(''); setAzFilter(''); }}
+                      className="text-slate-400 hover:text-white min-h-[40px]"
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Reset
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <div className="mt-3 text-sm text-slate-500">
+                Showing <span className="text-slate-300 font-medium">{filteredVariants.length}</span> of{' '}
+                <span className="text-slate-300 font-medium">{variants.length}</span> variants
+              </div>
+            </CardContent>
+          </Card>
+        </AnimatedSection>
+      )}
 
       {/* Tabs */}
       <AnimatedSection delay={150}>
@@ -708,57 +763,6 @@ export default function ProductDetail() {
           {/* Variants (Compute only) */}
           {isCompute && (
             <TabsContent value="variants" className="mt-4 space-y-6 animate-fade-in">
-              {/* Filters */}
-              <Card className="bg-slate-900 border-slate-800">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-base text-white">
-                    <Filter className="h-4 w-4 text-blue-500" />
-                    Filter Variants
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <PickupInput
-                      label="Operating System"
-                      value={osFilter}
-                      onChange={(val) => { setOsFilter(val); setVersionFilter(''); }}
-                      options={osOptions.map((os) => ({ id: os.id, label: `${os.name} (${os.family})` }))}
-                      placeholder="Search OS..."
-                    />
-                    <PickupInput
-                      label="Version"
-                      value={versionFilter}
-                      onChange={setVersionFilter}
-                      options={versionOptions.map((v) => ({ id: v.id, label: versionLabels.get(v.id) || v.version }))}
-                      placeholder="Search version..."
-                    />
-                    <PickupInput
-                      label="Flavor"
-                      value={flavorFilter}
-                      onChange={setFlavorFilter}
-                      options={flavorOptions.map((f) => ({ id: f.id, label: `${f.name} (${f.vcpu}vCPU, ${f.ramGb}GB)` }))}
-                      placeholder="Search flavor..."
-                    />
-                    {(osFilter || versionFilter || flavorFilter) && (
-                      <div className="flex items-end">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => { setOsFilter(''); setVersionFilter(''); setFlavorFilter(''); }}
-                          className="text-slate-400 hover:text-white min-h-[40px]"
-                        >
-                          <X className="h-4 w-4 mr-1" />
-                          Reset
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-3 text-sm text-slate-500">
-                    Showing <span className="text-slate-300 font-medium">{filteredVariants.length}</span> of{' '}
-                    <span className="text-slate-300 font-medium">{variants.length}</span> variants
-                  </div>
-                </CardContent>
-              </Card>
 
               {/* Variant List — grouped by flavor */}
               <div className="space-y-4">
@@ -782,12 +786,6 @@ export default function ProductDetail() {
                                   <Monitor className="h-3 w-3 mr-1" />
                                   {variant.os?.name} {variant.osVersion?.version}
                                 </Badge>
-                                {(variant.priority || 0) > 0 && (
-                                  <span className="text-xs text-amber-400 flex items-center gap-1">
-                                    <Zap className="h-3 w-3" />
-                                    Priority {variant.priority}
-                                  </span>
-                                )}
                                 {variant.availabilityType && variant.availabilityType !== 'STANDARD' && (
                                   <Badge variant="outline" className={cn(
                                     'text-xs',
@@ -809,11 +807,12 @@ export default function ProductDetail() {
                                     {variant.continuityLevel.name}
                                   </Badge>
                                 )}
-                                {variant.availabilityZones?.length > 0 && (
-                                  <span className="text-xs text-slate-500">
-                                    {variant.availabilityZones.map((az: any) => az.availabilityZone?.code).join(', ')}
-                                  </span>
-                                )}
+                                {variant.availabilityZones?.map((az: any) => (
+                                  <Badge key={az.id} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">
+                                    <MapPin className="h-2.5 w-2.5 mr-0.5" />
+                                    {az.availabilityZone?.code}
+                                  </Badge>
+                                ))}
                               </div>
                             ))}
                           </div>
@@ -828,7 +827,7 @@ export default function ProductDetail() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => { setOsFilter(''); setVersionFilter(''); setFlavorFilter(''); }}
+                      onClick={() => { setOsFilter(''); setVersionFilter(''); setFlavorFilter(''); setAzFilter(''); }}
                       className="mt-4 border-slate-700 text-slate-300 hover:bg-slate-800"
                     >
                       Clear filters
