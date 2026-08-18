@@ -12,6 +12,7 @@ const createOsSchema = z.object({
   slug: z.string().min(1, 'Slug is required').regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
   isActive: z.boolean().optional(),
   availabilityType: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
+  zoneIds: z.array(z.string().uuid()).optional(),
 });
 
 const updateOsSchema = z.object({
@@ -20,6 +21,7 @@ const updateOsSchema = z.object({
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/).optional(),
   isActive: z.boolean().optional(),
   availabilityType: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
+  zoneIds: z.array(z.string().uuid()).optional(),
 });
 
 const createVersionSchema = z.object({
@@ -56,6 +58,7 @@ router.get('/', async (_req, res, next) => {
     const osList = await prisma.operatingSystem.findMany({
       include: {
         versions: { orderBy: { releaseDate: 'desc' } },
+        zones: { include: { zone: true } },
         _count: { select: { variants: true } },
       },
       orderBy: { name: 'asc' },
@@ -71,10 +74,29 @@ router.post('/', async (req, res, next) => {
   try {
     const data = createOsSchema.parse(req.body);
 
+    // Validate zoneIds if provided
+    if (data.zoneIds && data.zoneIds.length > 0) {
+      const uniqueZoneIds = [...new Set(data.zoneIds)];
+      if (uniqueZoneIds.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'Duplicate zone IDs are not allowed' });
+      }
+      const zones = await prisma.zone.findMany({
+        where: { id: { in: data.zoneIds } },
+      });
+      if (zones.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'One or more zones do not exist' });
+      }
+    }
+
+    const { zoneIds, ...osData } = data;
+
     try {
       const os = await prisma.operatingSystem.create({
-        data,
-        include: { versions: true },
+        data: {
+          ...osData,
+          zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+        },
+        include: { versions: true, zones: { include: { zone: true } } },
       });
       res.status(201).json(os);
     } catch (err: any) {
@@ -98,6 +120,7 @@ router.get('/:id', async (req, res, next) => {
       where: { id },
       include: {
         versions: { orderBy: { releaseDate: 'desc' } },
+        zones: { include: { zone: true } },
         _count: { select: { variants: true } },
       },
     });
@@ -131,10 +154,34 @@ router.put('/:id', async (req, res, next) => {
       }
     }
 
+    // Validate zoneIds if provided
+    if (data.zoneIds && data.zoneIds.length > 0) {
+      const uniqueZoneIds = [...new Set(data.zoneIds)];
+      if (uniqueZoneIds.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'Duplicate zone IDs are not allowed' });
+      }
+      const zones = await prisma.zone.findMany({
+        where: { id: { in: data.zoneIds } },
+      });
+      if (zones.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'One or more zones do not exist' });
+      }
+    }
+
+    const { zoneIds, ...osData } = data;
+
+    // Handle zone links update
+    if (zoneIds) {
+      await prisma.operatingSystemZone.deleteMany({ where: { operatingSystemId: id } });
+    }
+
     const os = await prisma.operatingSystem.update({
       where: { id },
-      data,
-      include: { versions: true },
+      data: {
+        ...osData,
+        zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+      },
+      include: { versions: true, zones: { include: { zone: true } } },
     });
     res.json(os);
   } catch (err) {

@@ -313,7 +313,15 @@ function PickupInput({
 }
 
 /* Variant branch card — left flavor, right 3 tiles */
-function VariantBranchCard({ variant }: { variant: ProductVariant }) {
+function VariantBranchCard({ variant, product }: { variant: ProductVariant; product: Product }) {
+  // Derive all unique zones for this variant from: variant zones, product zones, flavor zones, OS zones
+  const variantZoneMap = new Map((variant.zones || []).map((vz: any) => [vz.zoneId, vz.zone]));
+  const productZoneMap = new Map((product.zones || []).map((pz: any) => [pz.zoneId, pz.zone]));
+  const flavorZoneMap = new Map((variant.flavor?.zones || []).map((fz: any) => [fz.zoneId, fz.zone]));
+  const osZoneMap = new Map((variant.os?.zones || []).map((oz: any) => [oz.zoneId, oz.zone]));
+  const allZoneEntries = [...variantZoneMap, ...productZoneMap, ...flavorZoneMap, ...osZoneMap];
+  const uniqueZones = Array.from(new Map(allZoneEntries).values());
+
   return (
     <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
       <div className="flex flex-col lg:flex-row gap-4">
@@ -332,15 +340,14 @@ function VariantBranchCard({ variant }: { variant: ProductVariant }) {
               <span className="text-sm font-medium text-white">Zones</span>
             </div>
             <div className="space-y-2">
-              {(variant.zones || []).length === 0 ? (
+              {uniqueZones.length === 0 ? (
                 <p className="text-xs text-slate-500">No zones assigned</p>
               ) : (
-                (variant.zones || []).map((vz: any) => {
-                  const zone = vz.zone;
+                uniqueZones.map((zone: any) => {
                   const zoneAzIds = new Set((zone.availabilityZones || []).map((zaz: any) => zaz.availabilityZoneId));
                   const intersectingAzs = (variant.availabilityZones || []).filter((az: any) => zoneAzIds.has(az.availabilityZoneId));
                   return (
-                    <div key={vz.zoneId} className="space-y-1">
+                    <div key={zone.id} className="space-y-1">
                       <p className="text-xs font-medium text-slate-300">{zone.name}</p>
                       <div className="flex flex-wrap gap-1">
                         {intersectingAzs.length === 0 ? (
@@ -482,7 +489,15 @@ export default function ProductDetail() {
     if (versionFilter && v.osVersionId !== versionFilter) return false;
     if (flavorFilter && v.flavorId !== flavorFilter) return false;
     if (azFilter && !v.availabilityZones?.some((az: any) => az.availabilityZoneId === azFilter)) return false;
-    if (zoneFilter && !v.zones?.some((z: any) => z.zoneId === zoneFilter)) return false;
+    if (zoneFilter) {
+      const derivedZoneIds = new Set([
+        ...(v.zones || []).map((z: any) => z.zoneId),
+        ...(product.zones || []).map((z: any) => z.zoneId),
+        ...(v.flavor?.zones || []).map((z: any) => z.zoneId),
+        ...(v.os?.zones || []).map((z: any) => z.zoneId),
+      ]);
+      if (!derivedZoneIds.has(zoneFilter)) return false;
+    }
     return true;
   });
 
@@ -504,10 +519,14 @@ export default function ProductDetail() {
   );
   const uniqueAzs = Array.from(new Map(allAzs.map((az: any) => [az.id, az])).values());
 
-  // Collect all Zones from all variants
-  const allZones = variants.flatMap((v) =>
-    (v.zones || []).map((z: any) => z.zone)
-  );
+  // Collect all Zones from all variants (variant zones + product zones + flavor zones + OS zones)
+  const allZones = variants.flatMap((v) => {
+    const vZones = (v.zones || []).map((z: any) => z.zone);
+    const pZones = (product.zones || []).map((z: any) => z.zone);
+    const fZones = (v.flavor?.zones || []).map((z: any) => z.zone);
+    const oZones = (v.os?.zones || []).map((z: any) => z.zone);
+    return [...vZones, ...pZones, ...fZones, ...oZones];
+  });
   const uniqueZones = Array.from(new Map(allZones.map((z: any) => [z.id, z])).values());
 
   const related = relatedProducts?.filter((p: Product) => p.id !== product.id).slice(0, 3) ?? [];
@@ -872,8 +891,24 @@ export default function ProductDetail() {
               {filteredVariants.length > 0 ? (
                 <div className="space-y-8">
                   {/* Grouped by zone */}
-                  {uniqueZones.filter((z: any) => filteredVariants.some((v) => v.zones?.some((vz: any) => vz.zoneId === z.id))).map((zone: any) => {
-                    const zoneVariants = filteredVariants.filter((v) => v.zones?.some((vz: any) => vz.zoneId === zone.id));
+                  {uniqueZones.filter((z: any) => filteredVariants.some((v) => {
+                    const derivedZoneIds = new Set([
+                      ...(v.zones || []).map((vz: any) => vz.zoneId),
+                      ...(product.zones || []).map((pz: any) => pz.zoneId),
+                      ...(v.flavor?.zones || []).map((fz: any) => fz.zoneId),
+                      ...(v.os?.zones || []).map((oz: any) => oz.zoneId),
+                    ]);
+                    return derivedZoneIds.has(z.id);
+                  })).map((zone: any) => {
+                    const zoneVariants = filteredVariants.filter((v) => {
+                      const derivedZoneIds = new Set([
+                        ...(v.zones || []).map((vz: any) => vz.zoneId),
+                        ...(product.zones || []).map((pz: any) => pz.zoneId),
+                        ...(v.flavor?.zones || []).map((fz: any) => fz.zoneId),
+                        ...(v.os?.zones || []).map((oz: any) => oz.zoneId),
+                      ]);
+                      return derivedZoneIds.has(zone.id);
+                    });
                     return (
                       <div key={zone.id} className="space-y-4">
                         <div className="flex items-center gap-2">
@@ -883,7 +918,7 @@ export default function ProductDetail() {
                         </div>
                         <div className="space-y-4">
                           {zoneVariants.map((variant) => (
-                            <VariantBranchCard key={variant.id} variant={variant} />
+                            <VariantBranchCard key={variant.id} variant={variant} product={product} />
                           ))}
                         </div>
                       </div>
@@ -891,15 +926,31 @@ export default function ProductDetail() {
                   })}
 
                   {/* Ungrouped variants */}
-                  {filteredVariants.some((v) => !v.zones || v.zones.length === 0) && (
+                  {filteredVariants.some((v) => {
+                    const derivedZoneIds = new Set([
+                      ...(v.zones || []).map((vz: any) => vz.zoneId),
+                      ...(product.zones || []).map((pz: any) => pz.zoneId),
+                      ...(v.flavor?.zones || []).map((fz: any) => fz.zoneId),
+                      ...(v.os?.zones || []).map((oz: any) => oz.zoneId),
+                    ]);
+                    return derivedZoneIds.size === 0;
+                  }) && (
                     <div className="space-y-4">
                       <div className="flex items-center gap-2">
                         <Layers className="h-5 w-5 text-slate-400" />
                         <h3 className="text-lg font-semibold text-white">Other / Ungrouped</h3>
                       </div>
                       <div className="space-y-4">
-                        {filteredVariants.filter((v) => !v.zones || v.zones.length === 0).map((variant) => (
-                          <VariantBranchCard key={variant.id} variant={variant} />
+                        {filteredVariants.filter((v) => {
+                          const derivedZoneIds = new Set([
+                            ...(v.zones || []).map((vz: any) => vz.zoneId),
+                            ...(product.zones || []).map((pz: any) => pz.zoneId),
+                            ...(v.flavor?.zones || []).map((fz: any) => fz.zoneId),
+                            ...(v.os?.zones || []).map((oz: any) => oz.zoneId),
+                          ]);
+                          return derivedZoneIds.size === 0;
+                        }).map((variant) => (
+                          <VariantBranchCard key={variant.id} variant={variant} product={product} />
                         ))}
                       </div>
                     </div>

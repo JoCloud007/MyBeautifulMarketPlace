@@ -7,6 +7,9 @@ async function main() {
 
   // Clean existing data
   try {
+    await prisma.productZone.deleteMany();
+    await prisma.flavorZone.deleteMany();
+    await prisma.operatingSystemZone.deleteMany();
     await prisma.productVariantZone.deleteMany();
     await prisma.zoneAvailabilityZone.deleteMany();
     await prisma.zone.deleteMany();
@@ -99,13 +102,13 @@ async function main() {
 
   // Create Operating Systems
   const osWindows = await prisma.operatingSystem.create({
-    data: { family: 'WINDOWS', name: 'Windows', slug: 'windows', isActive: true, availabilityType: 'STANDARD' },
+    data: { family: 'WINDOWS', name: 'Windows', slug: 'windows', isActive: true, availabilityType: 'STANDARD', zones: { create: [{ zoneId: zoneToto.id }] } },
   });
   const osDebian = await prisma.operatingSystem.create({
-    data: { family: 'LINUX', name: 'Debian', slug: 'debian', isActive: true, availabilityType: 'RECOMMENDED' },
+    data: { family: 'LINUX', name: 'Debian', slug: 'debian', isActive: true, availabilityType: 'RECOMMENDED', zones: { create: [{ zoneId: zoneToto.id }, { zoneId: zoneProd.id }] } },
   });
   const osRedhat = await prisma.operatingSystem.create({
-    data: { family: 'LINUX', name: 'Red Hat Enterprise Linux', slug: 'rhel', isActive: true, availabilityType: 'RESTRICTED' },
+    data: { family: 'LINUX', name: 'Red Hat Enterprise Linux', slug: 'rhel', isActive: true, availabilityType: 'RESTRICTED', zones: { create: [{ zoneId: zoneProd.id }] } },
   });
 
   // Create OS Versions
@@ -211,11 +214,11 @@ async function main() {
 
   const flavorRecords: Record<string, typeof computeFlavors[0] & { id: string }> = {};
   for (const f of computeFlavors) {
-    const rec = await prisma.flavor.create({ data: f });
+    const rec = await prisma.flavor.create({ data: { ...f, zones: { create: [{ zoneId: zoneToto.id }] } } });
     flavorRecords[rec.name] = rec;
   }
   for (const f of storageFlavors) {
-    const rec = await prisma.flavor.create({ data: f });
+    const rec = await prisma.flavor.create({ data: { ...f, zones: { create: [{ zoneId: zoneProd.id }] } } });
     flavorRecords[`storage-${f.name}`] = rec;
   }
 
@@ -228,6 +231,7 @@ async function main() {
       categoryId: compute.id,
       computeType: ComputeType.VIRTUAL,
       os: 'Linux',
+      zones: { create: [{ zoneId: zoneToto.id }, { zoneId: zoneProd.id }] },
       documentation: '# Virtual Machine\n\n## Overview\nConfigurable virtual machine with selectable operating system.\n\n## Specifications\n- OS: selectable (Debian, Windows Server, RHEL)\n- vCPU: 2–16\n- RAM: 4–32 GB',
       roadmap: '## Roadmap\n- Q3 2024: ARM64 support\n- Q4 2024: GPU instance option\n- Q1 2025: Confidential computing',
     },
@@ -241,6 +245,7 @@ async function main() {
       categoryId: compute.id,
       computeType: ComputeType.PHYSICAL,
       os: 'Linux',
+      zones: { create: [{ zoneId: zoneProd.id }] },
       documentation: '# Bare Metal HPC\n\n## Overview\nDedicated bare metal servers for HPC workloads.\n\n## Specifications\n- CPU: AMD EPYC / Intel Xeon\n- GPU: NVIDIA A100/H100 options\n- Network: InfiniBand HDR',
       roadmap: '## Roadmap\n- Q3 2024: NVIDIA H200 support\n- Q4 2024: Liquid cooling option',
     },
@@ -252,6 +257,7 @@ async function main() {
       slug: 'object-storage',
       description: 'S3-compatible object storage with 99.999999999% durability and global CDN integration.',
       categoryId: data.id,
+      zones: { create: [{ zoneId: zoneToto.id }] },
       documentation: '# Object Storage\n\n## Overview\nScalable S3-compatible object storage service.\n\n## Features\n- S3 API compatible\n- Multi-region replication\n- Lifecycle policies\n- Versioning support',
       roadmap: '## Roadmap\n- Q3 2024: Glacier-like archive tier\n- Q4 2024: Object lock (WORM)',
     },
@@ -263,6 +269,7 @@ async function main() {
       slug: 'nas-storage',
       description: 'Network Attached Storage with NFS, SMB, and iSCSI protocols.',
       categoryId: data.id,
+      zones: { create: [{ zoneId: zoneProd.id }] },
       documentation: '# NAS Storage\n\n## Overview\nEnterprise NAS with multiple protocol support.\n\n## Features\n- NFS v4.2\n- SMB 3.1.1\n- iSCSI\n- Snapshots & replication',
       roadmap: '## Roadmap\n- Q3 2024: NVMe-oF support\n- Q4 2024: Automated tiering',
     },
@@ -275,6 +282,7 @@ async function main() {
       description: 'VMware vSphere 8.0 virtualization platform with vCenter management.',
       categoryId: hypervisor.id,
       os: 'ESXi',
+      zones: { create: [{ zoneId: zoneToto.id }] },
       documentation: '# VMware vSphere\n\n## Overview\nEnterprise virtualization platform.\n\n## Specifications\n- Version: vSphere 8.0 U2\n- vCenter included\n- vSAN ready',
       roadmap: '## Roadmap\n- Q3 2024: vSphere 8.0 U3\n- Q4 2024: Confidential VMs',
     },

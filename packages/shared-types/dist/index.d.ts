@@ -75,6 +75,7 @@ export interface OperatingSystem {
     isActive: boolean;
     availabilityType: AvailabilityType;
     versions: OsVersion[];
+    zones: OperatingSystemZone[];
     createdAt: string;
     updatedAt: string;
 }
@@ -126,6 +127,9 @@ export interface Zone {
     description?: string;
     isActive: boolean;
     availabilityZones: ZoneAvailabilityZone[];
+    products: ProductZone[];
+    flavors: FlavorZone[];
+    operatingSystems: OperatingSystemZone[];
     createdAt: string;
     updatedAt: string;
 }
@@ -136,6 +140,21 @@ export interface ZoneAvailabilityZone {
 }
 export interface ProductVariantZone {
     variantId: string;
+    zoneId: string;
+    zone: Zone;
+}
+export interface ProductZone {
+    productId: string;
+    zoneId: string;
+    zone: Zone;
+}
+export interface FlavorZone {
+    flavorId: string;
+    zoneId: string;
+    zone: Zone;
+}
+export interface OperatingSystemZone {
+    operatingSystemId: string;
     zoneId: string;
     zone: Zone;
 }
@@ -163,6 +182,7 @@ export interface Product {
     dependentProducts: Dependency[];
     upgradeFrom: UpgradePath[];
     upgradeTo: UpgradePath[];
+    zones: ProductZone[];
     documentation: string | null;
     roadmap: string | null;
     os: string | null;
@@ -176,6 +196,7 @@ export interface Flavor {
     vcpu: number;
     ramGb: number;
     description: string | null;
+    zones: FlavorZone[];
     createdAt: string;
     updatedAt: string;
 }

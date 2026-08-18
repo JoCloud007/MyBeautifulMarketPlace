@@ -20,6 +20,7 @@ const createProductSchema = z.object({
   roadmap: z.string().optional().nullable(),
   os: z.string().optional(),
   isActive: z.boolean().optional(),
+  zoneIds: z.array(z.string().uuid()).optional(),
 });
 
 const idParamSchema = z.string().uuid();
@@ -34,6 +35,7 @@ const updateProductSchema = z.object({
   roadmap: z.string().optional().nullable(),
   os: z.string().optional().nullable(),
   isActive: z.boolean().optional(),
+  zoneIds: z.array(z.string().uuid()).optional(),
 });
 
 // GET /api/products
@@ -70,9 +72,9 @@ router.get('/', async (req, res, next) => {
         variants: {
           where: { isActive: true },
           include: {
-            os: true,
+            os: { include: { zones: { include: { zone: true } } } },
             osVersion: true,
-            flavor: true,
+            flavor: { include: { zones: { include: { zone: true } } } },
             availabilityZones: { include: { availabilityZone: true } },
             zones: { include: { zone: true } },
             continuityLevel: true,
@@ -86,6 +88,7 @@ router.get('/', async (req, res, next) => {
         },
         upgradeFrom: { include: { toProduct: { select: { id: true, name: true, slug: true } } } },
         upgradeTo: { include: { fromProduct: { select: { id: true, name: true, slug: true } } } },
+        zones: { include: { zone: true } },
         _count: { select: { variants: { where: { isActive: true } }, instances: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -116,17 +119,36 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'computeType can only be set for Compute category products' });
     }
 
+    // Validate zoneIds if provided
+    if (data.zoneIds && data.zoneIds.length > 0) {
+      const uniqueZoneIds = [...new Set(data.zoneIds)];
+      if (uniqueZoneIds.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'Duplicate zone IDs are not allowed' });
+      }
+      const zones = await prisma.zone.findMany({
+        where: { id: { in: data.zoneIds } },
+      });
+      if (zones.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'One or more zones do not exist' });
+      }
+    }
+
+    const { zoneIds, ...productData } = data;
+
     try {
       const product = await prisma.product.create({
-        data,
+        data: {
+          ...productData,
+          zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+        },
         include: {
           category: true,
           variants: {
             where: { isActive: true },
             include: {
-              os: true,
+              os: { include: { zones: { include: { zone: true } } } },
               osVersion: true,
-              flavor: true,
+              flavor: { include: { zones: { include: { zone: true } } } },
               availabilityZones: { include: { availabilityZone: true } },
               zones: { include: { zone: true } },
               continuityLevel: true,
@@ -138,6 +160,7 @@ router.post('/', async (req, res, next) => {
           dependentProducts: {
             include: { product: { include: { category: true } } },
           },
+          zones: { include: { zone: true } },
           _count: { select: { variants: { where: { isActive: true } } } },
         },
       });
@@ -310,9 +333,9 @@ router.get('/:slug', async (req, res, next) => {
         variants: {
           where: { isActive: true },
           include: {
-            os: true,
+            os: { include: { zones: { include: { zone: true } } } },
             osVersion: true,
-            flavor: true,
+            flavor: { include: { zones: { include: { zone: true } } } },
             availabilityZones: { include: { availabilityZone: true } },
             zones: { include: { zone: true } },
             continuityLevel: true,
@@ -326,6 +349,7 @@ router.get('/:slug', async (req, res, next) => {
         },
         upgradeFrom: { include: { toProduct: { select: { id: true, name: true, slug: true } } } },
         upgradeTo: { include: { fromProduct: { select: { id: true, name: true, slug: true } } } },
+        zones: { include: { zone: true } },
         _count: { select: { variants: { where: { isActive: true } }, instances: true } },
       },
     });
@@ -380,17 +404,41 @@ router.patch('/:id', async (req, res, next) => {
       data.computeType = null;
     }
 
+    // Validate zoneIds if provided
+    if (data.zoneIds && data.zoneIds.length > 0) {
+      const uniqueZoneIds = [...new Set(data.zoneIds)];
+      if (uniqueZoneIds.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'Duplicate zone IDs are not allowed' });
+      }
+      const zones = await prisma.zone.findMany({
+        where: { id: { in: data.zoneIds } },
+      });
+      if (zones.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'One or more zones do not exist' });
+      }
+    }
+
+    const { zoneIds, ...productData } = data;
+
+    // Handle zone links update
+    if (zoneIds) {
+      await prisma.productZone.deleteMany({ where: { productId: id } });
+    }
+
     const product = await prisma.product.update({
       where: { id },
-      data,
+      data: {
+        ...productData,
+        zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+      },
       include: {
         category: true,
         variants: {
           where: { isActive: true },
           include: {
-            os: true,
+            os: { include: { zones: { include: { zone: true } } } },
             osVersion: true,
-            flavor: true,
+            flavor: { include: { zones: { include: { zone: true } } } },
             availabilityZones: { include: { availabilityZone: true } },
             zones: { include: { zone: true } },
             continuityLevel: true,
@@ -402,6 +450,7 @@ router.patch('/:id', async (req, res, next) => {
         dependentProducts: {
           include: { product: { include: { category: true } } },
         },
+        zones: { include: { zone: true } },
         _count: { select: { variants: { where: { isActive: true } } } },
       },
     });

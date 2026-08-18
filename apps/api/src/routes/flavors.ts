@@ -11,6 +11,7 @@ const createFlavorSchema = z.object({
   vcpu: z.number().int().min(0, 'vCPU must be a non-negative integer'),
   ramGb: z.number().int().min(0, 'RAM must be a non-negative integer'),
   description: z.string().optional(),
+  zoneIds: z.array(z.string().uuid()).optional(),
 });
 
 const updateFlavorSchema = z.object({
@@ -18,6 +19,7 @@ const updateFlavorSchema = z.object({
   vcpu: z.number().int().min(0).optional(),
   ramGb: z.number().int().min(0).optional(),
   description: z.string().optional(),
+  zoneIds: z.array(z.string().uuid()).optional(),
 });
 
 // GET /api/flavors
@@ -25,6 +27,7 @@ router.get('/', async (_req, res, next) => {
   try {
     const flavors = await prisma.flavor.findMany({
       include: {
+        zones: { include: { zone: true } },
         _count: { select: { variants: true, forecastLines: true, instances: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -41,9 +44,29 @@ router.post('/', async (req, res, next) => {
   try {
     const data = createFlavorSchema.parse(req.body);
 
+    // Validate zoneIds if provided
+    if (data.zoneIds && data.zoneIds.length > 0) {
+      const uniqueZoneIds = [...new Set(data.zoneIds)];
+      if (uniqueZoneIds.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'Duplicate zone IDs are not allowed' });
+      }
+      const zones = await prisma.zone.findMany({
+        where: { id: { in: data.zoneIds } },
+      });
+      if (zones.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'One or more zones do not exist' });
+      }
+    }
+
+    const { zoneIds, ...flavorData } = data;
+
     const flavor = await prisma.flavor.create({
-      data,
+      data: {
+        ...flavorData,
+        zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+      },
       include: {
+        zones: { include: { zone: true } },
         _count: { select: { variants: true } },
       },
     });
@@ -69,6 +92,7 @@ router.get('/:id', async (req, res, next) => {
             osVersion: true,
           },
         },
+        zones: { include: { zone: true } },
         _count: { select: { variants: true, forecastLines: true } },
       },
     });
@@ -95,10 +119,35 @@ router.patch('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Flavor not found' });
     }
 
+    // Validate zoneIds if provided
+    if (data.zoneIds && data.zoneIds.length > 0) {
+      const uniqueZoneIds = [...new Set(data.zoneIds)];
+      if (uniqueZoneIds.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'Duplicate zone IDs are not allowed' });
+      }
+      const zones = await prisma.zone.findMany({
+        where: { id: { in: data.zoneIds } },
+      });
+      if (zones.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'One or more zones do not exist' });
+      }
+    }
+
+    const { zoneIds, ...flavorData } = data;
+
+    // Handle zone links update
+    if (zoneIds) {
+      await prisma.flavorZone.deleteMany({ where: { flavorId: id } });
+    }
+
     const flavor = await prisma.flavor.update({
       where: { id },
-      data,
+      data: {
+        ...flavorData,
+        zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+      },
       include: {
+        zones: { include: { zone: true } },
         _count: { select: { variants: true } },
       },
     });

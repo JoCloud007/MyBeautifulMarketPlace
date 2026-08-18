@@ -34,6 +34,7 @@ model Product {
   upgradeFrom       UpgradePath[]  @relation("UpgradeFrom")
   upgradeTo         UpgradePath[]  @relation("UpgradeTo")
   instances         Instance[]
+  zones             ProductZone[]
   documentation     String?
   roadmap           String?
   os                String?
@@ -43,16 +44,17 @@ model Product {
 }
 
 model OperatingSystem {
-  id               String           @id @default(uuid())
+  id               String                  @id @default(uuid())
   family           String
   name             String
-  slug             String           @unique
-  isActive         Boolean          @default(true)
-  availabilityType AvailabilityType @default(STANDARD)
+  slug             String                  @unique
+  isActive         Boolean                 @default(true)
+  availabilityType AvailabilityType        @default(STANDARD)
   versions         OsVersion[]
   variants         ProductVariant[]
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  zones            OperatingSystemZone[]
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
 }
 
 model OsVersion {
@@ -130,6 +132,7 @@ model Flavor {
   variants      ProductVariant[]
   forecastLines ForecastLine[]
   instances     Instance[]
+  zones         FlavorZone[]
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 }
@@ -230,15 +233,18 @@ model AvailabilityZone {
 }
 
 model Zone {
-  id                  String               @id @default(uuid())
-  name                String               @unique
-  slug                String               @unique
+  id                  String                 @id @default(uuid())
+  name                String                 @unique
+  slug                String                 @unique
   description         String?
-  isActive            Boolean              @default(true)
+  isActive            Boolean                @default(true)
   availabilityZones   ZoneAvailabilityZone[]
   variants            ProductVariantZone[]
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  products            ProductZone[]
+  flavors             FlavorZone[]
+  operatingSystems    OperatingSystemZone[]
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
 }
 
 model ZoneAvailabilityZone {
@@ -257,6 +263,33 @@ model ProductVariantZone {
   zone        Zone           @relation(fields: [zoneId], references: [id], onDelete: Cascade)
 
   @@id([variantId, zoneId])
+}
+
+model ProductZone {
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  zoneId    String
+  zone      Zone    @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@id([productId, zoneId])
+}
+
+model FlavorZone {
+  flavorId String
+  flavor   Flavor @relation(fields: [flavorId], references: [id], onDelete: Cascade)
+  zoneId   String
+  zone     Zone   @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@id([flavorId, zoneId])
+}
+
+model OperatingSystemZone {
+  operatingSystemId String
+  operatingSystem   OperatingSystem @relation(fields: [operatingSystemId], references: [id], onDelete: Cascade)
+  zoneId            String
+  zone              Zone            @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@id([operatingSystemId, zoneId])
 }
 
 model User {
