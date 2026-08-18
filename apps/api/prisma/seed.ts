@@ -188,10 +188,10 @@ async function main() {
   ];
 
   const storageFlavors = [
-    { name: 'Small', vcpu: 0, ramGb: 0, description: '1TB storage, 1000 IOPS' },
-    { name: 'Medium', vcpu: 0, ramGb: 0, description: '5TB storage, 5000 IOPS' },
-    { name: 'Large', vcpu: 0, ramGb: 0, description: '20TB storage, 20000 IOPS' },
-    { name: 'XL', vcpu: 0, ramGb: 0, description: '100TB storage, 100000 IOPS' },
+    { name: 'Storage Small', vcpu: 0, ramGb: 0, description: '1TB storage, 1000 IOPS' },
+    { name: 'Storage Medium', vcpu: 0, ramGb: 0, description: '5TB storage, 5000 IOPS' },
+    { name: 'Storage Large', vcpu: 0, ramGb: 0, description: '20TB storage, 20000 IOPS' },
+    { name: 'Storage XL', vcpu: 0, ramGb: 0, description: '100TB storage, 100000 IOPS' },
   ];
 
   const flavorRecords: Record<string, typeof computeFlavors[0] & { id: string }> = {};
@@ -281,6 +281,8 @@ async function main() {
   const vmVariants: any[] = [];
   for (const osVer of [debian12, debian11, win2022, rhel9]) {
     for (const flavorName of ['Small', 'Medium', 'Large']) {
+      const isRecommended = osVer === debian12 && flavorName === 'Large';
+      const isRestricted = osVer === rhel9;
       const variant = await prisma.productVariant.create({
         data: {
           productId: vmProduct.id,
@@ -290,6 +292,8 @@ async function main() {
           flavorId: flavorRecords[flavorName].id,
           continuityLevelId: clModerate.id,
           isActive: true,
+          priority: isRecommended ? 10 : isRestricted ? 0 : 5,
+          availabilityType: isRecommended ? 'RECOMMENDED' : isRestricted ? 'RESTRICTED' : 'STANDARD',
           availabilityZones: {
             create: [
               { availabilityZoneId: parisAz1.id },
@@ -306,6 +310,7 @@ async function main() {
   const hpcVariants: any[] = [];
   for (const osVer of [debian12, rhel9]) {
     for (const flavorName of ['Large', 'XL']) {
+      const isOnDemand = flavorName === 'XL';
       const variant = await prisma.productVariant.create({
         data: {
           productId: bareMetalHpc.id,
@@ -315,6 +320,8 @@ async function main() {
           flavorId: flavorRecords[flavorName].id,
           continuityLevelId: clSerious.id,
           isActive: true,
+          priority: isOnDemand ? 0 : 8,
+          availabilityType: isOnDemand ? 'ON_DEMAND' : 'RECOMMENDED',
           availabilityZones: {
             create: [
               { availabilityZoneId: parisAz1.id },

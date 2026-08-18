@@ -22,6 +22,7 @@ import {
   ArrowUpRight,
   ArrowRight,
   Calendar,
+  Clock,
   Box,
   Layers,
   Zap,
@@ -32,9 +33,12 @@ import {
   HardDrive,
   Shield,
   X,
+  Search,
+  ChevronDown,
+  Star,
+  Lock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
 const iconMap: Record<string, React.ElementType> = {
@@ -226,6 +230,90 @@ function AnimatedSection({ children, className, delay = 0 }: { children: React.R
 }
 
 /* Variant card for compute products */
+function PickupInput({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (val: string) => void;
+  options: { id: string; label: string }[];
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  const selected = options.find((o) => o.id === value);
+  const filtered = options.filter((o) =>
+    o.label.toLowerCase().includes(query.toLowerCase())
+  );
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="flex-1" ref={containerRef}>
+      <label className="text-xs text-slate-500 mb-1 block">{label}</label>
+      <div className="relative">
+        {selected ? (
+          <div className="flex items-center gap-2 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 min-h-[40px]">
+            <span className="text-sm text-white flex-1">{selected.label}</span>
+            <button
+              onClick={() => { onChange(''); setQuery(''); }}
+              className="text-slate-500 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+              onFocus={() => setOpen(true)}
+              placeholder={placeholder || `Search ${label.toLowerCase()}...`}
+              className="w-full rounded-md border border-slate-700 bg-slate-950 pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 min-h-[40px]"
+            />
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+          </div>
+        )}
+        {open && !selected && (
+          <div className="absolute z-10 mt-1 w-full max-h-48 overflow-auto rounded-md border border-slate-700 bg-slate-900 shadow-lg">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-slate-500">No results</div>
+            ) : (
+              filtered.map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => { onChange(opt.id); setQuery(''); setOpen(false); }}
+                  className="w-full px-3 py-2 text-left text-sm text-white hover:bg-slate-800 transition-colors"
+                >
+                  {opt.label}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function VariantCard({ variant }: { variant: ProductVariant }) {
   const azs = variant.availabilityZones?.map((az: any) => az.availabilityZone) ?? [];
   return (
@@ -234,12 +322,26 @@ function VariantCard({ variant }: { variant: ProductVariant }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-white">{variant.name}</span>
-            <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
+            <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-400 bg-blue-500/10">
+              <Monitor className="h-3 w-3 mr-1" />
               {variant.os?.name} {variant.osVersion?.version}
             </Badge>
             <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
               {variant.flavor?.name}
             </Badge>
+            {variant.availabilityType && variant.availabilityType !== 'STANDARD' && (
+              <Badge variant="outline" className={cn(
+                'text-xs',
+                variant.availabilityType === 'RECOMMENDED' && 'border-emerald-500/20 text-emerald-500 bg-emerald-500/10',
+                variant.availabilityType === 'RESTRICTED' && 'border-red-500/20 text-red-500 bg-red-500/10',
+                variant.availabilityType === 'ON_DEMAND' && 'border-amber-500/20 text-amber-500 bg-amber-500/10',
+              )}>
+                {variant.availabilityType === 'RECOMMENDED' && <Star className="h-3 w-3 mr-1" />}
+                {variant.availabilityType === 'RESTRICTED' && <Lock className="h-3 w-3 mr-1" />}
+                {variant.availabilityType === 'ON_DEMAND' && <Clock className="h-3 w-3 mr-1" />}
+                {variant.availabilityType.replace('_', ' ')}
+              </Badge>
+            )}
             {variant.isActive ? (
               <Badge variant="outline" className="text-xs border-emerald-500/20 text-emerald-500">
                 Active
@@ -255,6 +357,12 @@ function VariantCard({ variant }: { variant: ProductVariant }) {
               <HardDrive className="h-3.5 w-3.5 text-slate-500" />
               {variant.flavor?.vcpu} vCPU · {variant.flavor?.ramGb} GB
             </span>
+            {(variant.priority || 0) > 0 && (
+              <span className="flex items-center gap-1 text-amber-400">
+                <Zap className="h-3.5 w-3.5" />
+                Priority {variant.priority}
+              </span>
+            )}
             {variant.continuityLevel && (
               <span className="flex items-center gap-1">
                 <Shield className="h-3.5 w-3.5 text-slate-500" />
@@ -371,19 +479,30 @@ export default function ProductDetail() {
   const osOptions = Array.from(new Map(variants.map(v => [v.osId, v.os])).values());
   const flavorOptions = Array.from(new Map(variants.map(v => [v.flavorId, v.flavor])).values());
 
-  // Filtered variants
-  const filteredVariants = variants.filter((v) => {
+  // Filtered variants — sort by priority descending, then by name
+  const sortedVariants = [...variants].sort((a, b) => {
+    const pDiff = (b.priority || 0) - (a.priority || 0);
+    return pDiff !== 0 ? pDiff : (a.name || '').localeCompare(b.name || '');
+  });
+
+  const filteredVariants = sortedVariants.filter((v) => {
     if (osFilter && v.osId !== osFilter) return false;
     if (versionFilter && v.osVersionId !== versionFilter) return false;
     if (flavorFilter && v.flavorId !== flavorFilter) return false;
     return true;
   });
 
-  // Available versions based on selected OS
+  // Available versions based on selected OS — build full labels with OS name
   const availableVersions = osFilter
     ? variants.filter(v => v.osId === osFilter).map(v => v.osVersion)
     : variants.map(v => v.osVersion);
   const versionOptions = Array.from(new Map(availableVersions.map(v => [v.id, v])).values());
+  const versionLabels = new Map<string, string>();
+  for (const v of variants) {
+    if (v.osVersion && !versionLabels.has(v.osVersion.id)) {
+      versionLabels.set(v.osVersion.id, `${v.os?.name || 'OS'} ${v.osVersion.version}`);
+    }
+  }
 
   // Collect all AZs from all variants
   const allAzs = variants.flatMap((v) =>
@@ -549,15 +668,36 @@ export default function ProductDetail() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    {variants.slice(0, 3).map((v) => (
-                      <VariantCard key={v.id} variant={v} />
-                    ))}
-                    {variants.length > 3 && (
-                      <p className="text-sm text-slate-500 text-center">
-                        +{variants.length - 3} more variants. See the Variants tab for full details.
-                      </p>
-                    )}
+                  <div className="space-y-4">
+                    {Array.from(new Map(variants.map(v => [v.flavorId, v.flavor])).values()).map((flavor: any) => {
+                      const flavorVariants = variants.filter(v => v.flavorId === flavor.id);
+                      const osList = Array.from(new Map(flavorVariants.map(v => [v.osId, { name: v.os?.name, version: v.osVersion?.version }])).values());
+                      return (
+                        <div key={flavor.id} className="flex flex-col sm:flex-row gap-3 rounded-lg border border-slate-800 bg-slate-950 p-4">
+                          {/* Flavor - big square on the left */}
+                          <div className="sm:w-48 shrink-0 flex flex-col items-center justify-center rounded-lg bg-slate-900 border border-slate-800 p-4 text-center">
+                            <Cpu className="h-8 w-8 text-blue-500 mb-2" />
+                            <span className="font-bold text-white text-lg">{flavor.name}</span>
+                            <span className="text-sm text-slate-400 mt-1">{flavor.vcpu} vCPU · {flavor.ramGb} GB</span>
+                          </div>
+                          {/* OS options - small rectangles on the right */}
+                          <div className="flex-1 flex flex-wrap gap-2 items-center content-center">
+                            {osList.map((os: any, i: number) => (
+                              <Badge
+                                key={i}
+                                variant="outline"
+                                className="text-xs border-slate-700 text-slate-300 bg-slate-900 px-3 py-1.5"
+                              >
+                                {os.name} {os.version}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <p className="text-sm text-slate-500 text-center">
+                      See the Variants tab for full details and filtering.
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -587,7 +727,7 @@ export default function ProductDetail() {
           </TabsContent>
 
           {/* Roadmap */}
-          <TabsContent value="roadmap" className="mt-4 animate-fade-in">
+          <TabsContent value="roadmap" className="mt-4 space-y-6 animate-fade-in">
             <Card className="bg-slate-900 border-slate-800">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-white">
@@ -606,6 +746,59 @@ export default function ProductDetail() {
                 )}
               </CardContent>
             </Card>
+
+            {isCompute && variants.length > 0 && (
+              <Card className="bg-slate-900 border-slate-800">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-white">
+                    <Clock className="h-5 w-5 text-blue-500" />
+                    Release Timeline
+                  </CardTitle>
+                  <CardDescription className="text-slate-400">
+                    OS version release history for this product
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-0">
+                    {Array.from(new Map(variants.map(v => [v.osVersionId, v])).values())
+                      .filter((v: any) => v.osVersion?.releaseDate)
+                      .sort((a: any, b: any) => new Date(b.osVersion.releaseDate).getTime() - new Date(a.osVersion.releaseDate).getTime())
+                      .map((v: any, idx: number, arr: any[]) => (
+                        <div key={v.osVersionId} className="flex gap-4 relative">
+                          {/* Timeline line */}
+                          {idx < arr.length - 1 && (
+                            <div className="absolute left-[7px] top-6 bottom-0 w-px bg-slate-700" />
+                          )}
+                          <div className="flex flex-col items-center">
+                            <div className="h-3.5 w-3.5 rounded-full bg-blue-500 border-2 border-slate-900" />
+                          </div>
+                          <div className="pb-6 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-white">{v.os?.name} {v.osVersion?.version}</span>
+                              <span className="text-xs text-slate-500">
+                                Released {formatDate(v.osVersion.releaseDate)}
+                              </span>
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-xs">
+                              <span className={cn(
+                                v.osVersion.phase === 'EOL' ? 'text-red-400' :
+                                v.osVersion.phase === 'NO_SUPPORT' ? 'text-orange-400' :
+                                v.osVersion.phase === 'EXTENDED_SUPPORT' ? 'text-amber-400' :
+                                v.osVersion.phase === 'NORMAL_SUPPORT' ? 'text-blue-400' :
+                                'text-emerald-400'
+                              )}>
+                                {v.osVersion.phase.replace('_', ' ')}
+                              </span>
+                              <span className="text-slate-600">·</span>
+                              <span className="text-slate-500">EOL {formatDate(v.osVersion.eolDate)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* Variants (Compute only) */}
@@ -621,45 +814,27 @@ export default function ProductDetail() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="flex-1">
-                      <label className="text-xs text-slate-500 mb-1 block">Operating System</label>
-                      <Select
-                        value={osFilter}
-                        onChange={(e) => { setOsFilter(e.target.value); setVersionFilter(''); }}
-                        className="bg-slate-950 border-slate-700 text-white min-h-[40px]"
-                      >
-                        <option value="">All OS</option>
-                        {osOptions.map((os) => (
-                          <option key={os.id} value={os.id}>{os.name}</option>
-                        ))}
-                      </Select>
-                    </div>
-                    <div className="flex-1">
-                      <label className="text-xs text-slate-500 mb-1 block">Version</label>
-                      <Select
-                        value={versionFilter}
-                        onChange={(e) => setVersionFilter(e.target.value)}
-                        className="bg-slate-950 border-slate-700 text-white min-h-[40px]"
-                      >
-                        <option value="">All Versions</option>
-                        {versionOptions.map((v) => (
-                          <option key={v.id} value={v.id}>{v.version}</option>
-                        ))}
-                      </Select>
-                    </div>
-                    <div className="flex-1">
-                      <label className="text-xs text-slate-500 mb-1 block">Flavor</label>
-                      <Select
-                        value={flavorFilter}
-                        onChange={(e) => setFlavorFilter(e.target.value)}
-                        className="bg-slate-950 border-slate-700 text-white min-h-[40px]"
-                      >
-                        <option value="">All Flavors</option>
-                        {flavorOptions.map((f) => (
-                          <option key={f.id} value={f.id}>{f.name} ({f.vcpu}vCPU, {f.ramGb}GB)</option>
-                        ))}
-                      </Select>
-                    </div>
+                    <PickupInput
+                      label="Operating System"
+                      value={osFilter}
+                      onChange={(val) => { setOsFilter(val); setVersionFilter(''); }}
+                      options={osOptions.map((os) => ({ id: os.id, label: `${os.name} (${os.family})` }))}
+                      placeholder="Search OS..."
+                    />
+                    <PickupInput
+                      label="Version"
+                      value={versionFilter}
+                      onChange={setVersionFilter}
+                      options={versionOptions.map((v) => ({ id: v.id, label: versionLabels.get(v.id) || v.version }))}
+                      placeholder="Search version..."
+                    />
+                    <PickupInput
+                      label="Flavor"
+                      value={flavorFilter}
+                      onChange={setFlavorFilter}
+                      options={flavorOptions.map((f) => ({ id: f.id, label: `${f.name} (${f.vcpu}vCPU, ${f.ramGb}GB)` }))}
+                      placeholder="Search flavor..."
+                    />
                     {(osFilter || versionFilter || flavorFilter) && (
                       <div className="flex items-end">
                         <Button

@@ -90,7 +90,7 @@ import {
   ChevronRight,
   Box,
 } from 'lucide-react';
-import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant } from '@cloudmarket/shared-types';
+import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ApprovalStatus, { label: string; color: string }> = {
   PENDING: { label: 'Pending', color: 'border-amber-500/20 text-amber-500' },
@@ -738,11 +738,11 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
   const [variantOpen, setVariantOpen] = useState(false);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
   const [variantForm, setVariantForm] = useState({
-    name: '', osId: '', osVersionId: '', flavorId: '', availabilityZoneIds: [] as string[], continuityLevelId: '', isActive: true,
+    name: '', osId: '', osVersionId: '', flavorId: '', availabilityZoneIds: [] as string[], continuityLevelId: '', isActive: true, priority: 0, availabilityType: 'STANDARD' as AvailabilityType,
   });
 
   const resetVariantForm = () => {
-    setVariantForm({ name: '', osId: '', osVersionId: '', flavorId: '', availabilityZoneIds: [], continuityLevelId: '', isActive: true });
+    setVariantForm({ name: '', osId: '', osVersionId: '', flavorId: '', availabilityZoneIds: [], continuityLevelId: '', isActive: true, priority: 0, availabilityType: 'STANDARD' as AvailabilityType });
     setEditingVariant(null);
   };
 
@@ -757,6 +757,8 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
       availabilityZoneIds: v.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [],
       continuityLevelId: v.continuityLevelId || '',
       isActive: v.isActive,
+      priority: v.priority || 0,
+      availabilityType: (v.availabilityType as AvailabilityType) || 'STANDARD',
     });
     setVariantOpen(true);
   };
@@ -806,6 +808,14 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
                       <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">{v.os?.name} {v.osVersion?.version}</Badge>
                       <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">{v.flavor?.name}</Badge>
                       {v.continuityLevel && <Badge variant="outline" className="text-xs border-slate-700" style={{ color: v.continuityLevel.color, borderColor: `${v.continuityLevel.color}40` }}>{v.continuityLevel.name}</Badge>}
+                      {(v.priority || 0) > 0 && <Badge variant="outline" className="text-xs border-amber-500/20 text-amber-500">Priority {v.priority}</Badge>}
+                      {v.availabilityType && v.availabilityType !== 'STANDARD' && (
+                        <Badge variant="outline" className={
+                          v.availabilityType === 'RECOMMENDED' ? 'text-xs border-emerald-500/20 text-emerald-500' :
+                          v.availabilityType === 'RESTRICTED' ? 'text-xs border-red-500/20 text-red-500' :
+                          'text-xs border-amber-500/20 text-amber-500'
+                        }>{v.availabilityType.replace('_', ' ')}</Badge>
+                      )}
                       <Badge variant="outline" className={v.isActive ? 'text-xs border-emerald-500/20 text-emerald-500' : 'text-xs border-slate-600 text-slate-500'}>{v.isActive ? 'Active' : 'Inactive'}</Badge>
                     </div>
                     <div className="flex gap-1">
@@ -897,6 +907,32 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
             <div className="flex items-center gap-2">
               <input type="checkbox" id="vIsActive" checked={variantForm.isActive} onChange={(e) => setVariantForm({ ...variantForm, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
               <label htmlFor="vIsActive" className="text-sm text-slate-300">Active</label>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Priority</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={variantForm.priority}
+                  onChange={(e) => setVariantForm({ ...variantForm, priority: parseInt(e.target.value) || 0 })}
+                  className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white min-h-[44px]"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Availability</label>
+                <Select
+                  value={variantForm.availabilityType}
+                  onChange={(e) => setVariantForm({ ...variantForm, availabilityType: e.target.value as AvailabilityType })}
+                  className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+                >
+                  <option value="STANDARD">Standard</option>
+                  <option value="RECOMMENDED">Recommended</option>
+                  <option value="RESTRICTED">Restricted</option>
+                  <option value="ON_DEMAND">On Demand</option>
+                </Select>
+              </div>
             </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button type="button" variant="outline" onClick={() => setVariantOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>

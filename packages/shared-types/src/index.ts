@@ -41,6 +41,13 @@ export enum MigrationType {
   SNAPSHOT = 'SNAPSHOT',
 }
 
+export enum AvailabilityType {
+  STANDARD = 'STANDARD',
+  RECOMMENDED = 'RECOMMENDED',
+  RESTRICTED = 'RESTRICTED',
+  ON_DEMAND = 'ON_DEMAND',
+}
+
 export enum InstanceStatus {
   PENDING = 'PENDING',
   PROVISIONING = 'PROVISIONING',
@@ -114,6 +121,8 @@ export interface ProductVariant {
   continuityLevel: ContinuityLevel | null;
   instances: Instance[];
   isActive: boolean;
+  priority: number;
+  availabilityType: AvailabilityType;
   createdAt: string;
   updatedAt: string;
 }

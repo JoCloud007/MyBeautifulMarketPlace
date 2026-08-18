@@ -34,6 +34,12 @@ export declare enum MigrationType {
     BLUE_GREEN = "BLUE_GREEN",
     SNAPSHOT = "SNAPSHOT"
 }
+export declare enum AvailabilityType {
+    STANDARD = "STANDARD",
+    RECOMMENDED = "RECOMMENDED",
+    RESTRICTED = "RESTRICTED",
+    ON_DEMAND = "ON_DEMAND"
+}
 export declare enum InstanceStatus {
     PENDING = "PENDING",
     PROVISIONING = "PROVISIONING",
@@ -101,6 +107,8 @@ export interface ProductVariant {
     continuityLevel: ContinuityLevel | null;
     instances: Instance[];
     isActive: boolean;
+    priority: number;
+    availabilityType: AvailabilityType;
     createdAt: string;
     updatedAt: string;
 }

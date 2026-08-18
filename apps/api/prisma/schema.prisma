@@ -89,6 +89,8 @@ model ProductVariant {
   instances         Instance[]
   forecastLines     ForecastLine[]
   isActive          Boolean                          @default(true)
+  priority          Int                              @default(0)
+  availabilityType  AvailabilityType                 @default(STANDARD)
   createdAt         DateTime                         @default(now())
   updatedAt         DateTime                         @updatedAt
 
@@ -308,6 +310,13 @@ enum BackupStatus {
   IN_PROGRESS
   COMPLETED
   FAILED
+}
+
+enum AvailabilityType {
+  STANDARD
+  RECOMMENDED
+  RESTRICTED
+  ON_DEMAND
 }
 
 model Backup {

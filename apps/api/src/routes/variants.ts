@@ -15,6 +15,8 @@ const createVariantSchema = z.object({
   availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
   continuityLevelId: z.string().uuid().optional().nullable(),
   isActive: z.boolean().optional(),
+  priority: z.number().int().min(0).max(100).optional(),
+  availabilityType: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
 });
 
 const updateVariantSchema = z.object({
@@ -25,6 +27,8 @@ const updateVariantSchema = z.object({
   availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
   continuityLevelId: z.string().uuid().optional().nullable(),
   isActive: z.boolean().optional(),
+  priority: z.number().int().min(0).max(100).optional(),
+  availabilityType: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
 });
 
 // GET /api/variants/:id
@@ -131,6 +135,8 @@ router.put('/:id', async (req, res, next) => {
           flavorId: data.flavorId,
           continuityLevelId: data.continuityLevelId,
           isActive: data.isActive,
+          priority: data.priority,
+          availabilityType: data.availabilityType,
           availabilityZones: data.availabilityZoneIds
             ? { create: data.availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) }
             : undefined,
