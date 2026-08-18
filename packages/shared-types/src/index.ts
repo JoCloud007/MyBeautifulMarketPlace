@@ -41,6 +41,13 @@ export enum MigrationType {
   SNAPSHOT = 'SNAPSHOT',
 }
 
+export enum AvailabilityType {
+  STANDARD = 'STANDARD',
+  RECOMMENDED = 'RECOMMENDED',
+  RESTRICTED = 'RESTRICTED',
+  ON_DEMAND = 'ON_DEMAND',
+}
+
 export enum InstanceStatus {
   PENDING = 'PENDING',
   PROVISIONING = 'PROVISIONING',
@@ -78,7 +85,9 @@ export interface OperatingSystem {
   name: string;
   slug: string;
   isActive: boolean;
+  availabilityType: AvailabilityType;
   versions: OsVersion[];
+  zones: OperatingSystemZone[];
   createdAt: string;
   updatedAt: string;
 }
@@ -110,21 +119,65 @@ export interface ProductVariant {
   flavorId: string;
   flavor: Flavor;
   availabilityZones: ProductVariantAvailabilityZone[];
+  zones: ProductVariantZone[];
   continuityLevelId: string | null;
   continuityLevel: ContinuityLevel | null;
   instances: Instance[];
   isActive: boolean;
+  availabilityType: AvailabilityType;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface ProductVariantAvailabilityZone {
-  id: string;
   variantId: string;
   variant: ProductVariant;
   availabilityZoneId: string;
   availabilityZone: AvailabilityZone;
+}
+
+export interface Zone {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  isActive: boolean;
+  availabilityZones: ZoneAvailabilityZone[];
+  products: ProductZone[];
+  flavors: FlavorZone[];
+  operatingSystems: OperatingSystemZone[];
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface ZoneAvailabilityZone {
+  zoneId: string;
+  availabilityZoneId: string;
+  availabilityZone: AvailabilityZone;
+}
+
+export interface ProductVariantZone {
+  variantId: string;
+  zoneId: string;
+  zone: Zone;
+}
+
+export interface ProductZone {
+  productId: string;
+  zoneId: string;
+  zone: Zone;
+}
+
+export interface FlavorZone {
+  flavorId: string;
+  zoneId: string;
+  zone: Zone;
+}
+
+export interface OperatingSystemZone {
+  operatingSystemId: string;
+  zoneId: string;
+  zone: Zone;
 }
 
 export interface UpgradePath {
@@ -152,6 +205,7 @@ export interface Product {
   dependentProducts: Dependency[];
   upgradeFrom: UpgradePath[];
   upgradeTo: UpgradePath[];
+  zones: ProductZone[];
   documentation: string | null;
   roadmap: string | null;
   os: string | null;
@@ -166,6 +220,7 @@ export interface Flavor {
   vcpu: number;
   ramGb: number;
   description: string | null;
+  zones: FlavorZone[];
   createdAt: string;
   updatedAt: string;
 }
@@ -337,6 +392,7 @@ export interface AdminDashboard {
     forecasts: number;
     users: number;
     availabilityZones: number;
+    zones: number;
     applications: number;
     continuityLevels: number;
   };

@@ -9,6 +9,7 @@ interface AppState {
     os?: string;
     flavor?: string;
     search?: string;
+    computeType?: string;
   };
   sortBy: SortOption;
   viewMode: ViewMode;

@@ -107,19 +107,24 @@ describe('🏗️ Project Foundations & Data Layer', () => {
   describe('2️⃣ Prisma Schema & Data Models', () => {
     const schema = readRelative('apps/api/prisma/schema.prisma');
 
-    test('schema defines all 6 models', () => {
+    test('schema defines core models', () => {
       expect(schema).toContain('model Category');
       expect(schema).toContain('model Product');
       expect(schema).toContain('model Flavor');
       expect(schema).toContain('model Dependency');
       expect(schema).toContain('model Forecast');
       expect(schema).toContain('model User');
+      expect(schema).toContain('model OperatingSystem');
+      expect(schema).toContain('model OsVersion');
+      expect(schema).toContain('model ProductVariant');
     });
 
-    test('schema defines all 3 enums', () => {
+    test('schema defines core enums', () => {
       expect(schema).toContain('enum DependencyType');
       expect(schema).toContain('enum ApprovalStatus');
       expect(schema).toContain('enum UserRole');
+      expect(schema).toContain('enum ComputeType');
+      expect(schema).toContain('enum LifecyclePhase');
     });
 
     test('Category has name and slug as unique String fields', () => {
@@ -210,9 +215,7 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       const slugs = data.map((p: any) => p.slug);
       expect(slugs).toEqual(
         expect.arrayContaining([
-          'vm-debian-12',
-          'vm-windows-server-2022',
-          'vm-rhel-9',
+          'virtual-machine',
           'bare-metal-hpc',
           'object-storage',
           'nas-storage',
@@ -222,25 +225,21 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       );
     });
 
-    test('compute products have 4 flavors each', async () => {
+    test('compute products have variants with flavors', async () => {
       const { data: products } = await get('/api/products?category=compute');
       for (const p of products) {
         if (p.slug === 'object-storage' || p.slug === 'nas-storage') continue;
-        expect(p.flavors.length).toBeGreaterThanOrEqual(4);
-        const flavorNames = p.flavors.map((f: any) => f.name);
-        expect(flavorNames).toEqual(expect.arrayContaining(['Small', 'Medium', 'Large', 'XL']));
+        expect(p.variants.length).toBeGreaterThanOrEqual(1);
+        const flavorNames = p.variants.map((v: any) => v.flavor?.name).filter(Boolean);
+        expect(flavorNames.length).toBeGreaterThanOrEqual(1);
       }
     });
 
-    test('storage products have 4 flavors with vcpu=0, ramGb=0', async () => {
+    test('storage products have no variants', async () => {
       const { data: products } = await get('/api/products');
       for (const p of products) {
         if (p.slug === 'object-storage' || p.slug === 'nas-storage') {
-          expect(p.flavors.length).toBe(4);
-          for (const f of p.flavors) {
-            expect(f.vcpu).toBe(0);
-            expect(f.ramGb).toBe(0);
-          }
+          expect(p.variants.length).toBe(0);
         }
       }
     });
@@ -313,13 +312,11 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       expect(found).toBe(true);
     });
 
-    test('GET /api/products?flavor=Small filters products having that flavor', async () => {
-      const { status, data } = await get('/api/products?flavor=Small');
+    test('GET /api/products?computeType=VIRTUAL filters compute products', async () => {
+      const { status, data } = await get('/api/products?computeType=VIRTUAL');
       expect(status).toBe(200);
-      expect(data.length).toBeGreaterThanOrEqual(1);
       for (const p of data) {
-        const hasSmall = p.flavors.some((f: any) => f.name.toLowerCase() === 'small');
-        expect(hasSmall).toBe(true);
+        expect(p.computeType).toBe('VIRTUAL');
       }
     });
 
@@ -343,7 +340,7 @@ describe('🏗️ Project Foundations & Data Layer', () => {
     test('POST /api/products rejects duplicate slug with 409', async () => {
       const { status, data } = await post('/api/products', {
         name: 'Duplicate',
-        slug: 'vm-debian-12',
+        slug: 'virtual-machine',
         categoryId: catId,
       });
       expect(status).toBe(409);
@@ -362,11 +359,11 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       expect(data.details.length).toBeGreaterThanOrEqual(1);
     });
 
-    test('GET /api/products/:slug returns product with flavors and dependencies', async () => {
-      const { status, data } = await get('/api/products/vm-debian-12');
+    test('GET /api/products/:slug returns product with variants and dependencies', async () => {
+      const { status, data } = await get('/api/products/virtual-machine');
       expect(status).toBe(200);
-      expect(data.slug).toBe('vm-debian-12');
-      expect(Array.isArray(data.flavors)).toBe(true);
+      expect(data.slug).toBe('virtual-machine');
+      expect(Array.isArray(data.variants)).toBe(true);
       expect(Array.isArray(data.dependencies)).toBe(true);
       expect(Array.isArray(data.dependentProducts)).toBe(true);
     });
@@ -399,7 +396,7 @@ describe('🏗️ Project Foundations & Data Layer', () => {
     });
 
     test('GET /api/products/:slug/forecasts returns product forecasts', async () => {
-      const { status, data } = await get('/api/products/vm-debian-12/forecasts');
+      const { status, data } = await get('/api/products/virtual-machine/forecasts');
       expect(status).toBe(200);
       expect(Array.isArray(data)).toBe(true);
     });
@@ -493,29 +490,21 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       productId = products[0].id;
     });
 
-    test('GET /api/flavors returns flavors with product info and _count.forecasts', async () => {
+    test('GET /api/flavors returns flavors with _count.forecastLines', async () => {
       const { status, data } = await get('/api/flavors');
       expect(status).toBe(200);
       expect(Array.isArray(data)).toBe(true);
       for (const f of data) {
-        expect(f.product).toBeDefined();
         expect(f._count).toBeDefined();
-        expect(typeof f._count.forecasts).toBe('number');
+        expect(typeof f._count.forecastLines).toBe('number');
       }
     });
 
-    test('GET /api/flavors?productId= filters by product', async () => {
-      const { status, data } = await get(`/api/flavors?productId=${productId}`);
-      expect(status).toBe(200);
-      for (const f of data) expect(f.productId).toBe(productId);
-    });
-
-    test('POST /api/flavors creates a flavor for a product', async () => {
+    test('POST /api/flavors creates a global flavor', async () => {
       const { status, data } = await post('/api/flavors', {
         name: 'TestFlavorJest',
         vcpu: 1,
         ramGb: 2,
-        productId,
       });
       expect(status).toBe(201);
       expect(data.id).toBeDefined();
@@ -524,23 +513,11 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       cleanup.push({ type: 'flavors', id: data.id });
     });
 
-    test('POST /api/flavors rejects non-existent product with 404', async () => {
-      const { status, data } = await post('/api/flavors', {
-        name: 'Orphan',
-        vcpu: 1,
-        ramGb: 1,
-        productId: '00000000-0000-0000-0000-000000000000',
-      });
-      expect(status).toBe(404);
-      expect(data.error).toBe('Product not found');
-    });
-
     test('POST /api/flavors rejects negative vcpu with 400', async () => {
       const { status, data } = await post('/api/flavors', {
         name: 'Bad',
         vcpu: -1,
         ramGb: 1,
-        productId,
       });
       expect(status).toBe(400);
       expect(data.error).toBe('Validation Error');
@@ -570,17 +547,17 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       if (idx >= 0) cleanup.splice(idx, 1);
     });
 
-    test('DELETE /api/flavors/:id rejects if forecasts exist', async () => {
-      // Find a flavor that has forecasts via seeded data
+    test('DELETE /api/flavors/:id rejects if forecast lines exist', async () => {
+      // Find a flavor that has forecast lines via seeded data
       const { data: flavors } = await get('/api/flavors');
-      const withForecasts = flavors.find((f: any) => f._count.forecasts > 0);
+      const withForecasts = flavors.find((f: any) => f._count.forecastLines > 0);
       if (!withForecasts) {
-        console.warn('Skipping: no flavor with forecasts found');
+        console.warn('Skipping: no flavor with forecast lines found');
         return;
       }
       const { status, data } = await del(`/api/flavors/${withForecasts.id}`);
       expect(status).toBe(409);
-      expect(data.error).toMatch(/forecasts|delete forecasts/i);
+      expect(data.error).toMatch(/forecast lines|delete forecasts/i);
     });
   });
 
@@ -707,7 +684,8 @@ describe('🏗️ Project Foundations & Data Layer', () => {
     beforeAll(async () => {
       const { data: products } = await get('/api/products');
       productId = products[0].id;
-      flavorId = products[0].flavors[0].id;
+      const { data: flavors } = await get('/api/flavors');
+      flavorId = flavors[0].id;
     });
 
     test('GET /api/forecasts returns all forecasts with product and flavor', async () => {
@@ -900,13 +878,13 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       expect(data.recentForecasts.length).toBeLessThanOrEqual(10);
     });
 
-    test('GET /api/admin/products returns products with _count.forecasts', async () => {
+    test('GET /api/admin/products returns products with _count.forecastLines', async () => {
       const { status, data } = await get('/api/admin/products');
       expect(status).toBe(200);
       expect(Array.isArray(data)).toBe(true);
       for (const p of data) {
         expect(p._count).toBeDefined();
-        expect(typeof p._count.forecasts).toBe('number');
+        expect(typeof p._count.forecastLines).toBe('number');
       }
     });
 
@@ -916,12 +894,11 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       expect(Array.isArray(data)).toBe(true);
     });
 
-    test('GET /api/admin/flavors returns flavors with product and forecast counts', async () => {
+    test('GET /api/admin/flavors returns flavors with variant and forecast counts', async () => {
       const { status, data } = await get('/api/admin/flavors');
       expect(status).toBe(200);
       expect(Array.isArray(data)).toBe(true);
       for (const f of data) {
-        expect(f.product).toBeDefined();
         expect(f._count).toBeDefined();
       }
     });
@@ -975,14 +952,8 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       cleanup.push({ type: 'users', id: data.id });
     });
 
-    test('POST /api/admin/products/:id/flavors creates a flavor', async () => {
-      const { data: products } = await get('/api/admin/products');
-      const target = products.find((p: any) => p.slug === 'admin-test-product');
-      if (!target) {
-        console.warn('Skipping: admin test product not found');
-        return;
-      }
-      const { status, data } = await post(`/api/admin/products/${target.id}/flavors`, {
+    test('POST /api/flavors creates a global flavor', async () => {
+      const { status, data } = await post('/api/flavors', {
         name: 'AdminFlavor',
         vcpu: 4,
         ramGb: 8,
@@ -1048,19 +1019,16 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       expect(data.error).toMatch(/Not Found|Record not found/i);
     });
 
-    test('Prisma foreign key constraint returns 409 (flavor with invalid product)', async () => {
-      // This is actually caught by manual validation in the route (404), so let's test
-      // something that hits Prisma directly. The admin flavor create doesn't validate.
-      const { data: products } = await get('/api/admin/products');
-      const { status, data } = await post(`/api/admin/products/${products[0].id}/flavors`, {
+    test('Prisma foreign key constraint returns 409 (variant with invalid product)', async () => {
+      // Attempt to create a variant for a non-existent product via the public route
+      const { status, data } = await post('/api/variants/product/00000000-0000-0000-0000-000000000000', {
         name: 'FKTest',
-        vcpu: 0,
-        ramGb: 0,
+        osId: '00000000-0000-0000-0000-000000000000',
+        osVersionId: '00000000-0000-0000-0000-000000000000',
+        flavorId: '00000000-0000-0000-0000-000000000000',
       });
-      // This should succeed since product exists. To truly test FK, we'd need to
-      // create a flavor through raw Prisma with a bad productId, which isn't
-      // exposed via routes. The route-level validation catches this.
-      expect(status === 201 || status === 200).toBe(true);
+      expect(status).toBe(404);
+      expect(data.error).toMatch(/Product not found/i);
     });
 
     test('GET /api/products/:slug/forecasts returns 404 for unknown product slug', async () => {

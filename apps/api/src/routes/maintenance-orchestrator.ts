@@ -152,53 +152,53 @@ router.get('/alerts', async (_req, res, next) => {
     const now = new Date();
     const alerts: MaintenanceAlert[] = [];
 
-    // ── Lifecycle alerts (from OS versions) ──
+    // ── Lifecycle alerts ──
     const osVersions = await prisma.osVersion.findMany({
       include: { os: true },
     });
 
-    for (const ov of osVersions) {
-      const eolDate = new Date(ov.eolDate);
-      const extendedEnd = new Date(ov.extendedSupportEnd);
+    for (const v of osVersions) {
+      const eolDate = new Date(v.eolDate);
+      const extendedEnd = new Date(v.extendedSupportEnd);
       const daysToEol = daysBetween(now, eolDate);
       const daysToExtendedEnd = daysBetween(now, extendedEnd);
 
-      if (ov.phase === LifecyclePhase.NO_SUPPORT && daysToEol <= 30 && daysToEol > 0) {
+      if (v.phase === LifecyclePhase.NO_SUPPORT && daysToEol <= 30 && daysToEol > 0) {
         alerts.push({
-          id: `lifecycle-eol-${ov.id}`,
+          id: `lifecycle-eol-${v.id}`,
           severity: 'CRITICAL',
           category: 'LIFECYCLE',
-          title: `OS approaching EOL: ${ov.os.name} ${ov.version}`,
-          message: `${ov.os.name} ${ov.version} will reach End-of-Life in ${daysToEol} days (${eolDate.toDateString()}).`,
-          affectedResource: { type: 'PRODUCT', id: ov.osId, name: `${ov.os.name} ${ov.version}` },
+          title: `OS approaching EOL: ${v.os.name} ${v.version}`,
+          message: `${v.os.name} ${v.version} will reach End-of-Life in ${daysToEol} days (${eolDate.toDateString()}).`,
+          affectedResource: { type: 'PRODUCT', id: v.osId, name: `${v.os.name} ${v.version}` },
           suggestedAction: 'Plan migration to a supported version before EOL.',
           createdAt: now.toISOString(),
           expiresAt: eolDate.toISOString(),
         });
       }
 
-      if (ov.phase === LifecyclePhase.EXTENDED_SUPPORT && daysToExtendedEnd <= 30 && daysToExtendedEnd > 0) {
+      if (v.phase === LifecyclePhase.EXTENDED_SUPPORT && daysToExtendedEnd <= 30 && daysToExtendedEnd > 0) {
         alerts.push({
-          id: `lifecycle-extended-${ov.id}`,
+          id: `lifecycle-extended-${v.id}`,
           severity: 'WARNING',
           category: 'LIFECYCLE',
-          title: `Extended support ending: ${ov.os.name} ${ov.version}`,
-          message: `Extended support for ${ov.os.name} ${ov.version} ends in ${daysToExtendedEnd} days.`,
-          affectedResource: { type: 'PRODUCT', id: ov.osId, name: `${ov.os.name} ${ov.version}` },
+          title: `Extended support ending: ${v.os.name} ${v.version}`,
+          message: `Extended support for ${v.os.name} ${v.version} ends in ${daysToExtendedEnd} days.`,
+          affectedResource: { type: 'PRODUCT', id: v.osId, name: `${v.os.name} ${v.version}` },
           suggestedAction: 'Upgrade to a version with active support or plan extended maintenance.',
           createdAt: now.toISOString(),
           expiresAt: extendedEnd.toISOString(),
         });
       }
 
-      if (ov.phase === LifecyclePhase.EOL) {
+      if (v.phase === LifecyclePhase.EOL) {
         alerts.push({
-          id: `lifecycle-eol-reached-${ov.id}`,
+          id: `lifecycle-eol-reached-${v.id}`,
           severity: 'CRITICAL',
           category: 'LIFECYCLE',
-          title: `OS reached EOL: ${ov.os.name} ${ov.version}`,
-          message: `${ov.os.name} ${ov.version} has reached End-of-Life. No further patches or support available.`,
-          affectedResource: { type: 'PRODUCT', id: ov.osId, name: `${ov.os.name} ${ov.version}` },
+          title: `OS reached EOL: ${v.os.name} ${v.version}`,
+          message: `${v.os.name} ${v.version} has reached End-of-Life. No further patches or support available.`,
+          affectedResource: { type: 'PRODUCT', id: v.osId, name: `${v.os.name} ${v.version}` },
           suggestedAction: 'Urgent: Migrate to a supported version immediately.',
           createdAt: now.toISOString(),
         });
@@ -567,12 +567,12 @@ router.post('/impact', async (req, res, next) => {
 
     // Lifecycle warnings for instances in this app
     const lifecycleWarnings = instancesToMaintain
-      .filter((i) => (i as any).variant?.osVersion)
+      .filter((i) => i.variant?.osVersion)
       .map((i) => ({
         productId: i.productId,
-        productName: (i as any).product?.name || 'Unknown',
-        phase: (i as any).variant.osVersion.phase as LifecyclePhase,
-        warning: `Instance uses ${(i as any).product?.name || 'Unknown'} ${(i as any).variant.osVersion.version} which is in ${(i as any).variant.osVersion.phase} phase.`,
+        productName: i.product.name,
+        phase: i.variant!.osVersion!.phase,
+        warning: `Instance uses ${i.product.name} with ${i.variant!.osVersion!.version} which is in ${i.variant!.osVersion!.phase} phase.`,
       }));
 
     // Risk level
@@ -682,11 +682,11 @@ router.get('/stats', async (_req, res, next) => {
     }
 
     // Lifecycle alerts
-    const osVersions = await prisma.osVersion.findMany();
-    for (const ov of osVersions) {
-      const eol = new Date(ov.eolDate);
-      const extEnd = new Date(ov.extendedSupportEnd);
-      if (ov.phase === LifecyclePhase.EOL) criticalAlerts++;
+    const versions = await prisma.osVersion.findMany();
+    for (const v of versions) {
+      const eol = new Date(v.eolDate);
+      const extEnd = new Date(v.extendedSupportEnd);
+      if (v.phase === LifecyclePhase.EOL) criticalAlerts++;
       else if (daysBetween(now, eol) <= 30 && daysBetween(now, eol) > 0) criticalAlerts++;
       else if (daysBetween(now, extEnd) <= 30 && daysBetween(now, extEnd) > 0) warningAlerts++;
     }

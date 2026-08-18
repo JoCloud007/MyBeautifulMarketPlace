@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 export async function updateLifecyclePhases() {
   const now = new Date();
 
-  // RELEASED -> NORMAL_SUPPORT (release date has passed)
+  // RELEASED -> NORMAL_SUPPORT (version has been released)
   await prisma.osVersion.updateMany({
     where: {
       phase: LifecyclePhase.RELEASED,
@@ -43,7 +43,7 @@ export async function updateLifecyclePhases() {
     data: { phase: LifecyclePhase.EOL },
   });
 
-  console.log(`[${new Date().toISOString()}] OS lifecycle phases updated`);
+  console.log(`[${new Date().toISOString()}] OS version lifecycle phases updated`);
 }
 
 /** Start all cron jobs */

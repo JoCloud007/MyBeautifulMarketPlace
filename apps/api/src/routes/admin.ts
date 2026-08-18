@@ -10,9 +10,11 @@ const productSchema = z.object({
   description: z.string().optional(),
   categoryId: z.string().uuid(),
   computeType: z.enum(['PHYSICAL', 'VIRTUAL']).optional().nullable(),
+  os: z.string().optional(),
   documentation: z.string().optional(),
   roadmap: z.string().optional(),
   isActive: z.boolean().optional(),
+  zoneIds: z.array(z.string().uuid()).optional(),
 });
 
 const flavorSchema = z.object({
@@ -20,11 +22,12 @@ const flavorSchema = z.object({
   vcpu: z.number().int().min(0),
   ramGb: z.number().int().min(0),
   description: z.string().optional(),
+  zoneIds: z.array(z.string().uuid()).optional(),
 });
 
 const categorySchema = z.object({
   name: z.string().min(1),
-  slug: z.string().min(1),
+  slug: z.string().min(1).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
   description: z.string().optional(),
   icon: z.string().optional(),
 });
@@ -61,12 +64,13 @@ async function validateComputeType(categoryId: string, computeType: string | und
 // GET /api/admin/dashboard
 router.get('/dashboard', async (_req, res, next) => {
   try {
-    const [productCount, categoryCount, forecastCount, userCount, azCount, applicationCount, continuityLevelCount] = await Promise.all([
+    const [productCount, categoryCount, forecastCount, userCount, azCount, zoneCount, applicationCount, continuityLevelCount] = await Promise.all([
       prisma.product.count(),
       prisma.category.count(),
       prisma.forecast.count(),
       prisma.user.count(),
       prisma.availabilityZone.count(),
+      prisma.zone.count(),
       prisma.application.count(),
       prisma.continuityLevel.count(),
     ]);
@@ -78,7 +82,7 @@ router.get('/dashboard', async (_req, res, next) => {
     });
 
     res.json({
-      counts: { products: productCount, categories: categoryCount, forecasts: forecastCount, users: userCount, availabilityZones: azCount, applications: applicationCount, continuityLevels: continuityLevelCount },
+      counts: { products: productCount, categories: categoryCount, forecasts: forecastCount, users: userCount, availabilityZones: azCount, zones: zoneCount, applications: applicationCount, continuityLevels: continuityLevelCount },
       recentForecasts,
     });
   } catch (err) {
@@ -94,15 +98,9 @@ router.get('/products', async (_req, res, next) => {
     const products = await prisma.product.findMany({
       include: {
         category: true,
-        variants: {
-          include: {
-            os: true,
-            osVersion: true,
-            flavor: true,
-            availabilityZones: { include: { availabilityZone: true } },
-          },
-        },
-        _count: { select: { variants: true, forecastLines: true, instances: true } },
+        variants: { include: { os: true, osVersion: true, flavor: true, availabilityZones: { include: { availabilityZone: true } }, zones: { include: { zone: true } }, continuityLevel: true } },
+        zones: { include: { zone: true } },
+        _count: { select: { forecastLines: true, variants: true, instances: true } },
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -122,14 +120,40 @@ router.post('/products', async (req, res, next) => {
       return res.status(409).json({ error: 'A product with this slug already exists' });
     }
 
-    const validation = await validateComputeType(data.categoryId, data.computeType);
-    if (!validation.valid) {
-      return res.status(400).json({ error: validation.message });
+    // Validate computeType constraint
+    const category = await prisma.category.findUnique({ where: { id: data.categoryId } });
+    if (!category) {
+      return res.status(404).json({ error: 'Category not found' });
+    }
+    if (category.slug === 'compute' && !data.computeType) {
+      return res.status(400).json({ error: 'computeType is required for Compute category products' });
+    }
+    if (data.computeType && category.slug !== 'compute') {
+      return res.status(400).json({ error: 'computeType can only be set for Compute category products' });
     }
 
+    // Validate zoneIds if provided
+    if (data.zoneIds && data.zoneIds.length > 0) {
+      const uniqueZoneIds = [...new Set(data.zoneIds)];
+      if (uniqueZoneIds.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'Duplicate zone IDs are not allowed' });
+      }
+      const zones = await prisma.zone.findMany({
+        where: { id: { in: data.zoneIds } },
+      });
+      if (zones.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'One or more zones do not exist' });
+      }
+    }
+
+    const { zoneIds, ...productData } = data;
+
     const product = await prisma.product.create({
-      data,
-      include: { category: true, variants: { include: { os: true, osVersion: true, flavor: true } } },
+      data: {
+        ...productData,
+        zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+      },
+      include: { category: true, variants: { include: { os: true, flavor: true } }, zones: { include: { zone: true } } },
     });
     res.status(201).json(product);
   } catch (err) {
@@ -156,19 +180,54 @@ router.patch('/products/:id', async (req, res, next) => {
       }
     }
 
-    if (data.categoryId || data.computeType !== undefined) {
-      const categoryId = data.categoryId || existingProduct.categoryId;
-      const computeType = data.computeType !== undefined ? data.computeType : existingProduct.computeType;
-      const validation = await validateComputeType(categoryId, computeType);
-      if (!validation.valid) {
-        return res.status(400).json({ error: validation.message });
+    // Validate computeType constraint and clear when category changes to non-compute
+    const existingProduct = await prisma.product.findUnique({ where: { id }, include: { category: true } });
+    if (!existingProduct) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+    let targetCategory: typeof existingProduct.category | null = existingProduct.category;
+    if (data.categoryId) {
+      targetCategory = await prisma.category.findUnique({ where: { id: data.categoryId } });
+      if (!targetCategory) {
+        return res.status(400).json({ error: 'Category not found' });
       }
+    }
+    if (targetCategory.slug === 'compute') {
+      if (data.computeType === undefined && !existingProduct.computeType) {
+        return res.status(400).json({ error: 'computeType is required for Compute category products' });
+      }
+    } else {
+      data.computeType = null;
+    }
+
+    // Validate zoneIds if provided
+    if (data.zoneIds && data.zoneIds.length > 0) {
+      const uniqueZoneIds = [...new Set(data.zoneIds)];
+      if (uniqueZoneIds.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'Duplicate zone IDs are not allowed' });
+      }
+      const zones = await prisma.zone.findMany({
+        where: { id: { in: data.zoneIds } },
+      });
+      if (zones.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'One or more zones do not exist' });
+      }
+    }
+
+    const { zoneIds, ...productData } = data;
+
+    // Handle zone links update
+    if (zoneIds) {
+      await prisma.productZone.deleteMany({ where: { productId: id } });
     }
 
     const product = await prisma.product.update({
       where: { id },
-      data,
-      include: { category: true, variants: { include: { os: true, osVersion: true, flavor: true } } },
+      data: {
+        ...productData,
+        zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+      },
+      include: { category: true, variants: { include: { os: { include: { zones: { include: { zone: true } } } }, osVersion: true, flavor: { include: { zones: { include: { zone: true } } } }, availabilityZones: { include: { availabilityZone: true } }, zones: { include: { zone: true } }, continuityLevel: true } }, zones: { include: { zone: true } } },
     });
     res.json(product);
   } catch (err) {
@@ -312,7 +371,7 @@ router.delete('/categories/:id', async (req, res, next) => {
 router.get('/flavors', async (_req, res, next) => {
   try {
     const flavors = await prisma.flavor.findMany({
-      include: { _count: { select: { variants: true, forecastLines: true, instances: true } } },
+      include: { zones: { include: { zone: true } }, _count: { select: { variants: true, forecastLines: true, instances: true } } },
       orderBy: { createdAt: 'desc' },
     });
     res.json(flavors);
@@ -338,10 +397,35 @@ router.patch('/flavors/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
     const data = flavorSchema.partial().parse(req.body);
+
+    // Validate zoneIds if provided
+    if (data.zoneIds && data.zoneIds.length > 0) {
+      const uniqueZoneIds = [...new Set(data.zoneIds)];
+      if (uniqueZoneIds.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'Duplicate zone IDs are not allowed' });
+      }
+      const zones = await prisma.zone.findMany({
+        where: { id: { in: data.zoneIds } },
+      });
+      if (zones.length !== data.zoneIds.length) {
+        return res.status(400).json({ error: 'One or more zones do not exist' });
+      }
+    }
+
+    const { zoneIds, ...flavorData } = data;
+
+    // Handle zone links update
+    if (zoneIds) {
+      await prisma.flavorZone.deleteMany({ where: { flavorId: id } });
+    }
+
     const flavor = await prisma.flavor.update({
       where: { id },
-      data,
-      include: { _count: { select: { variants: true, forecastLines: true, instances: true } } },
+      data: {
+        ...flavorData,
+        zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+      },
+      include: { zones: { include: { zone: true } }, _count: { select: { variants: true } } },
     });
     res.json(flavor);
   } catch (err) {
@@ -355,9 +439,10 @@ router.delete('/flavors/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
 
+    // Check if flavor has associated forecasts, instances, or variants
     const flavor = await prisma.flavor.findUnique({
       where: { id },
-      include: { _count: { select: { variants: true, forecastLines: true, instances: true } } },
+      include: { _count: { select: { forecastLines: true, instances: true, variants: true } } },
     });
 
     const blocks: string[] = [];

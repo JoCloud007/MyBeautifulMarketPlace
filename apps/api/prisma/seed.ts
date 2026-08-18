@@ -7,6 +7,12 @@ async function main() {
 
   // Clean existing data
   try {
+    await prisma.productZone.deleteMany();
+    await prisma.flavorZone.deleteMany();
+    await prisma.operatingSystemZone.deleteMany();
+    await prisma.productVariantZone.deleteMany();
+    await prisma.zoneAvailabilityZone.deleteMany();
+    await prisma.zone.deleteMany();
     await prisma.forecast.deleteMany();
     await prisma.healthCheck.deleteMany();
     await prisma.maintenanceWindow.deleteMany();
@@ -54,6 +60,18 @@ async function main() {
 
   const allAzs = [parisAz1, parisAz2, london, newYork, singapore, hongKong];
 
+  // Create Zones
+  const zoneToto = await prisma.zone.create({
+    data: { name: 'bubble-toto', slug: 'bubble-toto', isActive: true }
+  });
+  const zoneProd = await prisma.zone.create({
+    data: { name: 'bubble-prod', slug: 'bubble-prod', isActive: true }
+  });
+
+  // Link zones to AZs
+  await prisma.zoneAvailabilityZone.create({ data: { zoneId: zoneToto.id, availabilityZoneId: parisAz1.id } });
+  await prisma.zoneAvailabilityZone.create({ data: { zoneId: zoneProd.id, availabilityZoneId: parisAz2.id } });
+
   // Create Continuity Levels
   const clLow = await prisma.continuityLevel.create({
     data: { name: 'LOW', rtoMinutes: 1440, rpoMinutes: 240, description: 'Basic backup', color: 'green' },
@@ -84,13 +102,13 @@ async function main() {
 
   // Create Operating Systems
   const osWindows = await prisma.operatingSystem.create({
-    data: { family: 'WINDOWS', name: 'Windows', slug: 'windows', isActive: true },
+    data: { family: 'WINDOWS', name: 'Windows', slug: 'windows', isActive: true, availabilityType: 'STANDARD', zones: { create: [{ zoneId: zoneToto.id }] } },
   });
   const osDebian = await prisma.operatingSystem.create({
-    data: { family: 'LINUX', name: 'Debian', slug: 'debian', isActive: true },
+    data: { family: 'LINUX', name: 'Debian', slug: 'debian', isActive: true, availabilityType: 'RECOMMENDED', zones: { create: [{ zoneId: zoneToto.id }, { zoneId: zoneProd.id }] } },
   });
   const osRedhat = await prisma.operatingSystem.create({
-    data: { family: 'LINUX', name: 'Red Hat Enterprise Linux', slug: 'rhel', isActive: true },
+    data: { family: 'LINUX', name: 'Red Hat Enterprise Linux', slug: 'rhel', isActive: true, availabilityType: 'RESTRICTED', zones: { create: [{ zoneId: zoneProd.id }] } },
   });
 
   // Create OS Versions
@@ -194,14 +212,14 @@ async function main() {
     { name: 'Storage XL', vcpu: 0, ramGb: 0, description: '100TB storage, 100000 IOPS' },
   ];
 
-  const flavorRecords: Record<string, { id: string; name: string; vcpu: number; ramGb: number; description: string | null }> = {};
+  const flavorRecords: Record<string, typeof computeFlavors[0] & { id: string }> = {};
   for (const f of computeFlavors) {
-    const rec = await prisma.flavor.create({ data: f });
+    const rec = await prisma.flavor.create({ data: { ...f, zones: { create: [{ zoneId: zoneToto.id }] } } });
     flavorRecords[rec.name] = rec;
   }
   for (const f of storageFlavors) {
-    const rec = await prisma.flavor.create({ data: f });
-    flavorRecords[f.name] = rec;
+    const rec = await prisma.flavor.create({ data: { ...f, zones: { create: [{ zoneId: zoneProd.id }] } } });
+    flavorRecords[`storage-${f.name}`] = rec;
   }
 
   // Create Products
@@ -213,6 +231,7 @@ async function main() {
       categoryId: compute.id,
       computeType: ComputeType.VIRTUAL,
       os: 'Linux',
+      zones: { create: [{ zoneId: zoneToto.id }, { zoneId: zoneProd.id }] },
       documentation: '# Virtual Machine\n\n## Overview\nConfigurable virtual machine with selectable operating system.\n\n## Specifications\n- OS: selectable (Debian, Windows Server, RHEL)\n- vCPU: 2–16\n- RAM: 4–32 GB',
       roadmap: '## Roadmap\n- Q3 2024: ARM64 support\n- Q4 2024: GPU instance option\n- Q1 2025: Confidential computing',
       flavors: { connect: [{ id: flavorRecords['Small'].id }, { id: flavorRecords['Medium'].id }, { id: flavorRecords['Large'].id }, { id: flavorRecords['XL'].id }] },
@@ -227,6 +246,7 @@ async function main() {
       categoryId: compute.id,
       computeType: ComputeType.PHYSICAL,
       os: 'Linux',
+      zones: { create: [{ zoneId: zoneProd.id }] },
       documentation: '# Bare Metal HPC\n\n## Overview\nDedicated bare metal servers for HPC workloads.\n\n## Specifications\n- CPU: AMD EPYC / Intel Xeon\n- GPU: NVIDIA A100/H100 options\n- Network: InfiniBand HDR',
       roadmap: '## Roadmap\n- Q3 2024: NVIDIA H200 support\n- Q4 2024: Liquid cooling option',
       flavors: { connect: [{ id: flavorRecords['Small'].id }, { id: flavorRecords['Medium'].id }, { id: flavorRecords['Large'].id }, { id: flavorRecords['XL'].id }] },
@@ -239,6 +259,7 @@ async function main() {
       slug: 'object-storage',
       description: 'S3-compatible object storage with 99.999999999% durability and global CDN integration.',
       categoryId: data.id,
+      zones: { create: [{ zoneId: zoneToto.id }] },
       documentation: '# Object Storage\n\n## Overview\nScalable S3-compatible object storage service.\n\n## Features\n- S3 API compatible\n- Multi-region replication\n- Lifecycle policies\n- Versioning support',
       roadmap: '## Roadmap\n- Q3 2024: Glacier-like archive tier\n- Q4 2024: Object lock (WORM)',
       flavors: { connect: [{ id: flavorRecords['Storage Small'].id }, { id: flavorRecords['Storage Medium'].id }, { id: flavorRecords['Storage Large'].id }, { id: flavorRecords['Storage XL'].id }] },
@@ -251,6 +272,7 @@ async function main() {
       slug: 'nas-storage',
       description: 'Network Attached Storage with NFS, SMB, and iSCSI protocols.',
       categoryId: data.id,
+      zones: { create: [{ zoneId: zoneProd.id }] },
       documentation: '# NAS Storage\n\n## Overview\nEnterprise NAS with multiple protocol support.\n\n## Features\n- NFS v4.2\n- SMB 3.1.1\n- iSCSI\n- Snapshots & replication',
       roadmap: '## Roadmap\n- Q3 2024: NVMe-oF support\n- Q4 2024: Automated tiering',
       flavors: { connect: [{ id: flavorRecords['Storage Small'].id }, { id: flavorRecords['Storage Medium'].id }, { id: flavorRecords['Storage Large'].id }, { id: flavorRecords['Storage XL'].id }] },
@@ -264,6 +286,7 @@ async function main() {
       description: 'VMware vSphere 8.0 virtualization platform with vCenter management.',
       categoryId: hypervisor.id,
       os: 'ESXi',
+      zones: { create: [{ zoneId: zoneToto.id }] },
       documentation: '# VMware vSphere\n\n## Overview\nEnterprise virtualization platform.\n\n## Specifications\n- Version: vSphere 8.0 U2\n- vCenter included\n- vSAN ready',
       roadmap: '## Roadmap\n- Q3 2024: vSphere 8.0 U3\n- Q4 2024: Confidential VMs',
       flavors: { connect: [{ id: flavorRecords['Storage Small'].id }, { id: flavorRecords['Storage Medium'].id }, { id: flavorRecords['Storage Large'].id }, { id: flavorRecords['Storage XL'].id }] },
@@ -287,6 +310,8 @@ async function main() {
   const vmVariants: any[] = [];
   for (const osVer of [debian12, debian11, win2022, rhel9]) {
     for (const flavorName of ['Small', 'Medium', 'Large']) {
+      const isRecommended = osVer === debian12 && flavorName === 'Large';
+      const isRestricted = osVer === rhel9;
       const variant = await prisma.productVariant.create({
         data: {
           productId: vmProduct.id,
@@ -296,6 +321,7 @@ async function main() {
           flavorId: flavorRecords[flavorName].id,
           continuityLevelId: clModerate.id,
           isActive: true,
+          availabilityType: isRecommended ? 'RECOMMENDED' : isRestricted ? 'RESTRICTED' : 'STANDARD',
           availabilityZones: {
             create: [
               { availabilityZoneId: parisAz1.id },
@@ -303,6 +329,7 @@ async function main() {
               { availabilityZoneId: singapore.id },
             ],
           },
+          zones: { create: [{ zoneId: zoneToto.id }] },
         },
       });
       vmVariants.push(variant);
@@ -312,6 +339,7 @@ async function main() {
   const hpcVariants: any[] = [];
   for (const osVer of [debian12, rhel9]) {
     for (const flavorName of ['Large', 'XL']) {
+      const isOnDemand = flavorName === 'XL';
       const variant = await prisma.productVariant.create({
         data: {
           productId: bareMetalHpc.id,
@@ -321,12 +349,14 @@ async function main() {
           flavorId: flavorRecords[flavorName].id,
           continuityLevelId: clSerious.id,
           isActive: true,
+          availabilityType: isOnDemand ? 'ON_DEMAND' : 'RECOMMENDED',
           availabilityZones: {
             create: [
               { availabilityZoneId: parisAz1.id },
               { availabilityZoneId: newYork.id },
             ],
           },
+          zones: { create: [{ zoneId: zoneProd.id }] },
         },
       });
       hpcVariants.push(variant);
@@ -416,8 +446,7 @@ async function main() {
           azCode: 'ap-south-sin1',
           quantity: 5,
           resiliency: 'STANDARD',
-          variantId: vmVariants.find(v => v.name.includes('Bookworm') && v.name.includes('Medium'))?.id,
-          metadata: { osVersion: 'debian-12' },
+          metadata: { osVersion: 'debian-12', variantId: vmVariants.find(v => v.name.includes('Debian 12') && v.name.includes('Medium'))?.id },
         }],
       },
     },

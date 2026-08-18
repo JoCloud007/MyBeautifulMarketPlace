@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+
 import {
   useAvailabilityZones,
 } from '@/hooks/useApi';
@@ -16,7 +16,6 @@ import {
   MapPin,
   Server,
   X,
-  ChevronRight,
   Radio,
   RadioTower,
 } from 'lucide-react';
@@ -211,25 +210,10 @@ export default function AvailabilityZonesPage() {
                   </div>
 
                   <div>
-                    <p className="text-xs font-medium text-slate-400 mb-2">Available Products</p>
-                    {(selectedZone as any).variantZones && (selectedZone as any).variantZones.length > 0 ? (
-                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                        {Array.from(new Map((selectedZone as any).variantZones.map((vz: any) => [vz.variant?.product?.id, vz.variant?.product])).entries())
-                          .filter(([_, product]: [any, any]) => product)
-                          .map(([id, product]: [any, any]) => (
-                          <Link
-                            key={id}
-                            to={`/products/${product.slug}`}
-                            className="flex items-center justify-between rounded-md bg-slate-950 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-blue-400 transition-colors"
-                          >
-                            <span className="truncate">{product.name}</span>
-                            <ChevronRight className="h-3 w-3 shrink-0 text-slate-600" />
-                          </Link>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-600">No products linked.</p>
-                    )}
+                    <p className="text-xs font-medium text-slate-400 mb-2">Zone Info</p>
+                    <p className="text-xs text-slate-600">
+                      {selectedZone.isActive ? 'Active zone' : 'Inactive zone'}
+                    </p>
                   </div>
                 </div>
               ) : (
@@ -282,9 +266,6 @@ export default function AvailabilityZonesPage() {
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
                       {zone.city}, {zone.country} · {zone.code}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600">
-                      {(zone as any).variantZones?.length ?? 0} variants
                     </p>
                   </button>
                 ))}

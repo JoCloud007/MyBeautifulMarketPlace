@@ -21,6 +21,10 @@ import {
   useCreateAvailabilityZone,
   useUpdateAvailabilityZone,
   useDeleteAvailabilityZone,
+  useZones,
+  useCreateZone,
+  useUpdateZone,
+  useDeleteZone,
   useInstances,
   useCreateInstance,
   useUpdateInstance,
@@ -31,9 +35,17 @@ import {
   useDeleteApplication,
   useContinuityLevels,
   useUpdateContinuityLevel,
-  useProducts,
-  useFlavors,
+  useOperatingSystems,
+  useCreateOS,
+  useUpdateOS,
+  useDeleteOS,
+  useCreateOSVersion,
+  useUpdateOSVersion,
   useProductVariants,
+  useCreateVariant,
+  useUpdateVariant,
+  useDeleteVariant,
+  useFlavors,
 } from '@/hooks/useApi';
 import AdminOS from './AdminOS';
 import AdminProducts from './AdminProducts';
@@ -46,6 +58,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { MultiPickupInput } from '@/components/ui/multi-pickup';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -75,8 +88,10 @@ import {
   Shield,
   TrendingUp,
   Monitor,
+  ChevronRight,
+  Box,
 } from 'lucide-react';
-import type { ApprovalStatus, Category, Dependency, User, Forecast, AvailabilityZone, Instance, InstanceStatus, Environment } from '@cloudmarket/shared-types';
+import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ApprovalStatus, { label: string; color: string }> = {
   PENDING: { label: 'Pending', color: 'border-amber-500/20 text-amber-500' },
@@ -138,7 +153,7 @@ function ResponsiveTable({
     );
   }
 
-  if (!children) {
+  if (!children || (Array.isArray(children) && children.length === 0)) {
     return (
       <div className="text-center py-12">
         <p className="text-lg font-medium text-slate-400">{emptyMessage}</p>
@@ -182,6 +197,7 @@ function DashboardSection({ onNavigate }: { onNavigate: (tab: string) => void })
     { label: 'Users', value: counts.users ?? 0, icon: Users, color: 'text-emerald-400', tab: 'users' },
     { label: 'Applications', value: counts.applications ?? 0, icon: Activity, color: 'text-cyan-400', tab: 'applications' },
     { label: 'Continuity Levels', value: counts.continuityLevels ?? 0, icon: CheckCircle, color: 'text-rose-400', tab: 'continuity-levels' },
+    { label: 'Zones', value: counts.zones ?? 0, icon: Box, color: 'text-indigo-400', tab: 'zones' },
   ];
 
   if (isError) {
@@ -191,13 +207,13 @@ function DashboardSection({ onNavigate }: { onNavigate: (tab: string) => void })
   return (
     <div className="space-y-6">
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, i) => (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
+          {Array.from({ length: 7 }).map((_, i) => (
             <Skeleton key={i} className="h-28 rounded-lg bg-slate-800 animate-pulse-soft" />
           ))}
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7">
           {countCards.map((card, i) => {
             const Icon = card.icon;
             return (
@@ -274,8 +290,758 @@ function DashboardSection({ onNavigate }: { onNavigate: (tab: string) => void })
   );
 }
 
+// ============ OS SECTION ============
+function OSSection() {
+  const { data: osList, isLoading, isError, refetch } = useOperatingSystems();
+  const { data: allZones } = useZones();
+  const createOS = useCreateOS();
+  const updateOS = useUpdateOS();
+  const deleteOS = useDeleteOS();
+  const createVersion = useCreateOSVersion();
+  const updateVersion = useUpdateOSVersion();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<OperatingSystem | null>(null);
+  const [form, setForm] = useState({ family: '', name: '', slug: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType, zoneIds: [] as string[] });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+
+  const [versionOpen, setVersionOpen] = useState(false);
+  const [versionOSId, setVersionOSId] = useState('');
+  const [editingVersion, setEditingVersion] = useState<OsVersion | null>(null);
+  const [versionForm, setVersionForm] = useState({
+    version: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: 'RELEASED', isActive: true,
+  });
+
+  const resetForm = () => { setForm({ family: '', name: '', slug: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType, zoneIds: [] }); setEditing(null); };
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (os: OperatingSystem) => {
+    setEditing(os);
+    setForm({ family: os.family, name: os.name, slug: os.slug, isActive: os.isActive, availabilityType: os.availabilityType || 'STANDARD', zoneIds: os.zones?.map((z: any) => z.zoneId) ?? [] });
+    setIsOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editing) await updateOS.mutateAsync({ id: editing.id, ...form });
+      else await createOS.mutateAsync(form);
+      setIsOpen(false); resetForm();
+    } catch { /* handled by hook */ }
+  };
+
+  const handleDelete = (id: string) => { setConfirmDelete({ open: true, id }); };
+  const handleConfirmDelete = async () => {
+    try { if (confirmDelete.id) await deleteOS.mutateAsync(confirmDelete.id); } catch { }
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  const openVersionModal = (osId: string, v?: OsVersion) => {
+    setVersionOSId(osId);
+    if (v) {
+      setEditingVersion(v);
+      setVersionForm({
+        version: v.version,
+        releaseDate: v.releaseDate.slice(0, 10),
+        normalSupportEnd: v.normalSupportEnd.slice(0, 10),
+        extendedSupportEnd: v.extendedSupportEnd.slice(0, 10),
+        eolDate: v.eolDate.slice(0, 10),
+        phase: v.phase,
+        isActive: v.isActive,
+      });
+    } else {
+      setEditingVersion(null);
+      setVersionForm({ version: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: 'RELEASED', isActive: true });
+    }
+    setVersionOpen(true);
+  };
+
+  const handleVersionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        ...versionForm,
+        phase: versionForm.phase as import('@cloudmarket/shared-types').LifecyclePhase,
+        releaseDate: new Date(versionForm.releaseDate).toISOString(),
+        normalSupportEnd: new Date(versionForm.normalSupportEnd).toISOString(),
+        extendedSupportEnd: new Date(versionForm.extendedSupportEnd).toISOString(),
+        eolDate: new Date(versionForm.eolDate).toISOString(),
+      };
+      if (editingVersion) await updateVersion.mutateAsync({ osId: versionOSId, versionId: editingVersion.id, ...payload });
+      else await createVersion.mutateAsync({ osId: versionOSId, ...payload });
+      setVersionOpen(false);
+    } catch { /* handled by hook */ }
+  };
+
+  if (isError) return <QueryError message="Unable to load OS list." onRetry={refetch} />;
+
+  const mobileCards = osList?.map((os) => (
+    <MobileCard key={os.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{os.name}</p>
+          <p className="text-sm text-slate-400">{os.family}</p>
+        </div>
+        <Badge variant="outline" className={os.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+          {os.isActive ? 'Active' : 'Inactive'}
+        </Badge>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <span className="text-sm text-slate-500">{os.versions?.length ?? 0} versions</span>
+        <Badge variant="outline" className={
+          os.availabilityType === 'RECOMMENDED' ? 'text-xs border-emerald-500/20 text-emerald-500' :
+          os.availabilityType === 'RESTRICTED' ? 'text-xs border-red-500/20 text-red-500' :
+          os.availabilityType === 'ON_DEMAND' ? 'text-xs border-amber-500/20 text-amber-500' :
+          'text-xs border-slate-600 text-slate-400'
+        }>
+          {os.availabilityType?.replace('_', ' ') || 'Standard'}
+        </Badge>
+      </div>
+      <div className="mt-1 flex flex-wrap gap-1">
+        {os.zones?.map((z: any) => (
+          <Badge key={z.zoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{z.zone?.name}</Badge>
+        ))}
+      </div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openVersionModal(os.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Plus className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => openEdit(os)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => handleDelete(os.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add OS</Button>
+      </div>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable headers={['Name', 'Family', 'Slug', 'Versions', 'Availability', 'Zones', 'Active']} isLoading={isLoading} emptyMessage="No operating systems" mobileCards={mobileCards}>
+            {osList?.map((os) => (
+              <tr key={os.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{os.name}</td>
+                <td className="py-3 text-slate-400">{os.family}</td>
+                <td className="py-3 text-slate-400">{os.slug}</td>
+                <td className="py-3 text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <span>{os.versions?.length ?? 0}</span>
+                    <Button size="sm" variant="ghost" onClick={() => openVersionModal(os.id)} className="h-6 w-6 p-0 text-slate-400 hover:text-blue-400"><Plus className="h-3 w-3" /></Button>
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {os.versions?.slice(0, 3).map((v: OsVersion) => (
+                      <Badge key={v.id} variant="outline" className="text-[10px] border-slate-700 text-slate-400 cursor-pointer" onClick={() => openVersionModal(os.id, v)}>
+                        {v.version}
+                      </Badge>
+                    ))}
+                    {(os.versions?.length ?? 0) > 3 && <span className="text-[10px] text-slate-500">+{(os.versions.length - 3)} more</span>}
+                  </div>
+                </td>
+                <td className="py-3">
+                  <Badge variant="outline" className={
+                    os.availabilityType === 'RECOMMENDED' ? 'border-emerald-500/20 text-emerald-500' :
+                    os.availabilityType === 'RESTRICTED' ? 'border-red-500/20 text-red-500' :
+                    os.availabilityType === 'ON_DEMAND' ? 'border-amber-500/20 text-amber-500' :
+                    'border-slate-600 text-slate-400'
+                  }>
+                    {os.availabilityType?.replace('_', ' ') || 'Standard'}
+                  </Badge>
+                </td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {os.zones?.map((z: any) => (
+                      <Badge key={z.zoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{z.zone?.name}</Badge>
+                    ))}
+                  </div>
+                </td>
+                <td className="py-3">
+                  <Badge variant="outline" className={os.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+                    {os.isActive ? 'Active' : 'Inactive'}
+                  </Badge>
+                </td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(os)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(os.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit OS' : 'New OS'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Family</label><Input value={form.family} onChange={(e) => setForm({ ...form, family: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Slug</label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Availability</label>
+              <Select value={form.availabilityType} onChange={(e) => setForm({ ...form, availabilityType: e.target.value as AvailabilityType })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="STANDARD">Standard</option>
+                <option value="RECOMMENDED">Recommended</option>
+                <option value="RESTRICTED">Restricted</option>
+                <option value="ON_DEMAND">On Demand</option>
+              </Select>
+            </div>
+            <MultiPickupInput
+              label="Zones"
+              values={form.zoneIds}
+              onChange={(ids) => setForm({ ...form, zoneIds: ids })}
+              options={allZones?.map((z) => ({ id: z.id, label: z.name })) ?? []}
+            />
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="osActive" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
+              <label htmlFor="osActive" className="text-sm text-slate-300">Active</label>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={versionOpen} onOpenChange={setVersionOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
+          <DialogHeader><DialogTitle className="text-white">{editingVersion ? 'Edit Version' : 'New Version'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleVersionSubmit} className="space-y-4">
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Version</label><Input value={versionForm.version} onChange={(e) => setVersionForm({ ...versionForm, version: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Release Date</label><Input type="date" value={versionForm.releaseDate} onChange={(e) => setVersionForm({ ...versionForm, releaseDate: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Normal Support End</label><Input type="date" value={versionForm.normalSupportEnd} onChange={(e) => setVersionForm({ ...versionForm, normalSupportEnd: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Extended Support End</label><Input type="date" value={versionForm.extendedSupportEnd} onChange={(e) => setVersionForm({ ...versionForm, extendedSupportEnd: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">EOL Date</label><Input type="date" value={versionForm.eolDate} onChange={(e) => setVersionForm({ ...versionForm, eolDate: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Phase</label>
+              <Select value={versionForm.phase} onChange={(e) => setVersionForm({ ...versionForm, phase: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="RELEASED">Released</option>
+                <option value="NORMAL_SUPPORT">Normal Support</option>
+                <option value="EXTENDED_SUPPORT">Extended Support</option>
+                <option value="NO_SUPPORT">No Support</option>
+                <option value="EOL">EOL</option>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="vActive" checked={versionForm.isActive} onChange={(e) => setVersionForm({ ...versionForm, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
+              <label htmlFor="vActive" className="text-sm text-slate-300">Active</label>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setVersionOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editingVersion ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog open={confirmDelete.open} onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })} title="Delete OS" description="Are you sure you want to delete this OS? This action cannot be undone." onConfirm={handleConfirmDelete} confirmLabel="Delete" cancelLabel="Cancel" variant="destructive" />
+    </div>
+  );
+}
+
 // ============ PRODUCTS SECTION ============
-function ProductsSection() { return <AdminProducts />; }
+function ProductsSection() {
+  const { data: products, isLoading, isError, refetch } = useAdminProducts();
+  const { data: categories } = useAdminCategories();
+  const { data: allZones } = useZones();
+  const createProduct = useCreateProduct();
+  const updateProduct = useUpdateProduct();
+  const deleteProduct = useDeleteProduct();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
+  const [form, setForm] = useState({
+    name: '', slug: '', description: '', categoryId: '', computeType: '', os: '', documentation: '', roadmap: '', isActive: true, zoneIds: [] as string[],
+  });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+
+  const resetForm = () => {
+    setForm({ name: '', slug: '', description: '', categoryId: '', computeType: '', os: '', documentation: '', roadmap: '', isActive: true, zoneIds: [] });
+    setEditing(null);
+  };
+
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (product: Product) => {
+    setEditing(product);
+    setForm({
+      name: product.name, slug: product.slug, description: product.description || '',
+      categoryId: product.categoryId, computeType: product.computeType || '', os: product.os || '',
+      documentation: product.documentation || '', roadmap: product.roadmap || '', isActive: product.isActive,
+      zoneIds: product.zones?.map((z: any) => z.zoneId) ?? [],
+    });
+    setIsOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const payload: any = { ...form, slug: form.slug || form.name.toLowerCase().replace(/\s+/g, '-') };
+      if (!payload.computeType) delete payload.computeType;
+      if (editing) await updateProduct.mutateAsync({ id: editing.id, ...payload });
+      else await createProduct.mutateAsync(payload);
+      setIsOpen(false); resetForm();
+    } catch {
+      /* mutation error handled by hook onError */
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    setConfirmDelete({ open: true, id });
+  };
+  const handleConfirmDelete = async () => {
+    try {
+      if (confirmDelete.id) {
+        await deleteProduct.mutateAsync(confirmDelete.id);
+      }
+    } catch {
+      /* mutation error handled by hook onError */
+    }
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  if (isError) return <QueryError message="Unable to load products." onRetry={refetch} />;
+
+  const isCompute = (p: Product) => p.category?.slug === 'compute';
+
+  const mobileCards = products?.map((product) => (
+    <MobileCard key={product.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{product.name}</p>
+          <p className="text-sm text-slate-400">{product.category?.name}</p>
+        </div>
+        <Badge variant="outline" className={product.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+          {product.isActive ? 'Active' : 'Inactive'}
+        </Badge>
+      </div>
+      <div className="mt-2 text-sm text-slate-500">
+        {isCompute(product) && product.computeType && (
+          <Badge variant="outline" className="text-xs border-slate-700 text-slate-400 mr-2">{product.computeType}</Badge>
+        )}
+        <span>{(product as any).variants?.length ?? 0} variants</span>
+      </div>
+      <div className="mt-1 flex flex-wrap gap-1">
+        {product.zones?.map((z: any) => (
+          <Badge key={z.zoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{z.zone?.name}</Badge>
+        ))}
+      </div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => setDetailProduct(product)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => openEdit(product)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
+          <Pencil className="h-4 w-4" />
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => handleDelete(product.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10">
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]">
+          <Plus className="mr-2 h-4 w-4" /> Add Product
+        </Button>
+      </div>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable
+            headers={['Name', 'Category', 'Type', 'Variants', 'Zones', 'Active']}
+            isLoading={isLoading}
+            emptyMessage="No products"
+            mobileCards={mobileCards}
+          >
+            {products?.map((product) => (
+              <tr key={product.id} className="hover:bg-slate-800/50 transition-colors cursor-pointer" onClick={() => setDetailProduct(product)}>
+                <td className="py-3 font-medium text-white">{product.name}</td>
+                <td className="py-3 text-slate-400">{product.category?.name}</td>
+                <td className="py-3 text-slate-400">
+                  {isCompute(product) ? (product.computeType || '—') : '—'}
+                </td>
+                <td className="py-3 text-slate-400">{(product as any).variants?.length ?? 0}</td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {product.zones?.map((z: any) => (
+                      <Badge key={z.zoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{z.zone?.name}</Badge>
+                    ))}
+                  </div>
+                </td>
+                <td className="py-3">
+                  <Badge variant="outline" className={product.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+                    {product.isActive ? 'Active' : 'Inactive'}
+                  </Badge>
+                </td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(product)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(product.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      {/* Product Detail Drawer */}
+      <Dialog open={!!detailProduct} onOpenChange={(open) => !open && setDetailProduct(null)}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Box className="h-5 w-5 text-blue-500" />
+              {detailProduct?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {detailProduct && (
+            <ProductDetailDrawer
+              product={detailProduct}
+              onClose={() => setDetailProduct(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Create/Edit Dialog */}
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-white">{editing ? 'Edit product' : 'New product'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Name</label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Slug</label>
+              <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="auto-generated if empty" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Category</label>
+              <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value, computeType: '' })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="">Choose...</option>
+                {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+            </div>
+            {categories?.find(c => c.id === form.categoryId)?.slug === 'compute' && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Compute Type</label>
+                <Select value={form.computeType} onChange={(e) => setForm({ ...form, computeType: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="">Select...</option>
+                  <option value="PHYSICAL">Physical</option>
+                  <option value="VIRTUAL">Virtual</option>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">OS</label>
+              <Input value={form.os} onChange={(e) => setForm({ ...form, os: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Description</label>
+              <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="bg-slate-950 border-slate-700 text-white" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Documentation</label>
+              <Textarea value={form.documentation} onChange={(e) => setForm({ ...form, documentation: e.target.value })} rows={3} className="bg-slate-950 border-slate-700 text-white" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Roadmap</label>
+              <Textarea value={form.roadmap} onChange={(e) => setForm({ ...form, roadmap: e.target.value })} rows={3} className="bg-slate-950 border-slate-700 text-white" />
+            </div>
+            <div className="space-y-2">
+              <MultiPickupInput
+                label="Zones"
+                values={form.zoneIds}
+                onChange={(ids) => setForm({ ...form, zoneIds: ids })}
+                options={allZones?.map((z) => ({ id: z.id, label: z.name })) ?? []}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="isActive" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
+              <label htmlFor="isActive" className="text-sm text-slate-300">Active</label>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" disabled={createProduct.isPending || updateProduct.isPending} className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">
+                {editing ? 'Save' : 'Create'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete Product"
+        description="Are you sure you want to delete this product? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
+    </div>
+  );
+}
+
+function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product; onClose: () => void }) {
+  const isCompute = product.category?.slug === 'compute';
+  const { data: variants, isLoading: variantsLoading } = useProductVariants(product.id);
+  const { data: allFlavors } = useFlavors();
+  const { data: allOS } = useOperatingSystems();
+  const { data: allAZs } = useAvailabilityZones();
+  const { data: allZones } = useZones();
+  const { data: allCL } = useContinuityLevels();
+  const createVariant = useCreateVariant();
+  const updateVariant = useUpdateVariant();
+  const deleteVariant = useDeleteVariant();
+
+  const [variantOpen, setVariantOpen] = useState(false);
+  const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
+  const [variantForm, setVariantForm] = useState({
+    name: '', osId: '', osVersionId: '', flavorId: '', availabilityZoneIds: [] as string[], zoneIds: [] as string[], continuityLevelId: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType,
+  });
+
+  const resetVariantForm = () => {
+    setVariantForm({ name: '', osId: '', osVersionId: '', flavorId: '', availabilityZoneIds: [], zoneIds: [], continuityLevelId: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType });
+    setEditingVariant(null);
+  };
+
+  const openCreateVariant = () => { resetVariantForm(); setVariantOpen(true); };
+  const openEditVariant = (v: ProductVariant) => {
+    setEditingVariant(v);
+    setVariantForm({
+      name: v.name,
+      osId: v.osId,
+      osVersionId: v.osVersionId,
+      flavorId: v.flavorId,
+      availabilityZoneIds: v.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [],
+      zoneIds: v.zones?.map((z: any) => z.zoneId) ?? [],
+      continuityLevelId: v.continuityLevelId || '',
+      isActive: v.isActive,
+      availabilityType: (v.availabilityType as AvailabilityType) || 'STANDARD',
+    });
+    setVariantOpen(true);
+  };
+
+  const handleVariantSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const payload: any = { ...variantForm };
+      if (!payload.continuityLevelId) delete payload.continuityLevelId;
+      if (editingVariant) await updateVariant.mutateAsync({ id: editingVariant.id, ...payload });
+      else await createVariant.mutateAsync({ productId: product.id, ...payload });
+      setVariantOpen(false); resetVariantForm();
+    } catch {
+      /* handled by hook */
+    }
+  };
+
+  const selectedOS = allOS?.find(o => o.id === variantForm.osId);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-4 text-sm">
+        <div><span className="text-slate-500">Category:</span> <span className="text-white">{product.category?.name}</span></div>
+        {isCompute && <div><span className="text-slate-500">Compute Type:</span> <span className="text-white">{product.computeType || '—'}</span></div>}
+        <div><span className="text-slate-500">Slug:</span> <span className="text-white">{product.slug}</span></div>
+        <div><span className="text-slate-500">Status:</span> <Badge variant="outline" className={product.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>{product.isActive ? 'Active' : 'Inactive'}</Badge></div>
+      </div>
+      {product.description && <p className="text-sm text-slate-400">{product.description}</p>}
+
+      {isCompute ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-white">Variants</h3>
+            <Button onClick={openCreateVariant} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+              <Plus className="mr-1 h-3 w-3" /> Add Variant
+            </Button>
+          </div>
+          {variantsLoading ? (
+            <div className="space-y-3"><Skeleton className="h-14 rounded-lg bg-slate-800" /><Skeleton className="h-14 rounded-lg bg-slate-800" /></div>
+          ) : variants && variants.length > 0 ? (
+            <div className="space-y-3">
+              {variants.map((v: ProductVariant) => (
+                <div key={v.id} className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="font-medium text-white">{v.name}</span>
+                      <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">{v.os?.name} {v.osVersion?.version}</Badge>
+                      <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">{v.flavor?.name}</Badge>
+                      {v.continuityLevel && <Badge variant="outline" className="text-xs border-slate-700" style={{ color: v.continuityLevel.color, borderColor: `${v.continuityLevel.color}40` }}>{v.continuityLevel.name}</Badge>}
+                      {v.availabilityType && v.availabilityType !== 'STANDARD' && (
+                        <Badge variant="outline" className={
+                          v.availabilityType === 'RECOMMENDED' ? 'text-xs border-emerald-500/20 text-emerald-500' :
+                          v.availabilityType === 'RESTRICTED' ? 'text-xs border-red-500/20 text-red-500' :
+                          'text-xs border-amber-500/20 text-amber-500'
+                        }>{v.availabilityType.replace('_', ' ')}</Badge>
+                      )}
+                      <Badge variant="outline" className={v.isActive ? 'text-xs border-emerald-500/20 text-emerald-500' : 'text-xs border-slate-600 text-slate-500'}>{v.isActive ? 'Active' : 'Inactive'}</Badge>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => openEditVariant(v)} className="h-7 w-7 p-0 text-slate-400 hover:text-blue-400"><Pencil className="h-3 w-3" /></Button>
+                      <Button size="sm" variant="ghost" onClick={() => deleteVariant.mutate(v.id)} className="h-7 w-7 p-0 text-slate-400 hover:text-red-400"><Trash2 className="h-3 w-3" /></Button>
+                    </div>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {v.availabilityZones?.map((az: any) => (
+                      <Badge key={az.id} variant="secondary" className="text-[10px] bg-slate-900 text-slate-400 border-slate-800">{az.availabilityZone?.code}</Badge>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 rounded-lg border border-slate-800 bg-slate-950">
+              <p className="text-slate-500">No variants for this product.</p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <h3 className="text-lg font-semibold text-white">Product Details</h3>
+          <div className="space-y-2 text-sm text-slate-400">
+            {product.documentation && <div><span className="text-slate-500">Documentation:</span> Available</div>}
+            {product.os && <div><span className="text-slate-500">OS:</span> {product.os}</div>}
+          </div>
+          {product.roadmap && (
+            <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+              <h4 className="text-sm font-medium text-white mb-3">Roadmap</h4>
+              <div className="text-sm text-slate-300 whitespace-pre-line">{product.roadmap}</div>
+            </div>
+          )}
+          {variants && variants.length > 0 && (
+            <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+              <h4 className="text-sm font-medium text-white mb-3">Release Timeline</h4>
+              <div className="space-y-3">
+                {Array.from(new Map(variants.map((v: ProductVariant) => [v.osVersionId, v])).values())
+                  .filter((v: any) => v.osVersion?.releaseDate)
+                  .sort((a: any, b: any) => new Date(b.osVersion.releaseDate).getTime() - new Date(a.osVersion.releaseDate).getTime())
+                  .map((v: any) => (
+                    <div key={v.osVersionId} className="flex items-center gap-3">
+                      <div className="h-2.5 w-2.5 rounded-full bg-blue-500 shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm text-white">{v.os?.name} {v.osVersion?.version}</p>
+                        <p className="text-xs text-slate-500">
+                          Released {new Date(v.osVersion.releaseDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                          {v.osVersion.phase !== 'ACTIVE' && ` · ${v.osVersion.phase}`}
+                          {v.osVersion.eolDate && ` · EOL ${new Date(v.osVersion.eolDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className={
+                        v.osVersion.phase === 'EOL' ? 'text-xs text-red-400 border-red-500/30' :
+                        v.osVersion.phase === 'DEPRECATED' ? 'text-xs text-amber-400 border-amber-500/30' :
+                        'text-xs text-green-400 border-green-500/30'
+                      }>{v.osVersion.phase}</Badge>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <Dialog open={variantOpen} onOpenChange={setVariantOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-white">{editingVariant ? 'Edit Variant' : 'New Variant'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleVariantSubmit} className="space-y-4">
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={variantForm.name} onChange={(e) => setVariantForm({ ...variantForm, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Operating System</label>
+              <Select value={variantForm.osId} onChange={(e) => setVariantForm({ ...variantForm, osId: e.target.value, osVersionId: '' })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="">Select OS...</option>
+                {allOS?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Version</label>
+              <Select value={variantForm.osVersionId} onChange={(e) => setVariantForm({ ...variantForm, osVersionId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="">Select version...</option>
+                {selectedOS?.versions?.map((v: OsVersion) => (
+                  <option key={v.id} value={v.id}>{v.version} ({v.phase})</option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Flavor</label>
+              <Select value={variantForm.flavorId} onChange={(e) => setVariantForm({ ...variantForm, flavorId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="">Select flavor...</option>
+                {allFlavors?.map((f) => <option key={f.id} value={f.id}>{f.name} ({f.vcpu} vCPU, {f.ramGb} GB)</option>)}
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Availability Zones</label>
+              <div className="flex flex-wrap gap-2">
+                {allAZs?.map((az) => (
+                  <label key={az.id} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={variantForm.availabilityZoneIds.includes(az.id)}
+                      onChange={(e) => {
+                        const ids = e.target.checked
+                          ? [...variantForm.availabilityZoneIds, az.id]
+                          : variantForm.availabilityZoneIds.filter((id) => id !== az.id);
+                        setVariantForm({ ...variantForm, availabilityZoneIds: ids });
+                      }}
+                      className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600"
+                    />
+                    {az.code}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <MultiPickupInput
+              label="Zones"
+              values={variantForm.zoneIds}
+              onChange={(ids) => setVariantForm({ ...variantForm, zoneIds: ids })}
+              options={allZones?.map((z) => ({ id: z.id, label: z.name })) ?? []}
+            />
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Continuity Level</label>
+              <Select value={variantForm.continuityLevelId} onChange={(e) => setVariantForm({ ...variantForm, continuityLevelId: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="">None</option>
+                {allCL?.map((cl) => <option key={cl.id} value={cl.id}>{cl.name}</option>)}
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="vIsActive" checked={variantForm.isActive} onChange={(e) => setVariantForm({ ...variantForm, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
+              <label htmlFor="vIsActive" className="text-sm text-slate-300">Active</label>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Availability</label>
+                <Select
+                  value={variantForm.availabilityType}
+                  onChange={(e) => setVariantForm({ ...variantForm, availabilityType: e.target.value as AvailabilityType })}
+                  className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+                >
+                  <option value="STANDARD">Standard</option>
+                  <option value="RECOMMENDED">Recommended</option>
+                  <option value="RESTRICTED">Restricted</option>
+                  <option value="ON_DEMAND">On Demand</option>
+                </Select>
+              </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setVariantOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editingVariant ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
 
 // ============ CATEGORIES SECTION ============
 function CategoriesSection() {
@@ -394,7 +1160,135 @@ function CategoriesSection() {
 }
 
 // ============ FLAVORS SECTION ============
-function FlavorsSection() { return <AdminFlavors />; }
+function FlavorsSection() {
+  const { data: flavors, isLoading, isError, refetch } = useAdminFlavors();
+  const { data: allZones } = useZones();
+  const createFlavor = useCreateFlavor();
+  const updateFlavor = useUpdateFlavor();
+  const deleteFlavor = useDeleteFlavor();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<Flavor | null>(null);
+  const [form, setForm] = useState({ name: '', vcpu: 0, ramGb: 0, description: '', zoneIds: [] as string[] });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+
+  const resetForm = () => { setForm({ name: '', vcpu: 0, ramGb: 0, description: '', zoneIds: [] }); setEditing(null); };
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (f: Flavor) => { setEditing(f); setForm({ name: f.name, vcpu: f.vcpu, ramGb: f.ramGb, description: f.description || '', zoneIds: f.zones?.map((z: any) => z.zoneId) ?? [] }); setIsOpen(true); };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editing) await updateFlavor.mutateAsync({ id: editing.id, ...form });
+    else await createFlavor.mutateAsync(form);
+    setIsOpen(false); resetForm();
+  };
+
+  const handleDelete = (id: string) => {
+    setConfirmDelete({ open: true, id });
+  };
+  const handleConfirmDelete = async () => {
+    if (confirmDelete.id) {
+      await deleteFlavor.mutateAsync(confirmDelete.id);
+    }
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  if (isError) return <QueryError message="Unable to load flavors." onRetry={refetch} />;
+
+  const mobileCards = flavors?.map((flavor) => (
+    <MobileCard key={flavor.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{flavor.name}</p>
+          <p className="text-sm text-slate-400">{(flavor as any)._count?.variants ?? 0} variants</p>
+        </div>
+      </div>
+      <div className="mt-2 text-sm text-slate-500">
+        {flavor.vcpu} vCPU · {flavor.ramGb} GB RAM
+      </div>
+      <div className="mt-1 flex flex-wrap gap-1">
+        {flavor.zones?.map((z: any) => (
+          <Badge key={z.zoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{z.zone?.name}</Badge>
+        ))}
+      </div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openEdit(flavor)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => handleDelete(flavor.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add Flavor</Button>
+      </div>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable headers={['Name', 'vCPU', 'RAM', 'Used By', 'Zones', 'Description']} isLoading={isLoading} emptyMessage="No flavors" mobileCards={mobileCards}>
+            {flavors?.map((flavor) => (
+              <tr key={flavor.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{flavor.name}</td>
+                <td className="py-3 text-slate-400">{flavor.vcpu}</td>
+                <td className="py-3 text-slate-400">{flavor.ramGb} GB</td>
+                <td className="py-3 text-slate-400">{(flavor as any)._count?.variants ?? 0}</td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {flavor.zones?.map((z: any) => (
+                      <Badge key={z.zoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{z.zone?.name}</Badge>
+                    ))}
+                  </div>
+                </td>
+                <td className="py-3 text-slate-400 max-w-xs truncate">{flavor.description || '—'}</td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(flavor)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(flavor.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit flavor' : 'New flavor'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">vCPU</label><Input type="number" value={form.vcpu} onChange={(e) => setForm({ ...form, vcpu: parseInt(e.target.value) || 0 })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">RAM (GB)</label><Input type="number" value={form.ramGb} onChange={(e) => setForm({ ...form, ramGb: parseInt(e.target.value) || 0 })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            </div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white" /></div>
+            <MultiPickupInput
+              label="Zones"
+              values={form.zoneIds}
+              onChange={(ids) => setForm({ ...form, zoneIds: ids })}
+              options={allZones?.map((z) => ({ id: z.id, label: z.name })) ?? []}
+            />
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete Flavor"
+        description="Are you sure you want to delete this flavor? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
+    </div>
+  );
+}
 
 // ============ DEPENDENCIES SECTION ============
 function DependenciesSection() {
@@ -949,6 +1843,176 @@ function AvailabilityZonesSection() {
   );
 }
 
+// ============ ZONES SECTION ============
+function ZonesSection() {
+  const { data: zones, isLoading, isError, refetch } = useZones();
+  const { data: allAZs } = useAvailabilityZones();
+  const createZone = useCreateZone();
+  const updateZone = useUpdateZone();
+  const deleteZone = useDeleteZone();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<Zone | null>(null);
+  const [form, setForm] = useState({
+    name: '', slug: '', description: '', isActive: true, availabilityZoneIds: [] as string[],
+  });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const resetForm = () => {
+    setForm({ name: '', slug: '', description: '', isActive: true, availabilityZoneIds: [] });
+    setEditing(null);
+  };
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (z: Zone) => {
+    setEditing(z);
+    setForm({
+      name: z.name,
+      slug: z.slug,
+      description: z.description || '',
+      isActive: z.isActive,
+      availabilityZoneIds: z.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [],
+    });
+    setIsOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload: any = { ...form };
+    if (!payload.description) delete payload.description;
+    if (editing) await updateZone.mutateAsync({ id: editing.id, ...payload });
+    else await createZone.mutateAsync(payload);
+    setIsOpen(false); resetForm();
+  };
+
+  const handleDelete = (id: string) => {
+    setConfirmDelete({ open: true, id });
+  };
+  const handleConfirmDelete = async () => {
+    if (confirmDelete.id) {
+      await deleteZone.mutateAsync(confirmDelete.id);
+    }
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  const filtered = zones?.filter((z) =>
+    z.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    z.slug.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (isError) return <QueryError message="Unable to load zones." onRetry={refetch} />;
+
+  const mobileCards = filtered?.map((z) => (
+    <MobileCard key={z.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{z.name}</p>
+          <p className="text-sm text-slate-400">{z.slug}</p>
+        </div>
+        <Badge variant="outline" className={z.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+          {z.isActive ? 'Active' : 'Inactive'}
+        </Badge>
+      </div>
+      <div className="mt-2 text-sm text-slate-500">
+        <p>{z.availabilityZones?.length ?? 0} AZ(s)</p>
+      </div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openEdit(z)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => handleDelete(z.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <Input placeholder="Search by name or slug..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]" />
+        </div>
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add</Button>
+      </div>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable headers={['Name', 'Slug', 'AZs', 'Active']} isLoading={isLoading} emptyMessage="No zones" mobileCards={mobileCards}>
+            {filtered?.map((z) => (
+              <tr key={z.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{z.name}</td>
+                <td className="py-3 text-slate-400">{z.slug}</td>
+                <td className="py-3 text-slate-400">{z.availabilityZones?.length ?? 0}</td>
+                <td className="py-3">
+                  <Badge variant="outline" className={z.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+                    {z.isActive ? 'Active' : 'Inactive'}
+                  </Badge>
+                </td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(z)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(z.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit zone' : 'New zone'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Slug</label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            </div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Availability Zones</label>
+              <div className="flex flex-wrap gap-2">
+                {allAZs?.map((az) => (
+                  <label key={az.id} className="flex items-center gap-1.5 text-sm text-slate-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.availabilityZoneIds.includes(az.id)}
+                      onChange={(e) => {
+                        const ids = e.target.checked
+                          ? [...form.availabilityZoneIds, az.id]
+                          : form.availabilityZoneIds.filter((id) => id !== az.id);
+                        setForm({ ...form, availabilityZoneIds: ids });
+                      }}
+                      className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600"
+                    />
+                    {az.code}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="zone-active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
+              <label htmlFor="zone-active" className="text-sm font-medium text-slate-300">Active</label>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete Zone"
+        description="Are you sure you want to delete this zone? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
+    </div>
+  );
+}
+
 // ============ INSTANCES SECTION ============
 const instanceStatusConfig: Record<InstanceStatus, { label: string; color: string }> = {
   PENDING: { label: 'Pending', color: 'border-slate-500/20 text-slate-400' },
@@ -961,7 +2025,8 @@ const instanceStatusConfig: Record<InstanceStatus, { label: string; color: strin
 export function _InstancesSection() {
   const { data: instances, isLoading, isError, refetch } = useInstances();
   const { data: applications } = useApplications();
-  const { data: products } = useProducts();
+  const { data: products } = useAdminProducts();
+  const { data: allFlavors } = useFlavors();
   const { data: zones } = useAvailabilityZones();
   const createInstance = useCreateInstance();
   const updateInstance = useUpdateInstance();
@@ -996,8 +2061,9 @@ export function _InstancesSection() {
     setIsOpen(true);
   };
 
-  const { data: flavors } = useFlavors();
-  const { data: variants } = useProductVariants(form.productId || '');
+  const selectedProduct = products?.find((p) => p.id === form.productId);
+  const isComputeProduct = selectedProduct?.category?.slug === 'compute';
+  const { data: productVariants } = useProductVariants(form.productId || '');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1118,16 +2184,18 @@ export function _InstancesSection() {
                 <label className="text-sm font-medium text-slate-300">Flavor</label>
                 <Select value={form.flavorId} onChange={(e) => setForm({ ...form, flavorId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                   <option value="">Select...</option>
-                  {flavors?.map((f) => <option key={f.id} value={f.id}>{f.name} ({f.vcpu}vCPU, {f.ramGb}GB)</option>)}
+                  {allFlavors?.map((f) => <option key={f.id} value={f.id}>{f.name} ({f.vcpu}vCPU, {f.ramGb}GB)</option>)}
                 </Select>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Variant</label>
-                <Select value={form.variantId} onChange={(e) => setForm({ ...form, variantId: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
-                  <option value="">None</option>
-                  {variants?.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-                </Select>
-              </div>
+              {isComputeProduct && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-300">Variant</label>
+                  <Select value={form.variantId} onChange={(e) => setForm({ ...form, variantId: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                    <option value="">None</option>
+                    {productVariants?.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300">Availability Zone</label>
                 <Select value={form.azCode} onChange={(e) => setForm({ ...form, azCode: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
@@ -1397,6 +2465,7 @@ export default function Admin() {
     { value: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { value: 'os', label: 'OS', icon: Monitor },
     { value: 'products', label: 'Products', icon: Package },
+    { value: 'os', label: 'OS', icon: Monitor },
     { value: 'categories', label: 'Categories', icon: Layers },
     { value: 'flavors', label: 'Flavors', icon: Cpu },
     { value: 'dependencies', label: 'Dependencies', icon: Link2 },
@@ -1404,6 +2473,7 @@ export default function Admin() {
     { value: 'continuity-levels', label: 'Continuity', icon: TrendingUp },
     { value: 'forecasts', label: 'Forecasts', icon: Activity },
     { value: 'users', label: 'Users', icon: UserCog },
+    { value: 'zones', label: 'Zones', icon: Box },
     { value: 'availability-zones', label: 'Availability Zones', icon: MapPin },
   ];
 
@@ -1433,8 +2503,8 @@ export default function Admin() {
         </TabsList>
 
         <TabsContent value="dashboard" className="animate-fade-in"><DashboardSection onNavigate={setActiveTab} /></TabsContent>
-        <TabsContent value="os" className="animate-fade-in"><AdminOS /></TabsContent>
         <TabsContent value="products" className="animate-fade-in"><ProductsSection /></TabsContent>
+        <TabsContent value="os" className="animate-fade-in"><OSSection /></TabsContent>
         <TabsContent value="categories" className="animate-fade-in"><CategoriesSection /></TabsContent>
         <TabsContent value="flavors" className="animate-fade-in"><FlavorsSection /></TabsContent>
         <TabsContent value="dependencies" className="animate-fade-in"><DependenciesSection /></TabsContent>
@@ -1442,6 +2512,7 @@ export default function Admin() {
         <TabsContent value="continuity-levels" className="animate-fade-in"><ContinuityLevelsSection /></TabsContent>
         <TabsContent value="forecasts" className="animate-fade-in"><ForecastsAdminSection /></TabsContent>
         <TabsContent value="users" className="animate-fade-in"><UsersSection /></TabsContent>
+        <TabsContent value="zones" className="animate-fade-in"><ZonesSection /></TabsContent>
         <TabsContent value="availability-zones" className="animate-fade-in"><AvailabilityZonesSection /></TabsContent>
       </Tabs>
     </div>

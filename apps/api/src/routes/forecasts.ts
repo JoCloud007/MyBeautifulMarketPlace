@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ApprovalStatus } from '@prisma/client';
+import { ApprovalStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db';
 
@@ -205,7 +205,7 @@ router.post('/', async (req, res, next) => {
   try {
     const data = createForecastSchema.parse(req.body);
 
-    const forecast = await prisma.$transaction(async (tx) => {
+    const forecast = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // Validate application exists
       const application = await tx.application.findUnique({
         where: { id: data.applicationId },
@@ -269,11 +269,10 @@ router.post('/', async (req, res, next) => {
           lines: {
             create: data.lines.map((line) => ({
               product: { connect: { id: line.productId } },
-              variant: line.variantId ? { connect: { id: line.variantId } } : undefined,
               flavor: { connect: { id: line.flavorId } },
               az: { connect: { code: line.azCode } },
               quantity: line.quantity,
-              metadata: (line.metadata || undefined) as any,
+              metadata: (line.metadata ?? undefined) as any,
               resiliency: line.resiliency || 'STANDARD',
             })),
           },

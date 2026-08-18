@@ -1,10 +1,22 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
+import type { Prisma } from '@prisma/client';
 
 const router = Router();
 
 const idParamSchema = z.string().uuid();
+
+const createVariantSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  osId: z.string().uuid('Invalid OS ID'),
+  osVersionId: z.string().uuid('Invalid OS version ID'),
+  flavorId: z.string().uuid('Invalid flavor ID'),
+  availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
+  continuityLevelId: z.string().uuid().optional().nullable(),
+  isActive: z.boolean().optional(),
+  availabilityType: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
+});
 
 const updateVariantSchema = z.object({
   name: z.string().min(1).optional(),
@@ -12,8 +24,10 @@ const updateVariantSchema = z.object({
   osVersionId: z.string().uuid().optional(),
   flavorId: z.string().uuid().optional(),
   availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
+  zoneIds: z.array(z.string().uuid()).max(50).optional(),
   continuityLevelId: z.string().uuid().optional().nullable(),
   isActive: z.boolean().optional(),
+  availabilityType: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
 });
 
 // GET /api/variants/:id
@@ -30,6 +44,7 @@ router.get('/:id', async (req, res, next) => {
         osVersion: true,
         flavor: true,
         availabilityZones: { include: { availabilityZone: true } },
+        zones: { include: { zone: true } },
         continuityLevel: true,
         _count: { select: { instances: true } },
       },
@@ -51,34 +66,31 @@ router.put('/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
     const data = updateVariantSchema.parse(req.body);
-    const { availabilityZoneIds, ...variantData } = data;
 
     const existing = await prisma.productVariant.findUnique({ where: { id } });
     if (!existing) {
       return res.status(404).json({ error: 'Variant not found' });
     }
 
-    // Verify OS exists if updating
+    // Verify OS if changing
     if (data.osId) {
       const os = await prisma.operatingSystem.findUnique({ where: { id: data.osId } });
       if (!os) {
-        return res.status(404).json({ error: 'Operating system not found' });
+        return res.status(404).json({ error: 'OS not found' });
       }
     }
 
-    // Verify OS version exists and belongs to the OS if updating
-    if (data.osVersionId || data.osId) {
-      const osVersionId = data.osVersionId || existing.osVersionId;
-      const osId = data.osId || existing.osId;
-      const osVersion = await prisma.osVersion.findFirst({
-        where: { id: osVersionId, osId },
-      });
-      if (!osVersion) {
-        return res.status(404).json({ error: 'OS version not found or does not belong to the selected OS' });
-      }
+    // Verify OS version belongs to the target OS
+    const finalOsId = data.osId || existing.osId;
+    const finalOsVersionId = data.osVersionId || existing.osVersionId;
+    const osVersion = await prisma.osVersion.findFirst({
+      where: { id: finalOsVersionId, osId: finalOsId },
+    });
+    if (!osVersion) {
+      return res.status(404).json({ error: 'OS version not found or does not belong to the specified OS' });
     }
 
-    // Verify flavor exists if updating
+    // Verify flavor if changing
     if (data.flavorId) {
       const flavor = await prisma.flavor.findUnique({ where: { id: data.flavorId } });
       if (!flavor) {
@@ -86,27 +98,68 @@ router.put('/:id', async (req, res, next) => {
       }
     }
 
-    // Verify availability zones exist
-    const uniqueAzIds = availabilityZoneIds ? [...new Set(availabilityZoneIds)] : [];
-    if (uniqueAzIds.length > 0) {
-      const zones = await prisma.availabilityZone.findMany({
-        where: { id: { in: uniqueAzIds } },
-      });
-      if (zones.length !== uniqueAzIds.length) {
-        return res.status(400).json({ error: 'One or more availability zones do not exist' });
+    // Verify continuity level if changing
+    if (data.continuityLevelId) {
+      const cl = await prisma.continuityLevel.findUnique({ where: { id: data.continuityLevelId } });
+      if (!cl) {
+        return res.status(404).json({ error: 'Continuity level not found' });
       }
     }
 
-    const variant = await prisma.$transaction(async (tx) => {
-      if (availabilityZoneIds) {
+    // Verify AZs if changing
+    if (data.availabilityZoneIds) {
+      if (data.availabilityZoneIds.length > 0) {
+        const uniqueAzIds = [...new Set(data.availabilityZoneIds)];
+        if (uniqueAzIds.length !== data.availabilityZoneIds.length) {
+          return res.status(400).json({ error: 'Duplicate availability zone IDs are not allowed' });
+        }
+        const zones = await prisma.availabilityZone.findMany({
+          where: { id: { in: data.availabilityZoneIds } },
+        });
+        if (zones.length !== data.availabilityZoneIds.length) {
+          return res.status(400).json({ error: 'One or more availability zones do not exist' });
+        }
+      }
+    }
+
+    // Verify zones if changing
+    if (data.zoneIds) {
+      if (data.zoneIds.length > 0) {
+        const uniqueZoneIds = [...new Set(data.zoneIds)];
+        if (uniqueZoneIds.length !== data.zoneIds.length) {
+          return res.status(400).json({ error: 'Duplicate zone IDs are not allowed' });
+        }
+        const zones = await prisma.zone.findMany({
+          where: { id: { in: data.zoneIds } },
+        });
+        if (zones.length !== data.zoneIds.length) {
+          return res.status(400).json({ error: 'One or more zones do not exist' });
+        }
+      }
+    }
+
+    const variant = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      if (data.availabilityZoneIds) {
         await tx.productVariantAvailabilityZone.deleteMany({ where: { variantId: id } });
+      }
+      if (data.zoneIds) {
+        await tx.productVariantZone.deleteMany({ where: { variantId: id } });
       }
       return tx.productVariant.update({
         where: { id },
         data: {
-          ...variantData,
-          availabilityZones: uniqueAzIds.length > 0
-            ? { create: uniqueAzIds.map((azId) => ({ availabilityZoneId: azId })) }
+          name: data.name,
+          osId: data.osId,
+          osVersionId: data.osVersionId,
+          flavorId: data.flavorId,
+          continuityLevelId: data.continuityLevelId,
+          isActive: data.isActive,
+          availabilityType: data.availabilityType,
+          availabilityZones: data.availabilityZoneIds
+            ? { create: data.availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) }
+            : undefined,
+          zones: data.zoneIds
+            ? { create: data.zoneIds.map((zid) => ({ zoneId: zid })) }
             : undefined,
         },
         include: {
@@ -114,6 +167,7 @@ router.put('/:id', async (req, res, next) => {
           osVersion: true,
           flavor: true,
           availabilityZones: { include: { availabilityZone: true } },
+          zones: { include: { zone: true } },
           continuityLevel: true,
         },
       });
@@ -145,9 +199,7 @@ router.delete('/:id', async (req, res, next) => {
     if (variant._count.forecastLines > 0) blocks.push('forecast lines');
 
     if (blocks.length > 0) {
-      return res.status(409).json({
-        error: `Cannot delete variant with existing ${blocks.join(', ')}. Please remove them first.`,
-      });
+      return res.status(409).json({ error: `Cannot delete variant with existing ${blocks.join(', ')}` });
     }
 
     await prisma.productVariant.delete({ where: { id } });

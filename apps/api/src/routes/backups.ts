@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { BackupStatus } from '@prisma/client';
+import { BackupStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db';
 
@@ -138,7 +138,7 @@ router.post('/:id/restore', async (req, res, next) => {
       }
     }
 
-    const restored = await prisma.$transaction(async (tx) => {
+    const restored = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const updatedBackup = await tx.backup.update({
         where: { id },
         data: { restoredAt: new Date() },

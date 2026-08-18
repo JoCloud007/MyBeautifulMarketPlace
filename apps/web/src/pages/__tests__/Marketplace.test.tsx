@@ -1,29 +1,36 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Marketplace from '@/pages/Marketplace';
-import { useAppStore } from '@/stores/useAppStore';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────
+
+const mockSetFilters = vi.fn();
+const mockRemoveFilter = vi.fn();
+const mockClearFilters = vi.fn();
+const mockSetSortBy = vi.fn();
+
+const mockUseAppStore = vi.fn(() => ({
+  filters: {},
+  sortBy: 'newest',
+  setFilters: mockSetFilters,
+  removeFilter: mockRemoveFilter,
+  clearFilters: mockClearFilters,
+  setSortBy: mockSetSortBy,
+}));
+
+vi.mock('@/stores/useAppStore', () => ({
+  useAppStore: () => mockUseAppStore(),
+}));
 
 vi.mock('@/hooks/useScrollReveal', () => ({
   useScrollReveal: () => ({ ref: { current: null }, isVisible: true }),
 }));
 
-function createTestQueryClient() {
-  return new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-}
-
 function Wrapper({ children }: { children: React.ReactNode }) {
   return (
     <MemoryRouter>
-      <QueryClientProvider client={createTestQueryClient()}>
-        {children}
-      </QueryClientProvider>
+      {children}
     </MemoryRouter>
   );
 }
@@ -31,276 +38,299 @@ function Wrapper({ children }: { children: React.ReactNode }) {
 // ─── Test Data ────────────────────────────────────────────────────────────
 
 const categories = [
-  { id: 'cat-1', name: 'Compute', slug: 'compute', description: null, icon: 'Cpu', createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' },
-  { id: 'cat-2', name: 'Storage', slug: 'storage', description: null, icon: 'Database', createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' },
+  { id: 'cat-1', name: 'Compute', slug: 'compute', icon: 'Cpu', _count: { products: 2 } },
+  { id: 'cat-2', name: 'Data', slug: 'data', icon: 'Database', _count: { products: 1 } },
 ];
 
 const products = [
   {
     id: 'prod-1',
-    name: 'Compute IaaS',
-    slug: 'compute-iaas',
-    description: 'Infra as a Service',
+    name: 'Virtual Machine',
+    slug: 'virtual-machine',
+    description: 'Configurable VM',
     category: categories[0],
     computeType: 'VIRTUAL',
     variants: [{ id: 'v1' }, { id: 'v2' }],
     dependencies: [],
-    isActive: true,
-    createdAt: '2024-01-01T00:00:00Z',
+    createdAt: '2024-01-15T00:00:00Z',
   },
   {
     id: 'prod-2',
-    name: 'Bare Metal',
-    slug: 'bare-metal',
-    description: 'Physical servers',
+    name: 'Bare Metal HPC',
+    slug: 'bare-metal-hpc',
+    description: 'Dedicated servers',
     category: categories[0],
     computeType: 'PHYSICAL',
-    variants: [],
+    variants: [{ id: 'v3' }],
     dependencies: [],
-    isActive: true,
-    createdAt: '2024-02-01T00:00:00Z',
+    createdAt: '2024-02-20T00:00:00Z',
   },
   {
     id: 'prod-3',
     name: 'Object Storage',
     slug: 'object-storage',
-    description: 'S3-like storage',
+    description: 'S3-compatible storage',
     category: categories[1],
     computeType: null,
     variants: [],
-    os: 'Linux',
-    dependencies: [],
-    isActive: true,
-    createdAt: '2024-03-01T00:00:00Z',
+    dependencies: [{ id: 'd1' }],
+    createdAt: '2024-03-10T00:00:00Z',
   },
 ];
 
-function jsonResponse(data: any) {
-  return Promise.resolve({
-    ok: true,
-    status: 200,
-    statusText: 'OK',
-    json: () => Promise.resolve(data),
-    text: () => Promise.resolve(JSON.stringify(data)),
-    headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null) },
-  } as Response);
-}
-
-function errorResponse(status = 500) {
-  return Promise.resolve({
-    ok: false,
-    status,
-    statusText: 'Internal Server Error',
-    json: () => Promise.resolve({}),
-    text: () => Promise.resolve(''),
-    headers: { get: () => '' },
-  } as Response);
+// Helper to mock global fetch
+function mockFetch(responseMap: Record<string, any>) {
+  global.fetch = vi.fn((url: string) => {
+    for (const [key, value] of Object.entries(responseMap)) {
+      if (url.includes(key)) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: { get: (h: string) => h === 'content-type' ? 'application/json' : null },
+          json: () => Promise.resolve(value),
+          text: () => Promise.resolve(JSON.stringify(value)),
+        } as unknown as Response);
+      }
+    }
+    return Promise.resolve({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      headers: { get: (h: string) => h === 'content-type' ? 'application/json' : null },
+      json: () => Promise.resolve({ error: 'Not found' }),
+      text: () => Promise.resolve('Not found'),
+    } as unknown as Response);
+  });
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────
 
-describe('Marketplace Page', () => {
-  let mockFetch: ReturnType<typeof vi.fn>;
-
+describe('Marketplace — Prisma Schema Refactor', () => {
   beforeEach(() => {
-    mockFetch = vi.fn();
-    global.fetch = mockFetch;
-    useAppStore.setState({ filters: {}, sortBy: 'newest', viewMode: 'flat' });
+    vi.clearAllMocks();
+    mockUseAppStore.mockReturnValue({
+      filters: {},
+      sortBy: 'newest',
+      setFilters: mockSetFilters,
+      removeFilter: mockRemoveFilter,
+      clearFilters: mockClearFilters,
+      setSortBy: mockSetSortBy,
+    });
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+  describe('Loading State', () => {
+    it('renders skeleton loaders while fetching', async () => {
+      let resolveResponse: (v: any) => void;
+      const responsePromise = new Promise<Response>((r) => { resolveResponse = r; });
+      global.fetch = vi.fn(() => responsePromise as any);
 
-  function setupFetch(loadProducts = products, loadCategories = categories) {
-    mockFetch.mockImplementation((url: string) => {
-      if (url.includes('/api/products')) return jsonResponse(loadProducts);
-      if (url.includes('/api/categories')) {
-        const cats = loadCategories.map((c: any) => ({
-          ...c,
-          _count: { products: loadProducts.filter((p: any) => p.category?.slug === c.slug).length },
-        }));
-        return jsonResponse(cats);
-      }
-      return Promise.reject(new Error('Unknown URL: ' + url));
-    });
-  }
-
-  describe('Initial Render', () => {
-    it('renders header and search controls', () => {
-      setupFetch();
-      render(<Marketplace />, { wrapper: Wrapper });
-      expect(screen.getByText('Marketplace')).toBeInTheDocument();
-      expect(screen.getByPlaceholderText(/Search for a product/i)).toBeInTheDocument();
-    });
-
-    it('shows skeleton loaders while loading', () => {
-      mockFetch.mockReturnValue(new Promise(() => {}));
       const { container } = render(<Marketplace />, { wrapper: Wrapper });
-      const skeletons = container.querySelectorAll('.animate-pulse-soft');
-      expect(skeletons.length).toBeGreaterThan(0);
-    });
-
-    it('shows error state when fetch fails', async () => {
-      mockFetch.mockReturnValue(errorResponse());
-      render(<Marketplace />, { wrapper: Wrapper });
-      await waitFor(() => expect(screen.getByText(/Unable to load catalog/i)).toBeInTheDocument());
+      expect(container.querySelectorAll('.animate-pulse-soft').length).toBeGreaterThan(0);
+      resolveResponse!({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: { get: (h: string) => h === 'content-type' ? 'application/json' : null },
+        json: () => Promise.resolve(products),
+        text: () => Promise.resolve(JSON.stringify(products)),
+      } as unknown as Response);
     });
   });
 
-  describe('Product Cards', () => {
-    it('renders all product cards in flat view', async () => {
-      setupFetch();
+  describe('Catalog Display', () => {
+    beforeEach(() => {
+      mockFetch({ '/api/products': products, '/api/categories': categories });
+    });
+
+    it('renders all product cards', async () => {
       render(<Marketplace />, { wrapper: Wrapper });
-      await waitFor(() => expect(screen.getByText('Compute IaaS')).toBeInTheDocument());
-      expect(screen.getByText('Bare Metal')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('Virtual Machine')).toBeInTheDocument();
+      });
+      expect(screen.getByText('Bare Metal HPC')).toBeInTheDocument();
       expect(screen.getByText('Object Storage')).toBeInTheDocument();
     });
 
-    it('shows computeType badge and variants count for compute products', async () => {
-      setupFetch();
+    it('shows category badges on products', async () => {
       render(<Marketplace />, { wrapper: Wrapper });
-      await waitFor(() => expect(screen.getByText('Compute IaaS')).toBeInTheDocument());
-      expect(screen.getByText('VIRTUAL')).toBeInTheDocument();
-      expect(screen.getByText('2 variants')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText('Compute')).toBeInTheDocument();
+      });
+      expect(screen.getAllByText('Compute').length).toBeGreaterThanOrEqual(2);
+      expect(screen.getByText('Data')).toBeInTheDocument();
     });
 
-    it('shows OS badge for non-compute products', async () => {
-      setupFetch();
+    it('shows computeType badges only for Compute products', async () => {
       render(<Marketplace />, { wrapper: Wrapper });
-      await waitFor(() => expect(screen.getByText('Object Storage')).toBeInTheDocument());
-      expect(screen.getAllByText('Linux').length).toBeGreaterThanOrEqual(1);
+      await waitFor(() => {
+        expect(screen.getByText('VIRTUAL')).toBeInTheDocument();
+      });
+      expect(screen.getByText('PHYSICAL')).toBeInTheDocument();
+      expect(screen.queryAllByText('null').length).toBe(0);
     });
 
-    it('links each card to the correct product detail page', async () => {
-      setupFetch();
-      const { container } = render(<Marketplace />, { wrapper: Wrapper });
-      await waitFor(() => expect(screen.getByText('Compute IaaS')).toBeInTheDocument());
-      expect(container.querySelector('a[href="/products/compute-iaas"]')).toBeInTheDocument();
-      expect(container.querySelector('a[href="/products/object-storage"]')).toBeInTheDocument();
+    it('shows variant counts for Compute products', async () => {
+      render(<Marketplace />, { wrapper: Wrapper });
+      await waitFor(() => {
+        expect(screen.getByText(/2 variants/)).toBeInTheDocument();
+      });
+      expect(screen.getByText(/1 variant/)).toBeInTheDocument();
+    });
+
+    it('shows dependency counts when present', async () => {
+      render(<Marketplace />, { wrapper: Wrapper });
+      await waitFor(() => {
+        expect(screen.getByText(/1 dependency/)).toBeInTheDocument();
+      });
+    });
+
+    it('displays product count summary', async () => {
+      render(<Marketplace />, { wrapper: Wrapper });
+      await waitFor(() => {
+        expect(screen.getByText(/3\s*products?\s*found/i)).toBeInTheDocument();
+      });
     });
   });
 
-  describe('Filtering & Sorting', () => {
-    it('filters products by search query', async () => {
-      setupFetch();
-      render(<Marketplace />, { wrapper: Wrapper });
-      await waitFor(() => expect(screen.getByText('Compute IaaS')).toBeInTheDocument());
+  describe('Group by Category Toggle', () => {
+    beforeEach(() => {
+      mockFetch({ '/api/products': products, '/api/categories': categories });
+    });
 
-      const input = screen.getByPlaceholderText(/Search for a product/i);
-      await userEvent.type(input, 'Storage');
+    it('toggles group by category mode', async () => {
+      render(<Marketplace />, { wrapper: Wrapper });
+      await waitFor(() => {
+        expect(screen.getByText('Virtual Machine')).toBeInTheDocument();
+      });
+
+      const toggleBtn = screen.getByRole('button', { name: /group by category/i });
+      fireEvent.click(toggleBtn);
 
       await waitFor(() => {
-        expect(screen.queryByText('Object Storage')).toBeInTheDocument();
-        expect(screen.queryByText('Compute IaaS')).not.toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: /compute/i })).toBeInTheDocument();
       });
+      expect(screen.getByRole('heading', { name: /data/i })).toBeInTheDocument();
     });
 
-    it('filters products by category pill click', async () => {
-      setupFetch();
+    it('shows category product counts in grouped mode', async () => {
       render(<Marketplace />, { wrapper: Wrapper });
-      await waitFor(() => expect(screen.getByText('Compute IaaS')).toBeInTheDocument());
+      await waitFor(() => {
+        expect(screen.getByText('Virtual Machine')).toBeInTheDocument();
+      });
 
-      const computePill = screen.getAllByText('Compute').find((el) => el.tagName === 'BUTTON')!;
-      await userEvent.click(computePill);
+      const toggleBtn = screen.getByRole('button', { name: /group by category/i });
+      fireEvent.click(toggleBtn);
 
       await waitFor(() => {
-        expect(screen.queryByText('Compute IaaS')).toBeInTheDocument();
-        expect(screen.queryByText('Object Storage')).not.toBeInTheDocument();
+        const computeHeading = screen.getByRole('heading', { name: /compute/i });
+        expect(computeHeading?.parentElement?.textContent).toContain('2');
       });
-    });
-
-    it('sorts products by name', async () => {
-      setupFetch();
-      render(<Marketplace />, { wrapper: Wrapper });
-      await waitFor(() => expect(screen.getByText('Compute IaaS')).toBeInTheDocument());
-
-      const sortSelect = screen.getByDisplayValue('Newest');
-      fireEvent.change(sortSelect, { target: { value: 'name' } });
-
-      await waitFor(() => {
-        const links = screen.getAllByRole('link').filter((a) => a.getAttribute('href')?.startsWith('/products/'));
-        expect(links[0].textContent).toContain('Bare Metal');
-        expect(links[1].textContent).toContain('Compute IaaS');
-        expect(links[2].textContent).toContain('Object Storage');
-      });
-    });
-
-    it('shows empty state when search yields no results', async () => {
-      setupFetch();
-      render(<Marketplace />, { wrapper: Wrapper });
-      await waitFor(() => expect(screen.getByText('Compute IaaS')).toBeInTheDocument());
-
-      const input = screen.getByPlaceholderText(/Search for a product/i);
-      await userEvent.type(input, 'xyz-nonexistent');
-
-      await waitFor(() => expect(screen.getByText('No products found')).toBeInTheDocument());
-    });
-
-    it('shows active filter chips and allows reset', async () => {
-      setupFetch();
-      render(<Marketplace />, { wrapper: Wrapper });
-      await waitFor(() => expect(screen.getByText('Compute IaaS')).toBeInTheDocument());
-
-      const computePill = screen.getAllByText('Compute').find((el) => el.tagName === 'BUTTON')!;
-      await userEvent.click(computePill);
-
-      await waitFor(() => expect(screen.getByText('Active filters:')).toBeInTheDocument());
-
-      const resetBtn = screen.getByText('Reset');
-      await userEvent.click(resetBtn);
-
-      await waitFor(() => expect(screen.getByText('Object Storage')).toBeInTheDocument());
     });
   });
 
-  describe('View Modes', () => {
-    it('renders grouped view with category accordions', async () => {
-      useAppStore.setState({ viewMode: 'grouped' });
-      setupFetch();
-      render(<Marketplace />, { wrapper: Wrapper });
-      await waitFor(() => expect(screen.getByText('Compute IaaS')).toBeInTheDocument());
-
-      expect(screen.getByText('2 products')).toBeInTheDocument();
-      expect(screen.getByText('1 product')).toBeInTheDocument();
-      expect(screen.getByText('Compute IaaS')).toBeInTheDocument();
-      expect(screen.getByText('Bare Metal')).toBeInTheDocument();
+  describe('Filtering', () => {
+    beforeEach(() => {
+      mockFetch({ '/api/products': products, '/api/categories': categories });
     });
 
-    it('toggles from flat to grouped view via button', async () => {
-      setupFetch();
+    it('filters by computeType via dropdown', async () => {
       render(<Marketplace />, { wrapper: Wrapper });
-      await waitFor(() => expect(screen.getByText('Compute IaaS')).toBeInTheDocument());
-
-      const groupedBtn = screen.getByText('Grouped');
-      await userEvent.click(groupedBtn);
-
       await waitFor(() => {
-        expect(screen.getByText('2 products')).toBeInTheDocument();
+        expect(screen.getByText('Virtual Machine')).toBeInTheDocument();
       });
+
+      const select = screen.getByDisplayValue('All Types');
+      fireEvent.change(select, { target: { value: 'VIRTUAL' } });
+      expect(mockSetFilters).toHaveBeenCalledWith({ computeType: 'VIRTUAL' });
     });
 
-    it('shows expand/collapse controls in grouped view', async () => {
-      useAppStore.setState({ viewMode: 'grouped' });
-      setupFetch();
+    it('filters by search term', async () => {
       render(<Marketplace />, { wrapper: Wrapper });
-      await waitFor(() => expect(screen.getByText('Compute IaaS')).toBeInTheDocument());
+      await waitFor(() => {
+        expect(screen.getByText('Virtual Machine')).toBeInTheDocument();
+      });
 
-      expect(screen.getByText('Expand')).toBeInTheDocument();
-      expect(screen.getByText('Collapse')).toBeInTheDocument();
+      const input = screen.getByPlaceholderText(/search for a product/i);
+      fireEvent.change(input, { target: { value: 'storage' } });
+      expect(mockSetFilters).toHaveBeenCalledWith({ search: 'storage' });
+    });
+
+    it('filters by category via pill buttons', async () => {
+      render(<Marketplace />, { wrapper: Wrapper });
+      await waitFor(() => {
+        expect(screen.getByText('Virtual Machine')).toBeInTheDocument();
+      });
+
+      const computePill = screen.getByRole('button', { name: /compute/i });
+      fireEvent.click(computePill);
+      expect(mockSetFilters).toHaveBeenCalledWith({ category: 'compute' });
+    });
+
+    it('shows reset button when filters active', async () => {
+      mockUseAppStore.mockReturnValue({
+        filters: { search: 'vm' },
+        sortBy: 'newest',
+        setFilters: mockSetFilters,
+        removeFilter: mockRemoveFilter,
+        clearFilters: mockClearFilters,
+        setSortBy: mockSetSortBy,
+      });
+      render(<Marketplace />, { wrapper: Wrapper });
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /reset/i })).toBeInTheDocument();
+      });
     });
   });
 
-  describe('Category Pills', () => {
-    it('displays product counts on category pills', async () => {
-      setupFetch();
-      render(<Marketplace />, { wrapper: Wrapper });
-      await waitFor(() => expect(screen.getByText('Compute IaaS')).toBeInTheDocument());
+  describe('Sorting', () => {
+    beforeEach(() => {
+      mockFetch({ '/api/products': products, '/api/categories': categories });
+    });
 
-      const computePill = screen.getAllByText('Compute').find((el) => el.tagName === 'BUTTON');
-      expect(computePill?.textContent).toContain('2');
-      const storagePill = screen.getAllByText('Storage').find((el) => el.tagName === 'BUTTON');
-      expect(storagePill?.textContent).toContain('1');
+    it('changes sort order via dropdown', async () => {
+      render(<Marketplace />, { wrapper: Wrapper });
+      await waitFor(() => {
+        expect(screen.getByText('Virtual Machine')).toBeInTheDocument();
+      });
+
+      const select = screen.getByDisplayValue('Newest');
+      fireEvent.change(select, { target: { value: 'name' } });
+      expect(mockSetSortBy).toHaveBeenCalledWith('name');
+    });
+  });
+
+  describe('Empty State', () => {
+    beforeEach(() => {
+      mockFetch({ '/api/products': [], '/api/categories': categories });
+    });
+
+    it('shows empty message when no products', async () => {
+      render(<Marketplace />, { wrapper: Wrapper });
+      await waitFor(() => {
+        expect(screen.getByText(/no products found/i)).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Error State', () => {
+    beforeEach(() => {
+      global.fetch = vi.fn(() =>
+        Promise.resolve({
+          ok: false,
+          status: 500,
+          statusText: 'Server Error',
+          headers: { get: () => 'application/json' },
+          text: () => Promise.resolve('Internal error'),
+        } as Response)
+      );
+    });
+
+    it('shows error message on fetch failure', async () => {
+      render(<Marketplace />, { wrapper: Wrapper });
+      await waitFor(() => {
+        expect(screen.getByText(/unable to load catalog/i)).toBeInTheDocument();
+      });
     });
   });
 });

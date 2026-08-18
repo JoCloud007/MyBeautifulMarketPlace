@@ -6,7 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { Filter, ChevronDown, ChevronRight } from 'lucide-react';
-import type { OperatingSystem, OsVersion, LifecyclePhase } from '@cloudmarket/shared-types';
+import type { OsVersion, LifecyclePhase, OperatingSystem } from '@cloudmarket/shared-types';
 
 const phaseConfig: Record<LifecyclePhase, { label: string; color: string; bg: string; border: string }> = {
   RELEASED: { label: 'Released', color: 'text-emerald-400', bg: 'bg-emerald-500', border: 'border-emerald-500/30' },
@@ -130,7 +130,7 @@ function VersionRow({ version, yearStart, yearEnd }: { version: OsVersion; yearS
 
 /* ── OS Section ────────────────────────────────────────────────── */
 
-function OsSection({ os, yearStart, yearEnd }: { os: OperatingSystem; yearStart: number; yearEnd: number }) {
+function OSSection({ os, yearStart, yearEnd }: { os: OperatingSystem; yearStart: number; yearEnd: number }) {
   const [expanded, setExpanded] = useState(true);
   const versions = os.versions || [];
 
@@ -163,7 +163,6 @@ function OsSection({ os, yearStart, yearEnd }: { os: OperatingSystem; yearStart:
 function FamilySection({ family, osList, yearStart, yearEnd }: { family: string; osList: OperatingSystem[]; yearStart: number; yearEnd: number }) {
   const [expanded, setExpanded] = useState(true);
   const totalVersions = osList.reduce((sum, os) => sum + (os.versions?.length || 0), 0);
-
   const famCfg = getFamilyLabel(family);
 
   return (
@@ -176,13 +175,13 @@ function FamilySection({ family, osList, yearStart, yearEnd }: { family: string;
         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${famCfg.color} ${famCfg.bg}`}>
           {famCfg.label}
         </span>
-        <span className="text-[11px] text-slate-500">{osList.length} OS{osList.length > 1 ? 's' : ''} · {totalVersions} version{totalVersions > 1 ? 's' : ''}</span>
+        <span className="text-[11px] text-slate-500">{osList.length} OS{osList.length > 1 ? 'es' : ''} · {totalVersions} version{totalVersions > 1 ? 's' : ''}</span>
       </button>
 
       {expanded && (
         <div className="ml-4">
           {osList.map((os) => (
-            <OsSection key={os.id} os={os} yearStart={yearStart} yearEnd={yearEnd} />
+            <OSSection key={os.id} os={os} yearStart={yearStart} yearEnd={yearEnd} />
           ))}
         </div>
       )}
@@ -193,7 +192,7 @@ function FamilySection({ family, osList, yearStart, yearEnd }: { family: string;
 /* ── Main Page ─────────────────────────────────────────────────── */
 
 export default function Roadmap() {
-  const { data: operatingSystems, isLoading, error, refetch } = useOperatingSystems();
+  const { data: osList, isLoading, isError, refetch } = useOperatingSystems();
   const [selectedFamily, setSelectedFamily] = useState('');
   const [timeRange, setTimeRange] = useState<'3y' | '5y' | '10y'>('5y');
 
@@ -203,16 +202,18 @@ export default function Roadmap() {
   const yearEnd = now + rangeMap[timeRange];
 
   const allFamilies = useMemo(() => {
-    if (!operatingSystems) return [];
-    return Array.from(new Set(operatingSystems.map((os) => os.family).filter(Boolean))) as string[];
-  }, [operatingSystems]);
+    if (!osList) return [];
+    return Array.from(new Set(osList.map((os) => os.family).filter(Boolean))) as string[];
+  }, [osList]);
 
   const filtered = useMemo(() => {
-    if (!operatingSystems) return [];
-    let result = operatingSystems.filter((os) => (os.versions || []).length > 0);
-    if (selectedFamily) result = result.filter((os) => os.family === selectedFamily);
+    if (!osList) return [];
+    let result = osList.filter((os) => (os.versions || []).length > 0);
+    if (selectedFamily) {
+      result = result.filter((os) => os.family === selectedFamily);
+    }
     return result;
-  }, [operatingSystems, selectedFamily]);
+  }, [osList, selectedFamily]);
 
   const families = useMemo(() => {
     const groups: Record<string, OperatingSystem[]> = {};
@@ -236,15 +237,15 @@ export default function Roadmap() {
     );
   }
 
-  if (error) return <QueryError message="Unable to load roadmap data" onRetry={refetch} />;
-  if (!operatingSystems) return <div className="text-slate-400 text-center py-12">No operating systems available</div>;
+  if (isError) return <QueryError message="Unable to load roadmap data" onRetry={refetch} />;
+  if (!osList) return <div className="text-slate-400 text-center py-12">No OS data available</div>;
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
       <AnimatedSection>
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">OS Lifecycle Roadmap</h1>
-          <p className="text-slate-400">Visual timeline of operating system lifecycles and support phases</p>
+          <h1 className="text-3xl font-bold text-white mb-2">Product Lifecycle Roadmap</h1>
+          <p className="text-slate-400">Visual timeline of OS version lifecycles and support phases</p>
         </div>
       </AnimatedSection>
 
@@ -301,13 +302,13 @@ export default function Roadmap() {
           <YearAxis yearStart={yearStart} yearEnd={yearEnd} />
 
           {Object.keys(families).length === 0 ? (
-            <div className="text-slate-500 text-center py-12">No lifecycles match your filters</div>
+            <div className="text-slate-500 text-center py-12">No versions match your filters</div>
           ) : (
-            Object.entries(families).map(([family, osList]) => (
+            Object.entries(families).map(([family, familyOsList]) => (
               <FamilySection
                 key={family}
                 family={family}
-                osList={osList}
+                osList={familyOsList}
                 yearStart={yearStart}
                 yearEnd={yearEnd}
               />
