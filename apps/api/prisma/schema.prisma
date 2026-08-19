@@ -192,8 +192,8 @@ model Forecast {
   updatedAt       DateTime       @updatedAt
   lines           ForecastLine[]
   instances       Instance[]
-  applicationId   String
-  application     Application    @relation(fields: [applicationId], references: [id])
+  applicationId   String?
+  application     Application?   @relation(fields: [applicationId], references: [id], onDelete: SetNull)
   environment     Environment    @default(DEV)
 }
 
