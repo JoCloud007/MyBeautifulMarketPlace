@@ -50,6 +50,12 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     fi && \
     npx prisma generate
 
+
+# Create generic symlinks so runtime Prisma commands (db push, migrate)
+# can find the engine without knowing the exact architecture.
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "arm64" ]; then \n      ln -sf /app/lib/prisma/libquery_engine-linux-arm64-openssl-3.0.x.so.node /app/lib/prisma/libquery_engine.so.node && \n      ln -sf /app/lib/prisma/schema-engine-linux-arm64-openssl-3.0.x /app/lib/prisma/schema-engine; \n    else \n      ln -sf /app/lib/prisma/libquery_engine-debian-openssl-3.0.x.so.node /app/lib/prisma/libquery_engine.so.node && \n      ln -sf /app/lib/prisma/schema-engine-debian-openssl-3.0.x /app/lib/prisma/schema-engine; \n    fi
+
 EXPOSE 3001
 
 CMD ["npx", "tsx", "watch", "src/index.ts"]
