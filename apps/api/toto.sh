@@ -1,9 +1,12 @@
 #!/bin/sh
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+JS_FILE="$SCRIPT_DIR/.fix-flavor-tmp.js"
+
 echo "Checking for duplicate Flavor names..."
 
-cat > /tmp/fix-flavor.js << 'JSEOF'
+cat > "$JS_FILE" << 'JSEOF'
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
@@ -39,4 +42,5 @@ async function main() {
 main().catch(e => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());
 JSEOF
 
-node /tmp/fix-flavor.js
+node "$JS_FILE"
+rm "$JS_FILE"
