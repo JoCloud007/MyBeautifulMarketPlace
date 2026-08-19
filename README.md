@@ -495,6 +495,23 @@ Uses `upsert` (create-or-update) instead of `deleteMany` + `create`. Safe to run
 
 See [Incremental Seeding](#incremental-seeding) for details and how to write your own.
 
+### Reset Database & Re-seed
+
+To wipe the entire database and start fresh (keeps the Docker volume, only drops tables):
+
+```bash
+# 1. Reset the schema and all data
+docker compose exec api npx prisma db push --force-reset
+
+# 2. Re-seed with the full dataset
+docker compose exec api npm run db:seed
+```
+
+> ⚠️ **Destructive operation** — all forecasts, instances, and user data will be lost. Make a backup first if needed:
+> ```bash
+> docker compose exec db pg_dump -U cloudmarket cloudmarket > backup.sql
+> ```
+
 ## 🎨 Design System
 
 ### Palette
