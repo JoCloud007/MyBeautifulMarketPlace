@@ -2,9 +2,9 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-JS_FILE="$SCRIPT_DIR/.fix-flavor-tmp.js"
+JS_FILE="$SCRIPT_DIR/.migration-tmp.js"
 
-echo "Checking for duplicate Flavor names..."
+echo "Applying migration: $(basename "$SCRIPT_DIR")..."
 
 cat > "$JS_FILE" << 'JSEOF'
 const { PrismaClient } = require('@prisma/client');
@@ -16,7 +16,7 @@ async function main() {
   `;
 
   if (duplicates.length === 0) {
-    console.log('No duplicates found.');
+    console.log('No duplicate Flavor names found.');
     return;
   }
 
@@ -36,7 +36,7 @@ async function main() {
     }
   }
 
-  console.log('Done.');
+  console.log('Migration applied.');
 }
 
 main().catch(e => { console.error(e); process.exit(1); }).finally(() => prisma.$disconnect());
