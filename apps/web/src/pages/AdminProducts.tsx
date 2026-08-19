@@ -336,7 +336,7 @@ function VariantModal({
             <div className="flex flex-wrap gap-2">
               {azList?.map((az) => (
                 <button
-                  key={az.availabilityZoneId}
+                  key={az.id}
                   type="button"
                   onClick={() => toggleAz(az.id)}
                   className={cn(
@@ -446,7 +446,7 @@ function ProductDrawer({
                               </div>
                               <div className="flex flex-wrap gap-1">
                                 {v.availabilityZones?.map((az) => (
-                                  <span key={az.availabilityZoneId} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">
+                                  <span key={az.id} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">
                                     {az.availabilityZone?.code}
                                   </span>
                                 ))}
