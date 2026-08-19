@@ -18,6 +18,9 @@
   - [Environment Variables](#environment-variables)
   - [Services](#services)
   - [Available Makefile Targets](#available-makefile-targets)
+- [Upgrades & Maintenance](#-upgrades--maintenance)
+  - [Updating Docker Images](#updating-docker-images)
+  - [Incremental Seeding](#incremental-seeding)
 - [Database Schema](#-database-schema)
 - [API Reference](#-api-reference)
 - [NPM Scripts](#-npm-scripts)
@@ -205,6 +208,124 @@ make run     # Start all containers
 | Health | http://localhost:3001/health | Health check |
 | DB | localhost:5432 | PostgreSQL 16 |
 
+## 🔄 Upgrades & Maintenance
+
+### Updating Docker Images
+
+When the codebase changes (new dependencies, code updates, or Dockerfile changes), rebuild and restart the containers:
+
+```bash
+# 1. Pull latest code
+git pull
+
+# 2. Rebuild images (uses --no-cache to ensure fresh layers)
+make deploy
+
+# 3. Recreate containers with the new images
+make run
+```
+
+> **Database is preserved** — `make run` only recreates containers, volumes (including `postgres_data`) are untouched.
+
+#### Rebuild a single service
+
+If only one service changed (e.g., API code update without dependency changes):
+
+```bash
+# Rebuild and restart API only
+docker compose build api --no-cache
+docker compose up -d --force-recreate api
+
+# Rebuild and restart Web only
+docker compose build web --no-cache
+docker compose up -d --force-recreate web
+```
+
+#### After schema changes
+
+If `schema.prisma` was updated:
+
+```bash
+# 1. Push schema changes to the database
+docker compose exec api npx prisma db push
+
+# 2. Regenerate Prisma Client inside the container
+docker compose exec api npx prisma generate
+
+# 3. Restart the API so it picks up the new client
+docker compose restart api
+```
+
+---
+
+### Incremental Seeding
+
+The default seed script (`prisma/seed.ts`) **wipes all data** before re-creating it. This is fine for a fresh database, but destructive on a database that already contains production data.
+
+Use **incremental seeding** to add new objects without touching existing ones.
+
+#### Quick run (example script provided)
+
+```bash
+# Run the incremental seed script
+docker compose exec api npx tsx prisma/seed-incremental.ts
+```
+
+The example script (`prisma/seed-incremental.ts`) demonstrates two safe patterns:
+
+| Pattern | When to use | Prisma method |
+|---------|-------------|---------------|
+| **Upsert** | Model has a unique key (e.g., `slug`, `name`) | `prisma.model.upsert({ where, update, create })` |
+| **Find-then-create** | No unique key on the natural identifier | `findFirst` → `update` or `create` |
+
+#### Upsert example
+
+```typescript
+const category = await prisma.category.upsert({
+  where: { slug: 'network' },          // unique lookup
+  update: {},                          // nothing to update if exists
+  create: {
+    name: 'Network',
+    slug: 'network',
+    description: 'Networking services',
+    icon: 'Globe',
+  },
+});
+```
+
+- If `slug: 'network'` exists → returns the existing record unchanged (`update: {}`).
+- If it does not exist → creates it.
+
+#### Find-then-create example (no unique constraint)
+
+```typescript
+const existing = await prisma.someModel.findFirst({
+  where: { name: 'My Object' },
+});
+
+if (existing) {
+  await prisma.someModel.update({
+    where: { id: existing.id },
+    data: { /* updates */ },
+  });
+} else {
+  await prisma.someModel.create({
+    data: { /* new object */ },
+  });
+}
+```
+
+#### Writing your own incremental seed
+
+1. Copy `prisma/seed-incremental.ts` to a new file (e.g., `prisma/seed-new-products.ts`).
+2. Replace the sample data with your new objects.
+3. Run it:
+   ```bash
+   docker compose exec api npx tsx prisma/seed-new-products.ts
+   ```
+
+> **Never run `prisma/seed.ts` on a production database** — it deletes everything.
+
 ## 🗄️ Database Schema
 
 ```prisma
@@ -331,28 +452,48 @@ npm run lint
 
 ## 🌱 Seed Data
 
-The seed automatically creates:
+Two seed strategies are available:
+
+### Full Seed (destructive — for fresh databases only)
+
+```bash
+# Wipes ALL data and recreates the full dataset
+docker compose exec api npx tsx prisma/seed.ts
+```
+
+**Creates:**
 
 **Categories:** Compute, Data, Hypervisor, Citrix
 
 **Products:**
 | Product | Category | OS |
 |---------|----------|-----|
-| VM Debian 12 | Compute | Linux |
-| VM Windows Server 2022 | Compute | Windows |
-| VM RedHat Enterprise | Compute | Linux |
+| Virtual Machine | Compute | Linux |
 | Bare Metal HPC | Compute | Linux |
-| Object Storage S3 | Data | — |
-| NAS Enterprise | Data | — |
+| Object Storage | Data | — |
+| NAS Storage | Data | — |
 | VMware vSphere | Hypervisor | ESXi |
 | Citrix VDI | Citrix | Windows |
 
 **Flavors:** Small (2vCPU/4GB), Medium (4/8), Large (8/16), XL (16/32)
 
 **Dependencies:**
-- VM → VPC Network (REQUIRED)
-- VM → Storage (RECOMMENDED)
+- VM → Object Storage (RECOMMENDED)
 - HPC → Object Storage (RECOMMENDED)
+- Citrix VDI → VMware vSphere (REQUIRED)
+
+> ⚠️ **Never run this on a database with production data** — it starts with `deleteMany()` on every table.
+
+### Incremental Seed (safe — adds without deleting)
+
+```bash
+# Adds new objects or updates existing ones without touching other data
+docker compose exec api npx tsx prisma/seed-incremental.ts
+```
+
+Uses `upsert` (create-or-update) instead of `deleteMany` + `create`. Safe to run on a database that already contains user data, forecasts, or instances.
+
+See [Incremental Seeding](#incremental-seeding) for details and how to write your own.
 
 ## 🎨 Design System
 
