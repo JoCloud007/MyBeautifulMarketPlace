@@ -19,5 +19,5 @@ migrations/
 docker compose exec -T db psql -U cloudmarket -d cloudmarket < apps/api/migrations/YYYY-MM-DD-description/migration.sql
 
 # Ou utiliser le script run.sh
-docker compose exec api bash apps/api/migrations/YYYY-MM-DD-description/run.sh
+docker compose exec api bash bash /app/apps/api/migrations/YYYY-MM-DD-description/run.sh
 ```
