@@ -1480,26 +1480,6 @@ export function useOrchestratorStats() {
   });
 }
 
-// ========== OPERATING SYSTEMS ==========
-
-export function useOperatingSystems() {
-  return useQuery<OperatingSystem[]>({
-    queryKey: ['operating-systems'],
-    queryFn: () => fetchJson('/os'),
-    retry: 3,
-    retryDelay: 2000,
-  });
-}
-
-export function useOperatingSystem(id: string) {
-  return useQuery<OperatingSystem>({
-    queryKey: ['operating-system', id],
-    queryFn: () => fetchJson(`/os/${id}`),
-    enabled: !!id,
-    retry: 3,
-    retryDelay: 2000,
-  });
-}
 
 export function useCreateOperatingSystem() {
   const queryClient = useQueryClient();
@@ -1629,17 +1609,6 @@ export function useDeleteOsVersion() {
   });
 }
 
-// ========== PRODUCT VARIANTS ==========
-
-export function useProductVariants(productId?: string) {
-  return useQuery<ProductVariant[]>({
-    queryKey: ['product-variants', productId],
-    queryFn: () => fetchJson(`/products/${productId}/variants`),
-    enabled: !!productId,
-    retry: 3,
-    retryDelay: 2000,
-  });
-}
 
 export function useCreateProductVariant() {
   const queryClient = useQueryClient();

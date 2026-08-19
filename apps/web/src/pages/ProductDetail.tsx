@@ -34,6 +34,7 @@ import {
   Search,
   ChevronDown,
   Shield,
+  Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -45,12 +46,16 @@ const iconMap: Record<string, React.ElementType> = {
   Monitor,
 };
 
-const phaseColors: Record<string, string> = {
-  RELEASED: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-  NORMAL_SUPPORT: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-  EXTENDED_SUPPORT: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  NO_SUPPORT: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-  EOL: 'bg-red-500/10 text-red-400 border-red-500/20',
+const regionColors: Record<string, string> = {
+  'eu-west': '#3b82f6',
+  'eu-central': '#60a5fa',
+  'us-east': '#10b981',
+  'us-west': '#34d399',
+  'ap-south': '#f59e0b',
+  'ap-northeast': '#fbbf24',
+  'sa-east': '#ef4444',
+  'af-south': '#a855f7',
+  'me-south': '#ec4899',
 };
 
 function formatDate(dateStr: string) {
@@ -479,7 +484,6 @@ export default function ProductDetail() {
 
   const isCompute = product.category?.slug === 'compute';
   const Icon = iconMap[product.category?.icon || ''] || Server;
-  const isCompute = product.category?.slug === 'compute';
   const variants: ProductVariant[] = product.variants || [];
 
   // Compute unique filter options from variants

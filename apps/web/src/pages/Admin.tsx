@@ -46,10 +46,14 @@ import {
   useUpdateVariant,
   useDeleteVariant,
   useFlavors,
+  useCreateProduct,
+  useUpdateProduct,
+  useDeleteProduct,
+  useAdminFlavors,
+  useCreateFlavor,
+  useUpdateFlavor,
+  useDeleteFlavor,
 } from '@/hooks/useApi';
-import AdminOS from './AdminOS';
-import AdminProducts from './AdminProducts';
-import AdminFlavors from './AdminFlavors';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';

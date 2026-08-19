@@ -12,7 +12,6 @@ import {
   ChevronRight,
   LayoutGrid,
   List,
-  ChevronDown,
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
@@ -54,64 +53,6 @@ function AnimatedCard({ children, delay = 0 }: { children: React.ReactNode; dela
   );
 }
 
-function ProductCard({ product, index }: { product: any; index: number }) {
-  const Icon = iconMap[product.category?.icon || ''] || Server;
-  const isCompute = product.category?.slug === 'compute';
-
-  return (
-    <AnimatedCard delay={Math.min(index * 80, 400)}>
-      <Link to={`/products/${product.slug}`} className="group block h-full">
-        <Card className="h-full bg-slate-900 border-slate-800 transition-all duration-300 hover:border-blue-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-1">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
-                <Icon className="h-5 w-5 text-blue-500 transition-transform group-hover:scale-110" />
-              </div>
-              <Badge variant="secondary" className="text-xs bg-slate-800 text-slate-300 border-slate-700">
-                {product.category?.name}
-              </Badge>
-            </div>
-            <CardTitle className="text-lg text-white mt-3 group-hover:text-blue-400 transition-colors">
-              {product.name}
-            </CardTitle>
-            <CardDescription className="text-slate-400 line-clamp-2">
-              {product.description}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="flex flex-wrap items-center gap-2">
-              {isCompute && product.computeType && (
-                <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-400">
-                  {product.computeType}
-                </Badge>
-              )}
-              {isCompute && (
-                <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
-                  {product.variants?.length || 0} variant{product.variants?.length !== 1 ? 's' : ''}
-                </Badge>
-              )}
-              {!isCompute && product.os && (
-                <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
-                  {product.os}
-                </Badge>
-              )}
-              {product.dependencies && product.dependencies.length > 0 && (
-                <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
-                  {product.dependencies.length} dependency{product.dependencies.length > 1 ? 's' : ''}
-                </Badge>
-              )}
-            </div>
-            <div className="mt-4 flex items-center text-xs text-blue-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-              View details
-              <ChevronRight className="ml-1 h-3 w-3 transition-transform group-hover:translate-x-0.5" />
-            </div>
-          </CardContent>
-        </Card>
-      </Link>
-    </AnimatedCard>
-  );
-}
-
 export default function Marketplace() {
   const { filters, sortBy, viewMode, setFilters, removeFilter, clearFilters, setSortBy, setViewMode } = useAppStore();
   const [products, setProducts] = useState<any[] | null>(null);
@@ -119,6 +60,15 @@ export default function Marketplace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [groupByCategory, setGroupByCategory] = useState(false);
+  const [_expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+
+  const expandAll = () => {
+    const expanded: Record<string, boolean> = {};
+    categories?.forEach((cat: any) => { expanded[cat.name] = true; });
+    setExpandedCategories(expanded);
+  };
+
+  const collapseAll = () => { setExpandedCategories({}); };
 
   useEffect(() => {
     let cancelled = false;
