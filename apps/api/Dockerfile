@@ -33,8 +33,22 @@ RUN npm run build -w packages/shared-types
 
 WORKDIR /app/apps/api
 
-# Generate Prisma Client for the current schema
-RUN npx prisma generate
+# Prisma offline/air-gap: point to pre-downloaded engine binaries.
+# The binaries are copied at /app/lib/prisma via COPY . .
+# We auto-detect container architecture to pick the correct engine.
+ARG TARGETARCH
+ENV PRISMA_GENERATE_SKIP_AUTOINSTALL=1
+ENV PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+      export PRISMA_CLI_BINARY_TARGETS="linux-arm64-openssl-3.0.x" && \
+      export PRISMA_QUERY_ENGINE_LIBRARY="/app/lib/prisma/libquery_engine-linux-arm64-openssl-3.0.x.so.node" && \
+      export PRISMA_SCHEMA_ENGINE_BINARY="/app/lib/prisma/schema-engine-linux-arm64-openssl-3.0.x"; \
+    else \
+      export PRISMA_CLI_BINARY_TARGETS="debian-openssl-3.0.x" && \
+      export PRISMA_QUERY_ENGINE_LIBRARY="/app/lib/prisma/libquery_engine-debian-openssl-3.0.x.so.node" && \
+      export PRISMA_SCHEMA_ENGINE_BINARY="/app/lib/prisma/schema-engine-debian-openssl-3.0.x"; \
+    fi && \
+    npx prisma generate
 
 EXPOSE 3001
 
