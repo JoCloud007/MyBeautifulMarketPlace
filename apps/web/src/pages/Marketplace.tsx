@@ -65,6 +65,7 @@ export default function Marketplace() {
   const expandAll = () => {
     const expanded: Record<string, boolean> = {};
     categories?.forEach((cat: any) => { expanded[cat.name] = true; });
+    expanded["Uncategorized"] = true;
     setExpandedCategories(expanded);
   };
 
