@@ -13,6 +13,9 @@ import Forecasts from './pages/Forecasts';
 import Applications from './pages/Applications';
 import ApplicationDetail from './pages/ApplicationDetail';
 import Admin from './pages/Admin';
+import AdminPresentationOrders from './pages/AdminPresentationOrders';
+import AdminViewBuilder from './pages/AdminViewBuilder';
+import MarketplaceGeo from './pages/MarketplaceGeo';
 import NotFound from './pages/NotFound';
 
 function App() {
@@ -23,6 +26,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/marketplace" element={<Marketplace />} />
+            <Route path="/marketplace/geo" element={<MarketplaceGeo />} />
             <Route path="/products/:slug" element={<ProductDetail />} />
             <Route path="/availability-zones" element={<AvailabilityZones />} />
             <Route path="/roadmap" element={<Roadmap />} />
@@ -31,6 +35,8 @@ function App() {
             <Route path="/applications" element={<Applications />} />
             <Route path="/applications/:id" element={<ApplicationDetail />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/admin/presentation-orders" element={<AdminPresentationOrders />} />
+            <Route path="/admin/view-builder/:id" element={<AdminViewBuilder />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </PageTransition>

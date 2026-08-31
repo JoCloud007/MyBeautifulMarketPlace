@@ -558,3 +558,66 @@ export interface OrchestratorStats {
   lifecycleTransitions30Days: number;
   unhealthyInstances: number;
 }
+
+// ── Presentation Orders ──
+
+export type PresentationStepType = 'COUNTRY' | 'ZONE' | 'PRODUCT' | 'FLAVOR' | 'USE_CASE' | 'CATEGORY';
+
+export interface PresentationStep {
+  id: string;
+  orderId: string;
+  stepType: PresentationStepType;
+  position: number;
+  label: string;
+  filterRule: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PresentationOrder {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  isDefault: boolean;
+  steps: PresentationStep[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeoMarketplaceState {
+  orderId: string;
+  step: number;
+  selections: Record<string, string>;
+}
+
+// ── Performance Profiles ──
+
+export type PerformanceTargetType = 'PRODUCT' | 'FLAVOR';
+export type VisibilityType = 'SHOW_ALL' | 'INTERNAL_ONLY' | 'HIDDEN';
+
+export interface PerformanceMetric {
+  id: string;
+  profileId: string;
+  name: string;
+  value: string;
+  unit: string | null;
+  comparison: string;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PerformanceProfile {
+  id: string;
+  name: string;
+  targetType: PerformanceTargetType;
+  targetId: string;
+  overallScore: number;
+  scoreLabel: string;
+  colorTheme: string;
+  visibility: VisibilityType;
+  metrics: PerformanceMetric[];
+  createdAt: string;
+  updatedAt: string;
+}
