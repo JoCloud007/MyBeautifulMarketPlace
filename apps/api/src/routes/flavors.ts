@@ -93,6 +93,7 @@ router.get('/:id', async (req, res, next) => {
           },
         },
         zones: { include: { zone: true } },
+        performanceProfiles: { include: { metrics: true } },
         _count: { select: { variants: true, forecastLines: true } },
       },
     });

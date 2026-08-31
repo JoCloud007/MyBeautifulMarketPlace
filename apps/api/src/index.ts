@@ -26,6 +26,8 @@ import { maintenanceOrchestratorRoutes } from './routes/maintenance-orchestrator
 import { osRoutes } from './routes/os';
 import { variantRoutes } from './routes/variants';
 import { zoneRoutes } from './routes/zones';
+import { presentationOrderRoutes } from './routes/presentation-orders';
+import { performanceProfileRoutes } from './routes/performance-profiles';
 import { startCronJobs } from './cron';
 
 dotenv.config();
@@ -69,6 +71,8 @@ app.use('/api/maintenance-orchestrator', maintenanceOrchestratorRoutes);
 app.use('/api/os', osRoutes);
 app.use('/api/variants', variantRoutes);
 app.use('/api/zones', zoneRoutes);
+app.use('/api/presentation-orders', presentationOrderRoutes);
+app.use('/api/performance-profiles', performanceProfileRoutes);
 
 // Conditional admin API key protection (fail-closed: requires key if set)
 const adminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {

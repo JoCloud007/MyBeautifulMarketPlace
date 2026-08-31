@@ -1253,7 +1253,9 @@ describe('Refonte Produit IaaS — Backend API, Shared Types & Seed Data', () =>
         name: 'Debian',
         slug: 'debian',
         isActive: true,
+        availabilityType: SharedTypes.AvailabilityType.STANDARD,
         versions: [],
+        zones: [],
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-01T00:00:00Z',
       };
@@ -1296,10 +1298,12 @@ describe('Refonte Produit IaaS — Backend API, Shared Types & Seed Data', () =>
         flavorId: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
         flavor: {} as any,
         availabilityZones: [],
+        zones: [],
         continuityLevelId: null,
         continuityLevel: null,
         instances: [],
         isActive: true,
+        availabilityType: SharedTypes.AvailabilityType.STANDARD,
         createdAt: '2024-01-01',
         updatedAt: '2024-01-01',
       };
@@ -1323,6 +1327,7 @@ describe('Refonte Produit IaaS — Backend API, Shared Types & Seed Data', () =>
         dependentProducts: [],
         upgradeFrom: [],
         upgradeTo: [],
+        zones: [],
         documentation: null,
         roadmap: null,
         os: null,
@@ -1341,6 +1346,7 @@ describe('Refonte Produit IaaS — Backend API, Shared Types & Seed Data', () =>
         vcpu: 4,
         ramGb: 8,
         description: null,
+        zones: [],
         createdAt: '2024-01-01',
         updatedAt: '2024-01-01',
       };
