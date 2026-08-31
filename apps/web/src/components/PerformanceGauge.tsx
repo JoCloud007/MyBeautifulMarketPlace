@@ -55,7 +55,7 @@ export default function PerformanceGauge({ profile }: PerformanceGaugeProps) {
             <div className={`text-3xl font-extrabold ${theme.text}`}>
               {score}<span className="text-sm font-medium text-slate-500">/100</span>
             </div>
-            <div className={`text-xs font-semibold ${theme.text}`}>★ {profile.scoreLabel.toUpperCase()}</div>
+            <div className={`text-xs font-semibold ${theme.text}`}>★ {profile.scoreLabel?.toUpperCase() || 'N/A'}</div>
           </div>
         </div>
       </CardHeader>
@@ -86,11 +86,11 @@ export default function PerformanceGauge({ profile }: PerformanceGaugeProps) {
             <div key={metric.id} className="rounded-lg border border-slate-800 bg-slate-950 p-4">
               <div className="text-[11px] text-slate-500">{metric.name}</div>
               <div className="mt-1 text-lg font-bold text-white">
-                {metric.value}
+                {String(metric.value)}
                 {metric.unit && <span className="ml-1 text-xs font-normal text-slate-400">{metric.unit}</span>}
               </div>
-              <div className={`mt-1 text-[11px] font-medium ${metric.comparison.startsWith('↑') ? 'text-emerald-400' : metric.comparison.startsWith('↓') ? 'text-red-400' : 'text-amber-400'}`}>
-                {metric.comparison}
+              <div className={`mt-1 text-[11px] font-medium ${metric.comparison?.startsWith('↑') ? 'text-emerald-400' : metric.comparison?.startsWith('↓') ? 'text-red-400' : 'text-amber-400'}`}>
+                {metric.comparison || '—'}
               </div>
             </div>
           ))}

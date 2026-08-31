@@ -568,7 +568,7 @@ export interface PresentationStep {
   orderId: string;
   stepType: PresentationStepType;
   position: number;
-  label: string;
+  label: string | null;
   filterRule: string | null;
   createdAt: string;
   updatedAt: string;
@@ -586,9 +586,9 @@ export interface PresentationOrder {
 }
 
 export interface GeoMarketplaceState {
-  orderId: string;
-  step: number;
-  selections: Record<string, string>;
+  selectedOrderId: string | null;
+  currentStep: number;
+  selections: Record<string, string | null>;
 }
 
 // ── Performance Profiles ──
@@ -600,9 +600,9 @@ export interface PerformanceMetric {
   id: string;
   profileId: string;
   name: string;
-  value: string;
+  value: number;
   unit: string | null;
-  comparison: string;
+  comparison: string | null;
   displayOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -614,7 +614,7 @@ export interface PerformanceProfile {
   targetType: PerformanceTargetType;
   targetId: string;
   overallScore: number;
-  scoreLabel: string;
+  scoreLabel: string | null;
   colorTheme: string;
   visibility: VisibilityType;
   metrics: PerformanceMetric[];

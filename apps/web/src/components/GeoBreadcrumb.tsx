@@ -1,7 +1,7 @@
 import { ChevronRight } from 'lucide-react';
 
 interface GeoBreadcrumbProps {
-  steps: { type: string; label: string }[];
+  steps: { type: string; label: string | null }[];
   activeStep: number;
   selections: Record<string, string>;
   onStepClick?: (stepIndex: number) => void;
@@ -33,7 +33,7 @@ export default function GeoBreadcrumb({ steps, activeStep, selections, onStepCli
               {isPast && selectedValue ? (
                 <span>{selectedValue}</span>
               ) : (
-                <span>{step.label}</span>
+                <span>{step.label || step.type}</span>
               )}
             </button>
           </div>

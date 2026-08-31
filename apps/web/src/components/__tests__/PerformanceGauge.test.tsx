@@ -13,9 +13,9 @@ const mockProfile: PerformanceProfile = {
   colorTheme: 'green',
   visibility: 'SHOW_ALL',
   metrics: [
-    { id: 'm1', profileId: '1', name: 'CPU Benchmark', value: '42,300', unit: 'points', comparison: '↑ 12% vs avg', displayOrder: 0, createdAt: '', updatedAt: '' },
-    { id: 'm2', profileId: '1', name: 'Memory Bandwidth', value: '186', unit: 'GB/s', comparison: '↑ 8% vs avg', displayOrder: 1, createdAt: '', updatedAt: '' },
-    { id: 'm3', profileId: '1', name: 'Disk IOPS', value: '95K', unit: null, comparison: '≈ Avg', displayOrder: 2, createdAt: '', updatedAt: '' },
+    { id: 'm1', profileId: '1', name: 'CPU Benchmark', value: 42300, unit: 'points', comparison: '↑ 12% vs avg', displayOrder: 0, createdAt: '', updatedAt: '' },
+    { id: 'm2', profileId: '1', name: 'Memory Bandwidth', value: 186, unit: 'GB/s', comparison: '↑ 8% vs avg', displayOrder: 1, createdAt: '', updatedAt: '' },
+    { id: 'm3', profileId: '1', name: 'Disk IOPS', value: 95000, unit: null, comparison: '≈ Avg', displayOrder: 2, createdAt: '', updatedAt: '' },
   ],
   createdAt: '',
   updatedAt: '',
@@ -31,7 +31,7 @@ describe('PerformanceGauge', () => {
   it('renders metrics', () => {
     render(<PerformanceGauge profile={mockProfile} />);
     expect(screen.getByText('CPU Benchmark')).toBeInTheDocument();
-    expect(screen.getByText('42,300')).toBeInTheDocument();
+    expect(screen.getByText('42300')).toBeInTheDocument();
     expect(screen.getByText('Memory Bandwidth')).toBeInTheDocument();
   });
 
