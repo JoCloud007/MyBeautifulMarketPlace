@@ -19,17 +19,19 @@ import {
   Target,
   Layers,
 } from 'lucide-react';
-import type { PresentationStep, PresentationStepType } from '@cloudmarket/shared-types';
+import type { PresentationStep } from '@cloudmarket/shared-types';
+import * as SharedTypes from '@cloudmarket/shared-types';
+const PresentationStepType = SharedTypes.PresentationStepType;
 
 type EditableStep = Omit<PresentationStep, 'id'> & { id?: string };
 
 const stepPalette: { type: PresentationStepType; label: string; icon: React.ElementType; color: string }[] = [
-  { type: 'COUNTRY', label: 'Country', icon: Globe, color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
-  { type: 'ZONE', label: 'Zone', icon: MapPin, color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
-  { type: 'PRODUCT', label: 'Product', icon: Server, color: 'text-purple-400 bg-purple-500/10 border-purple-500/20' },
-  { type: 'FLAVOR', label: 'Flavor', icon: Cpu, color: 'text-purple-400 bg-purple-500/10 border-purple-500/20' },
-  { type: 'USE_CASE', label: 'Use Case', icon: Target, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
-  { type: 'CATEGORY', label: 'Category', icon: Layers, color: 'text-pink-400 bg-pink-500/10 border-pink-500/20' },
+  { type: PresentationStepType.COUNTRY, label: 'Country', icon: Globe, color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
+  { type: PresentationStepType.ZONE, label: 'Zone', icon: MapPin, color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
+  { type: PresentationStepType.PRODUCT, label: 'Product', icon: Server, color: 'text-purple-400 bg-purple-500/10 border-purple-500/20' },
+  { type: PresentationStepType.FLAVOR, label: 'Flavor', icon: Cpu, color: 'text-purple-400 bg-purple-500/10 border-purple-500/20' },
+  { type: PresentationStepType.USE_CASE, label: 'Use Case', icon: Target, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
+  { type: PresentationStepType.CATEGORY, label: 'Category', icon: Layers, color: 'text-pink-400 bg-pink-500/10 border-pink-500/20' },
 ];
 
 export default function AdminViewBuilder() {
