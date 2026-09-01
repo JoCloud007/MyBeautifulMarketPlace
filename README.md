@@ -54,6 +54,14 @@
 - Responsive tables (cards on mobile, tables on desktop)
 - Edit modals with validation
 
+### 🔲 Availability Matrix
+- Multi-axis pivot table: rows and columns by Product, Flavor, OS, Zone, AZ, Region, or Country
+- Grouped mode with hierarchical headers (e.g. Zone → AZ)
+- Flat mode for a single-level column view
+- "Show empty columns" toggle — displays all AZs even when unassigned (shows "-")
+- Resizable columns with drag handles
+- Color-coded cell status: Available, Restricted, On Demand, Unavailable
+
 ### 🎨 Design & UX
 - Consistent dark theme (`slate-950`, accent `blue-500`)
 - Scroll-triggered entry animations (IntersectionObserver)
