@@ -16,6 +16,7 @@ import Admin from './pages/Admin';
 import AdminPresentationOrders from './pages/AdminPresentationOrders';
 import AdminViewBuilder from './pages/AdminViewBuilder';
 import MarketplaceGeo from './pages/MarketplaceGeo';
+import MarketplaceMatrix from './pages/MarketplaceMatrix';
 import NotFound from './pages/NotFound';
 
 function App() {
@@ -27,6 +28,7 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/marketplace/geo" element={<MarketplaceGeo />} />
+            <Route path="/marketplace/matrix" element={<MarketplaceMatrix />} />
             <Route path="/products/:slug" element={<ProductDetail />} />
             <Route path="/availability-zones" element={<AvailabilityZones />} />
             <Route path="/roadmap" element={<Roadmap />} />

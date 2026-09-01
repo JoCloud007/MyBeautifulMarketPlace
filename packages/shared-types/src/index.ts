@@ -140,6 +140,7 @@ export interface Zone {
   id: string;
   name: string;
   slug: string;
+  region?: string;
   description?: string;
   isActive: boolean;
   availabilityZones: ZoneAvailabilityZone[];
@@ -568,6 +569,8 @@ export enum PresentationStepType {
   FLAVOR = 'FLAVOR',
   USE_CASE = 'USE_CASE',
   CATEGORY = 'CATEGORY',
+  CONTINUITY = 'CONTINUITY',
+  OS = 'OS',
 }
 
 export enum PerformanceTargetType {

@@ -16,10 +16,10 @@ const createOrderSchema = z.object({
 const updateOrderSchema = createOrderSchema.partial();
 
 const stepSchema = z.object({
-  stepType: z.enum(['COUNTRY', 'ZONE', 'PRODUCT', 'FLAVOR', 'USE_CASE', 'CATEGORY']),
+  stepType: z.enum(['COUNTRY', 'ZONE', 'PRODUCT', 'FLAVOR', 'USE_CASE', 'CATEGORY', 'CONTINUITY', 'OS']),
   position: z.number().int().min(0),
-  label: z.string().optional(),
-  filterRule: z.string().optional(),
+  label: z.string().nullish(),
+  filterRule: z.string().nullish(),
 });
 
 const replaceStepsSchema = z.object({
@@ -150,7 +150,7 @@ router.put('/:id/steps', async (req, res, next) => {
       await tx.presentationStep.createMany({
         data: steps.map((s) => ({
           orderId: id,
-          stepType: s.stepType,
+          stepType: s.stepType as any,
           position: s.position,
           label: s.label,
           filterRule: s.filterRule,
@@ -202,7 +202,30 @@ router.get('/:id/browse', async (req, res, next) => {
           distinct: ['country'],
           orderBy: { country: 'asc' },
         });
-        res.json(countries.map((c) => c.country));
+        const flagMap: Record<string, string> = {
+          China: '🇨🇳',
+          France: '🇫🇷',
+          Singapore: '🇸🇬',
+          UK: '🇬🇧',
+          USA: '🇺🇸',
+          Germany: '🇩🇪',
+          Japan: '🇯🇵',
+          Canada: '🇨🇦',
+          Australia: '🇦🇺',
+          India: '🇮🇳',
+          Brazil: '🇧🇷',
+          Netherlands: '🇳🇱',
+          Ireland: '🇮🇪',
+          Sweden: '🇸🇪',
+          Switzerland: '🇨🇭',
+          Spain: '🇪🇸',
+          Italy: '🇮🇹',
+          Poland: '🇵🇱',
+          UAE: '🇦🇪',
+          SouthKorea: '🇰🇷',
+          'South Korea': '🇰🇷',
+        };
+        res.json(countries.map((c) => ({ id: c.country, name: c.country, meta: { flag: flagMap[c.country] || '🌍' } })));
         break;
       }
 
@@ -255,7 +278,11 @@ router.get('/:id/browse', async (req, res, next) => {
           select: { id: true, name: true, vcpu: true, ramGb: true, description: true },
           orderBy: { name: 'asc' },
         });
-        res.json(flavors);
+        const profile = await prisma.performanceProfile.findFirst({
+          where: { productId: product, visibility: 'SHOW_ALL' },
+          include: { metrics: { orderBy: { displayOrder: 'asc' } } },
+        });
+        res.json({ items: flavors, profile });
         break;
       }
 
@@ -275,6 +302,42 @@ router.get('/:id/browse', async (req, res, next) => {
           orderBy: { name: 'asc' },
         });
         res.json(applications);
+        break;
+      }
+
+      case 'CONTINUITY': {
+        const levels = await prisma.continuityLevel.findMany({
+          orderBy: { name: 'asc' },
+        });
+        res.json(levels.map((l) => ({
+          id: l.id,
+          name: l.name,
+          description: l.description,
+          meta: {
+            rto: `${l.rtoMinutes} min`,
+            rpo: `${l.rpoMinutes} min`,
+            color: l.color,
+          },
+        })));
+        break;
+      }
+
+      case 'OS': {
+        const osWhere: any = { isActive: true };
+        if (product) {
+          osWhere.variants = { some: { productId: product } };
+        }
+        const osList = await prisma.operatingSystem.findMany({
+          where: osWhere,
+          select: { id: true, name: true, family: true, slug: true },
+          orderBy: { name: 'asc' },
+        });
+        res.json(osList.map((os) => ({
+          id: os.id,
+          name: os.name,
+          description: os.family,
+          meta: { slug: os.slug },
+        })));
         break;
       }
 

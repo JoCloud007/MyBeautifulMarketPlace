@@ -368,6 +368,8 @@ enum PresentationStepType {
   FLAVOR
   USE_CASE
   CATEGORY
+  CONTINUITY
+  OS
 }
 
 enum PerformanceTargetType {

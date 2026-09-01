@@ -18,20 +18,23 @@ import {
   Cpu,
   Target,
   Layers,
+  Shield,
+  Monitor,
 } from 'lucide-react';
 import type { PresentationStep } from '@cloudmarket/shared-types';
 import * as SharedTypes from '@cloudmarket/shared-types';
-const PresentationStepType = SharedTypes.PresentationStepType;
 
 type EditableStep = Omit<PresentationStep, 'id'> & { id?: string };
 
-const stepPalette: { type: PresentationStepType; label: string; icon: React.ElementType; color: string }[] = [
-  { type: PresentationStepType.COUNTRY, label: 'Country', icon: Globe, color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
-  { type: PresentationStepType.ZONE, label: 'Zone', icon: MapPin, color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
-  { type: PresentationStepType.PRODUCT, label: 'Product', icon: Server, color: 'text-purple-400 bg-purple-500/10 border-purple-500/20' },
-  { type: PresentationStepType.FLAVOR, label: 'Flavor', icon: Cpu, color: 'text-purple-400 bg-purple-500/10 border-purple-500/20' },
-  { type: PresentationStepType.USE_CASE, label: 'Use Case', icon: Target, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
-  { type: PresentationStepType.CATEGORY, label: 'Category', icon: Layers, color: 'text-pink-400 bg-pink-500/10 border-pink-500/20' },
+const stepPalette: { type: SharedTypes.PresentationStepType; label: string; icon: React.ElementType; color: string }[] = [
+  { type: SharedTypes.PresentationStepType.COUNTRY, label: 'Country', icon: Globe, color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
+  { type: SharedTypes.PresentationStepType.ZONE, label: 'Zone', icon: MapPin, color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
+  { type: SharedTypes.PresentationStepType.PRODUCT, label: 'Product', icon: Server, color: 'text-purple-400 bg-purple-500/10 border-purple-500/20' },
+  { type: SharedTypes.PresentationStepType.FLAVOR, label: 'Flavor', icon: Cpu, color: 'text-purple-400 bg-purple-500/10 border-purple-500/20' },
+  { type: SharedTypes.PresentationStepType.USE_CASE, label: 'Use Case', icon: Target, color: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
+  { type: SharedTypes.PresentationStepType.CATEGORY, label: 'Category', icon: Layers, color: 'text-pink-400 bg-pink-500/10 border-pink-500/20' },
+  { type: SharedTypes.PresentationStepType.CONTINUITY, label: 'Continuity', icon: Shield, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+  { type: SharedTypes.PresentationStepType.OS, label: 'OS', icon: Monitor, color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20' },
 ];
 
 export default function AdminViewBuilder() {
@@ -49,7 +52,7 @@ export default function AdminViewBuilder() {
     setLocalSteps([...order.steps].sort((a, b) => a.position - b.position));
   }
 
-  const addStep = (type: PresentationStepType) => {
+  const addStep = (type: SharedTypes.PresentationStepType) => {
     const paletteItem = stepPalette.find((p) => p.type === type);
     const newStep: PresentationStep = {
       id: `temp-${Date.now()}`,
@@ -95,13 +98,12 @@ export default function AdminViewBuilder() {
     try {
       await updateSteps.mutateAsync({
         id,
-        steps: localSteps.map((s): EditableStep => {
-          const { id: stepId, ...rest } = s as any;
-          return {
-            ...rest,
-            id: stepId.startsWith('temp-') ? undefined : stepId,
-          } as EditableStep;
-        }),
+        steps: localSteps.map((s) => ({
+          stepType: s.stepType,
+          position: s.position,
+          label: s.label,
+          filterRule: s.filterRule,
+        })),
       });
       setHasChanges(false);
     } catch {

@@ -4,16 +4,18 @@ interface GeoBreadcrumbProps {
   steps: { type: string; label: string | null }[];
   activeStep: number;
   selections: Record<string, string>;
+  selectionNames?: Record<string, string>;
   onStepClick?: (stepIndex: number) => void;
 }
 
-export default function GeoBreadcrumb({ steps, activeStep, selections, onStepClick }: GeoBreadcrumbProps) {
+export default function GeoBreadcrumb({ steps, activeStep, selections, selectionNames, onStepClick }: GeoBreadcrumbProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {steps.map((step, index) => {
         const isActive = index === activeStep;
         const isPast = index < activeStep;
         const selectedValue = selections[step.type];
+        const selectedName = selectionNames?.[step.type];
         const clickable = isPast && onStepClick;
 
         return (
@@ -30,7 +32,9 @@ export default function GeoBreadcrumb({ steps, activeStep, selections, onStepCli
                     : 'border-slate-800 bg-slate-900/50 text-slate-600'
               } ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
             >
-              {isPast && selectedValue ? (
+              {isPast && selectedName ? (
+                <span>{selectedName}</span>
+              ) : isPast && selectedValue ? (
                 <span>{selectedValue}</span>
               ) : (
                 <span>{step.label || step.type}</span>

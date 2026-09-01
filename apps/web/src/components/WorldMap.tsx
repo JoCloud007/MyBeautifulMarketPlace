@@ -19,9 +19,27 @@ const regionColors: Record<string, string> = {
 };
 
 const regionFill: Record<string, string> = {
-  Europe: 'rgba(59, 130, 246, 0.12)',
-  'North America': 'rgba(16, 185, 129, 0.12)',
-  'Asia-Pacific': 'rgba(245, 158, 11, 0.12)',
+  Europe: 'rgba(59, 130, 246, 0.30)',
+  'North America': 'rgba(16, 185, 129, 0.30)',
+  'Asia-Pacific': 'rgba(245, 158, 11, 0.30)',
+};
+
+const regionFillHover: Record<string, string> = {
+  Europe: 'rgba(59, 130, 246, 0.50)',
+  'North America': 'rgba(16, 185, 129, 0.50)',
+  'Asia-Pacific': 'rgba(245, 158, 11, 0.50)',
+};
+
+const apiRegionToDisplay: Record<string, string> = {
+  'eu-west': 'Europe',
+  'us-east': 'North America',
+  'ap-south': 'Asia-Pacific',
+};
+
+const countryNameMapping: Record<string, string> = {
+  'uk': 'United Kingdom',
+  'usa': 'United States of America',
+  'us': 'United States of America',
 };
 
 interface WorldMapProps {
@@ -95,15 +113,23 @@ export default function WorldMap({ zones, selectedZone, onSelectZone }: WorldMap
             {({ geographies }) =>
               geographies.map((geo) => {
                 const name = (geo.properties?.name || '') as string;
-                const hostingZone = zones.find(
-                  (z) => z.country.toLowerCase() === name.toLowerCase()
-                );
-                const fill = hostingZone
-                  ? regionFill[hostingZone.region] || 'rgba(100, 116, 139, 0.30)'
+                const nameLower = name.toLowerCase();
+                const hostingZone = zones.find((z) => {
+                  const mappedCountry = countryNameMapping[z.country.toLowerCase()] || z.country;
+                  return mappedCountry.toLowerCase() === nameLower;
+                });
+                const displayRegion = hostingZone
+                  ? apiRegionToDisplay[hostingZone.region] || hostingZone.region
+                  : null;
+                const fill = displayRegion
+                  ? regionFill[displayRegion] || 'rgba(100, 116, 139, 0.30)'
+                  : '#334155';
+                const stroke = displayRegion
+                  ? (regionColors[displayRegion] || '#94a3b8')
                   : '#475569';
-                const stroke = hostingZone
-                  ? (regionColors[hostingZone.region] || '#94a3b8')
-                  : '#64748b';
+                const hoverFill = displayRegion
+                  ? (regionFillHover[displayRegion] || 'rgba(100, 116, 139, 0.50)')
+                  : '#475569';
 
                 return (
                   <Geography
@@ -111,10 +137,10 @@ export default function WorldMap({ zones, selectedZone, onSelectZone }: WorldMap
                     geography={geo}
                     fill={fill}
                     stroke={stroke}
-                    strokeWidth={hostingZone ? 0.6 : 0.4}
+                    strokeWidth={hostingZone ? 1.0 : 0.3}
                     style={{
                       default: { outline: 'none' },
-                      hover: { outline: 'none', fill: hostingZone ? (regionFill[hostingZone.region] || 'rgba(100, 116, 139, 0.30)') : '#475569' },
+                      hover: { outline: 'none', fill: hoverFill },
                       pressed: { outline: 'none' },
                     }}
                   />
@@ -124,7 +150,8 @@ export default function WorldMap({ zones, selectedZone, onSelectZone }: WorldMap
           </Geographies>
 
           {zones.map((zone) => {
-            const color = regionColors[zone.region] || '#64748b';
+            const displayRegion = apiRegionToDisplay[zone.region] || zone.region;
+            const color = regionColors[displayRegion] || '#64748b';
             const isSelected = selectedZone?.id === zone.id;
             const isHovered = tooltip?.zone.id === zone.id;
             const r = isSelected ? 6 : isHovered ? 5 : 4;
@@ -179,7 +206,7 @@ export default function WorldMap({ zones, selectedZone, onSelectZone }: WorldMap
             className="rounded-lg border px-3 py-2 shadow-lg whitespace-nowrap"
             style={{
               backgroundColor: '#0f172a',
-              borderColor: regionColors[tooltip.zone.region] || '#334155',
+              borderColor: regionColors[apiRegionToDisplay[tooltip.zone.region] || tooltip.zone.region] || '#334155',
             }}
           >
             <p className="text-xs font-semibold text-white">{tooltip.zone.name}</p>

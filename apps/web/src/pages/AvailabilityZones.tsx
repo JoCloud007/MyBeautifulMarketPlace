@@ -29,6 +29,18 @@ const regionColors: Record<string, string> = {
   'Asia-Pacific': '#f59e0b',
 };
 
+const apiRegionToDisplay: Record<string, string> = {
+  'eu-west': 'Europe',
+  'us-east': 'North America',
+  'ap-south': 'Asia-Pacific',
+};
+
+const displayRegionToApi: Record<string, string[]> = {
+  'Europe': ['eu-west'],
+  'North America': ['us-east'],
+  'Asia-Pacific': ['ap-south'],
+};
+
 function AnimatedSection({ children, className, delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
   const { ref, isVisible } = useScrollReveal<HTMLDivElement>();
   return (
@@ -50,7 +62,9 @@ export default function AvailabilityZonesPage() {
   const filteredZones = useMemo(() => {
     if (!zones) return [];
     if (selectedRegion === 'All') return zones;
-    return zones.filter((z) => z.region === selectedRegion);
+    const apiRegions = displayRegionToApi[selectedRegion];
+    if (!apiRegions) return [];
+    return zones.filter((z) => apiRegions.includes(z.region));
   }, [zones, selectedRegion]);
 
   const activeCount = useMemo(() => filteredZones.filter((z) => z.isActive).length, [filteredZones]);
@@ -157,75 +171,136 @@ export default function AvailabilityZonesPage() {
             </CardContent>
           </Card>
 
-          {/* Detail Panel */}
-          <Card className="bg-slate-900 border-slate-800">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-white text-base">
-                <Server className="h-5 w-5 text-blue-500" />
-                {selectedZone ? selectedZone.name : 'Zone Details'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="space-y-3">
-                  <Skeleton className="h-4 w-3/4 bg-slate-800" />
-                  <Skeleton className="h-4 w-1/2 bg-slate-800" />
-                  <Skeleton className="h-20 w-full bg-slate-800" />
-                </div>
-              ) : selectedZone ? (
-                <div className="space-y-4 animate-fade-in">
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <Badge
-                        variant="outline"
-                        className="text-xs"
-                        style={{ borderColor: regionColors[selectedZone.region] || '#64748b', color: regionColors[selectedZone.region] || '#64748b' }}
-                      >
-                        {selectedZone.region}
-                      </Badge>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setSelectedZone(null)}
-                        className="h-7 w-7 p-0 text-slate-400 hover:text-white"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <p className="text-sm text-slate-400">
-                      {selectedZone.city}, {selectedZone.country}
-                    </p>
-                    <p className="text-xs font-mono text-slate-500">{selectedZone.code}</p>
+          {/* Right Column: Region Details + Zone Details */}
+          <div className="space-y-6">
+            {/* Region Details */}
+            <Card className="bg-slate-900 border-slate-800">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-white text-base">
+                  <Globe className="h-5 w-5 text-blue-500" />
+                  {selectedRegion === 'All' ? 'All Regions' : selectedRegion}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLoading ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-8 w-full bg-slate-800" />
+                    <Skeleton className="h-8 w-full bg-slate-800" />
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-md bg-slate-950 p-2">
-                      <p className="text-slate-500">Latitude</p>
-                      <p className="text-white font-medium">{selectedZone.latitude.toFixed(4)}</p>
-                    </div>
-                    <div className="rounded-md bg-slate-950 p-2">
-                      <p className="text-slate-500">Longitude</p>
-                      <p className="text-white font-medium">{selectedZone.longitude.toFixed(4)}</p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-medium text-slate-400 mb-2">Zone Info</p>
-                    <p className="text-xs text-slate-600">
-                      {selectedZone.isActive ? 'Active zone' : 'Inactive zone'}
+                ) : filteredZones.length === 0 ? (
+                  <div className="text-center py-6">
+                    <Globe className="mx-auto h-8 w-8 text-slate-700" />
+                    <p className="mt-2 text-sm text-slate-500">
+                      No availability zones in this region.
                     </p>
                   </div>
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <MapPin className="mx-auto h-10 w-10 text-slate-700" />
-                  <p className="mt-3 text-sm text-slate-500">
-                    Select a zone from the list below to view details and available products.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+                      <span>{filteredZones.length} zone{filteredZones.length !== 1 ? 's' : ''}</span>
+                      <span>{filteredZones.filter((z) => z.isActive).length} active</span>
+                    </div>
+                    <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-1">
+                      {filteredZones.map((zone) => (
+                        <button
+                          key={zone.id}
+                          onClick={() => setSelectedZone(zone)}
+                          className={`w-full text-left rounded-md border px-3 py-2 transition-all duration-150 ${
+                            selectedZone?.id === zone.id
+                              ? 'border-blue-500/40 bg-blue-500/5'
+                              : 'border-slate-800 bg-slate-950 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-white">{zone.name}</span>
+                            <span
+                              className="inline-block h-2 w-2 rounded-full"
+                              style={{
+                                backgroundColor: zone.isActive ? '#10b981' : '#ef4444',
+                              }}
+                            />
+                          </div>
+                          <p className="text-[10px] text-slate-500">
+                            {zone.city}, {zone.country}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Zone Details */}
+            <Card className="bg-slate-900 border-slate-800">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-white text-base">
+                  <Server className="h-5 w-5 text-blue-500" />
+                  {selectedZone ? selectedZone.name : 'Zone Details'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLoading ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-4 w-3/4 bg-slate-800" />
+                    <Skeleton className="h-4 w-1/2 bg-slate-800" />
+                    <Skeleton className="h-20 w-full bg-slate-800" />
+                  </div>
+                ) : selectedZone ? (
+                  <div className="space-y-4 animate-fade-in">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <Badge
+                          variant="outline"
+                          className="text-xs"
+                          style={{ borderColor: regionColors[apiRegionToDisplay[selectedZone.region] || selectedZone.region] || '#64748b', color: regionColors[apiRegionToDisplay[selectedZone.region] || selectedZone.region] || '#64748b' }}
+                        >
+                          {selectedZone.region}
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setSelectedZone(null)}
+                          className="h-7 w-7 p-0 text-slate-400 hover:text-white"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="text-sm text-slate-400">
+                        {selectedZone.city}, {selectedZone.country}
+                      </p>
+                      <p className="text-xs font-mono text-slate-500">{selectedZone.code}</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-md bg-slate-950 p-2">
+                        <p className="text-slate-500">Latitude</p>
+                        <p className="text-white font-medium">{selectedZone.latitude.toFixed(4)}</p>
+                      </div>
+                      <div className="rounded-md bg-slate-950 p-2">
+                        <p className="text-slate-500">Longitude</p>
+                        <p className="text-white font-medium">{selectedZone.longitude.toFixed(4)}</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-medium text-slate-400 mb-2">Zone Info</p>
+                      <p className="text-xs text-slate-600">
+                        {selectedZone.isActive ? 'Active zone' : 'Inactive zone'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <MapPin className="mx-auto h-10 w-10 text-slate-700" />
+                    <p className="mt-3 text-sm text-slate-500">
+                      Select a zone from the list above to view details.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </AnimatedSection>
 
@@ -259,7 +334,7 @@ export default function AvailabilityZonesPage() {
                       <Badge
                         variant="outline"
                         className="text-[10px]"
-                        style={{ borderColor: regionColors[zone.region] || '#64748b', color: regionColors[zone.region] || '#64748b' }}
+                        style={{ borderColor: regionColors[apiRegionToDisplay[zone.region] || zone.region] || '#64748b', color: regionColors[apiRegionToDisplay[zone.region] || zone.region] || '#64748b' }}
                       >
                         {zone.region}
                       </Badge>

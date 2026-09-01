@@ -53,6 +53,10 @@ import {
   useCreateFlavor,
   useUpdateFlavor,
   useDeleteFlavor,
+  usePerformanceProfiles,
+  useCreatePerformanceProfile,
+  useUpdatePerformanceProfile,
+  useDeletePerformanceProfile,
 } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
@@ -98,6 +102,7 @@ import {
   LayoutList,
 } from 'lucide-react';
 import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType } from '@cloudmarket/shared-types';
+import { PerformanceTargetType, VisibilityType } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ApprovalStatus, { label: string; color: string }> = {
   PENDING: { label: 'Pending', color: 'border-amber-500/20 text-amber-500' },
@@ -1161,6 +1166,164 @@ function CategoriesSection() {
         cancelLabel="Cancel"
         variant="destructive"
       />
+    </div>
+  );
+}
+
+// ============ PERFORMANCE PROFILES SECTION ============
+function PerformanceProfilesSection() {
+  const { data: profiles, isLoading, isError, refetch } = usePerformanceProfiles();
+  const createProfile = useCreatePerformanceProfile();
+  const updateProfile = useUpdatePerformanceProfile();
+  const deleteProfile = useDeletePerformanceProfile();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [form, setForm] = useState({
+    name: '',
+    targetType: PerformanceTargetType.PRODUCT,
+    targetId: '',
+    overallScore: 50,
+    scoreLabel: null as string | null,
+    colorTheme: 'blue' as 'green' | 'yellow' | 'red' | 'blue',
+    visibility: VisibilityType.SHOW_ALL,
+  });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+
+  const resetForm = () => {
+    setForm({ name: '', targetType: PerformanceTargetType.PRODUCT, targetId: '', overallScore: 50, scoreLabel: null, colorTheme: 'blue', visibility: VisibilityType.SHOW_ALL });
+    setEditing(null);
+  };
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (p: any) => {
+    setEditing(p);
+    setForm({
+      name: p.name,
+      targetType: p.targetType,
+      targetId: p.targetId,
+      overallScore: p.overallScore,
+      scoreLabel: p.scoreLabel || '',
+      colorTheme: p.colorTheme || 'blue',
+      visibility: p.visibility || VisibilityType.SHOW_ALL,
+    });
+    setIsOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editing) await updateProfile.mutateAsync({ id: editing.id, ...form });
+      else await createProfile.mutateAsync(form);
+      setIsOpen(false); resetForm();
+    } catch { /* handled by hook */ }
+  };
+
+  const handleDelete = (id: string) => { setConfirmDelete({ open: true, id }); };
+  const handleConfirmDelete = async () => {
+    try { if (confirmDelete.id) await deleteProfile.mutateAsync(confirmDelete.id); } catch { }
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  if (isError) return <QueryError message="Unable to load performance profiles." onRetry={refetch} />;
+
+  const colorMap: Record<string, string> = {
+    green: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
+    yellow: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+    red: 'bg-red-500/10 text-red-500 border-red-500/20',
+    blue: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+  };
+
+  const mobileCards = profiles?.map((p) => (
+    <MobileCard key={p.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{p.name}</p>
+          <p className="text-sm text-slate-400">{p.targetType} · Score {p.overallScore}</p>
+        </div>
+        <Badge variant="outline" className={colorMap[p.colorTheme] || 'bg-slate-500/10 text-slate-400 border-slate-500/20'}>{p.colorTheme}</Badge>
+      </div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openEdit(p)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => handleDelete(p.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add Profile</Button>
+      </div>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable headers={['Name', 'Target', 'Score', 'Label', 'Theme', 'Visibility']} isLoading={isLoading} emptyMessage="No performance profiles" mobileCards={mobileCards}>
+            {profiles?.map((p) => (
+              <tr key={p.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{p.name}</td>
+                <td className="py-3 text-slate-400">{p.targetType}<br/><span className="text-xs text-slate-600">{p.targetId.slice(0, 8)}...</span></td>
+                <td className="py-3 text-slate-400">{p.overallScore}</td>
+                <td className="py-3 text-slate-400">{p.scoreLabel || '—'}</td>
+                <td className="py-3"><Badge variant="outline" className={colorMap[p.colorTheme] || 'bg-slate-500/10 text-slate-400 border-slate-500/20'}>{p.colorTheme}</Badge></td>
+                <td className="py-3 text-slate-400">{p.visibility}</td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(p)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(p.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit Performance Profile' : 'New Performance Profile'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Target Type</label>
+                <Select value={form.targetType} onChange={(e) => setForm({ ...form, targetType: e.target.value as PerformanceTargetType })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="PRODUCT">Product</option>
+                  <option value="FLAVOR">Flavor</option>
+                </Select>
+              </div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Target ID (UUID)</label><Input value={form.targetId} onChange={(e) => setForm({ ...form, targetId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Overall Score (0-100)</label><Input type="number" min="0" max="100" value={form.overallScore} onChange={(e) => setForm({ ...form, overallScore: parseInt(e.target.value) || 0 })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Score Label</label><Input value={form.scoreLabel || ''} onChange={(e) => setForm({ ...form, scoreLabel: e.target.value || null })} placeholder="e.g. Excellent" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Color Theme</label>
+                <Select value={form.colorTheme} onChange={(e) => setForm({ ...form, colorTheme: e.target.value as 'green' | 'yellow' | 'red' | 'blue' })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="green">Green</option>
+                  <option value="yellow">Yellow</option>
+                  <option value="red">Red</option>
+                  <option value="blue">Blue</option>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Visibility</label>
+                <Select value={form.visibility} onChange={(e) => setForm({ ...form, visibility: e.target.value as VisibilityType })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="SHOW_ALL">Show All</option>
+                  <option value="INTERNAL_ONLY">Internal Only</option>
+                  <option value="HIDDEN">Hidden</option>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog open={confirmDelete.open} onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })} title="Delete Performance Profile" description="Are you sure you want to delete this performance profile?" onConfirm={handleConfirmDelete} confirmLabel="Delete" cancelLabel="Cancel" variant="destructive" />
     </div>
   );
 }
@@ -2481,6 +2644,7 @@ export default function Admin() {
     { value: 'users', label: 'Users', icon: UserCog },
     { value: 'zones', label: 'Zones', icon: Box },
     { value: 'availability-zones', label: 'Availability Zones', icon: MapPin },
+    { value: 'performance-profiles', label: 'Performance', icon: BarChart3 },
     { value: 'presentation-orders', label: 'Presentation', icon: LayoutList },
   ];
 
@@ -2521,6 +2685,7 @@ export default function Admin() {
         <TabsContent value="users" className="animate-fade-in"><UsersSection /></TabsContent>
         <TabsContent value="zones" className="animate-fade-in"><ZonesSection /></TabsContent>
         <TabsContent value="availability-zones" className="animate-fade-in"><AvailabilityZonesSection /></TabsContent>
+        <TabsContent value="performance-profiles" className="animate-fade-in"><PerformanceProfilesSection /></TabsContent>
         <TabsContent value="presentation-orders" className="animate-fade-in"><AdminPresentationOrders /></TabsContent>
       </Tabs>
     </div>

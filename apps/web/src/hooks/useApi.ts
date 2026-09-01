@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
-import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone, Zone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, UpgradePath, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats, PresentationOrder, PresentationStep, PerformanceProfile } from '@cloudmarket/shared-types';
+import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone, Zone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, UpgradePath, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats, PresentationOrder, PresentationStepType, PerformanceProfile } from '@cloudmarket/shared-types';
 
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
 
@@ -1755,11 +1755,18 @@ export function useDeletePresentationOrder() {
   });
 }
 
+export interface UpdatePresentationStepInput {
+  stepType: PresentationStepType;
+  position: number;
+  label: string | null;
+  filterRule: string | null;
+}
+
 export function useUpdatePresentationSteps() {
   const queryClient = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
   return useMutation({
-    mutationFn: async ({ id, steps }: { id: string; steps: Array<Omit<PresentationStep, 'id'> & { id?: string }> }) => {
+    mutationFn: async ({ id, steps }: { id: string; steps: UpdatePresentationStepInput[] }) => {
       const { data } = await api.put(`/presentation-orders/${id}/steps`, { steps });
       return data;
     },
@@ -1780,7 +1787,7 @@ export function usePerformanceProfiles(targetType?: string, targetId?: string) {
   return useQuery<PerformanceProfile[]>({
     queryKey: ['performance-profiles', targetType, targetId],
     queryFn: () => fetchJson('/performance-profiles', { targetType, targetId }),
-    enabled: targetType !== undefined && targetId !== undefined,
+    enabled: targetType === undefined || targetId !== undefined,
     retry: 3,
     retryDelay: 2000,
   });
