@@ -31,8 +31,10 @@ const createVariantSchema = z.object({
   osVersionId: z.string().uuid('Invalid OS version ID'),
   flavorId: z.string().uuid('Invalid flavor ID'),
   availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
+  zoneIds: z.array(z.string().uuid()).optional(),
   continuityLevelId: z.string().uuid().optional().nullable(),
   isActive: z.boolean().optional(),
+  availabilityType: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
 });
 
 const updateProductSchema = z.object({
@@ -99,6 +101,7 @@ router.get('/', async (req, res, next) => {
         upgradeFrom: { include: { toProduct: { select: { id: true, name: true, slug: true } } } },
         upgradeTo: { include: { fromProduct: { select: { id: true, name: true, slug: true } } } },
         zones: { include: { zone: true } },
+        performanceProfiles: { include: { metrics: true } },
         _count: { select: { variants: { where: { isActive: true } }, instances: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -348,6 +351,7 @@ router.get('/:slug', async (req, res, next) => {
         upgradeFrom: { include: { toProduct: { select: { id: true, name: true, slug: true } } } },
         upgradeTo: { include: { fromProduct: { select: { id: true, name: true, slug: true } } } },
         zones: { include: { zone: true } },
+        performanceProfiles: { include: { metrics: true } },
         _count: { select: { variants: { where: { isActive: true } }, instances: true } },
       },
     });

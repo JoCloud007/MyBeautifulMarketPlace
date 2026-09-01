@@ -559,9 +559,27 @@ export interface OrchestratorStats {
   unhealthyInstances: number;
 }
 
-// ── Presentation Orders ──
+// ── Geo Marketplace ──
 
-export type PresentationStepType = 'COUNTRY' | 'ZONE' | 'PRODUCT' | 'FLAVOR' | 'USE_CASE' | 'CATEGORY';
+export enum PresentationStepType {
+  COUNTRY = 'COUNTRY',
+  ZONE = 'ZONE',
+  PRODUCT = 'PRODUCT',
+  FLAVOR = 'FLAVOR',
+  USE_CASE = 'USE_CASE',
+  CATEGORY = 'CATEGORY',
+}
+
+export enum PerformanceTargetType {
+  PRODUCT = 'PRODUCT',
+  FLAVOR = 'FLAVOR',
+}
+
+export enum VisibilityType {
+  SHOW_ALL = 'SHOW_ALL',
+  INTERNAL_ONLY = 'INTERNAL_ONLY',
+  HIDDEN = 'HIDDEN',
+}
 
 export interface PresentationStep {
   id: string;
@@ -591,10 +609,6 @@ export interface GeoMarketplaceState {
   selections: Record<string, string | null>;
 }
 
-// ── Performance Profiles ──
-
-export type PerformanceTargetType = 'PRODUCT' | 'FLAVOR';
-export type VisibilityType = 'SHOW_ALL' | 'INTERNAL_ONLY' | 'HIDDEN';
 
 export interface PerformanceMetric {
   id: string;
