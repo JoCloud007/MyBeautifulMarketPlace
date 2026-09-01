@@ -102,6 +102,7 @@ export default function Marketplace() {
           categoriesData.forEach((cat: any) => {
             expanded[cat.name] = true;
           });
+          expanded["Uncategorized"] = true;
           setExpandedCategories(expanded);
           setLoading(false);
         }
