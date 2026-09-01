@@ -35,6 +35,7 @@ model Product {
   upgradeTo         UpgradePath[]  @relation("UpgradeTo")
   instances         Instance[]
   zones             ProductZone[]
+  performanceProfiles PerformanceProfile[]
   documentation     String?
   roadmap           String?
   os                String?
@@ -124,8 +125,8 @@ model UpgradePath {
 }
 
 model Flavor {
-  id            String           @id @default(uuid())
-  name          String           @unique
+  id            String             @id @default(uuid())
+  name          String             @unique
   vcpu          Int
   ramGb         Int
   description   String?
@@ -133,8 +134,9 @@ model Flavor {
   forecastLines ForecastLine[]
   instances     Instance[]
   zones         FlavorZone[]
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  performanceProfiles PerformanceProfile[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
 }
 
 model Dependency {
@@ -299,6 +301,84 @@ model User {
   role      UserRole @default(USER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model PresentationOrder {
+  id          String             @id @default(uuid())
+  name        String             @unique
+  description String?
+  isActive    Boolean            @default(true)
+  isDefault   Boolean            @default(false)
+  steps       PresentationStep[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+model PresentationStep {
+  id        String               @id @default(uuid())
+  orderId   String
+  order     PresentationOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  stepType  PresentationStepType
+  position  Int
+  label     String?
+  filterRule String?
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  @@unique([orderId, position])
+}
+
+model PerformanceProfile {
+  id            String              @id @default(uuid())
+  name          String
+  targetType    PerformanceTargetType
+  targetId      String
+  overallScore  Int
+  scoreLabel    String?
+  colorTheme    String              @default("blue")
+  visibility    VisibilityType      @default(SHOW_ALL)
+  metrics       PerformanceMetric[]
+  product       Product?            @relation(fields: [productId], references: [id])
+  productId     String?
+  flavor        Flavor?             @relation(fields: [flavorId], references: [id])
+  flavorId      String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@unique([targetType, targetId])
+}
+
+model PerformanceMetric {
+  id           String             @id @default(uuid())
+  profileId    String
+  profile      PerformanceProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name         String
+  value        Float
+  unit         String?
+  comparison   String?
+  displayOrder Int                @default(0)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+}
+
+enum PresentationStepType {
+  COUNTRY
+  ZONE
+  PRODUCT
+  FLAVOR
+  USE_CASE
+  CATEGORY
+}
+
+enum PerformanceTargetType {
+  PRODUCT
+  FLAVOR
+}
+
+enum VisibilityType {
+  SHOW_ALL
+  INTERNAL_ONLY
+  HIDDEN
 }
 
 enum ComputeType {
