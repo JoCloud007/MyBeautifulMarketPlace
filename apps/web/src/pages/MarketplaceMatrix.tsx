@@ -606,7 +606,7 @@ export default function MarketplaceMatrix() {
                   {/* Col 1 headers (groups) */}
                   {viewMode === 'grouped' && columns.length > 0 && (
                     <tr className="bg-slate-950">
-                      <th className="border-b border-r border-slate-800 sticky left-0 bg-slate-950 z-20 min-w-[160px]"></th>
+                      <th className="border-b border-r border-slate-800 sticky left-0 bg-slate-950 z-20 min-w-[120px]" style={{ width: colWidths['row-header'] || 120 }}></th>
                       {(() => {
                         const groups: { label: string; count: number }[] = [];
                         let currentGroup = '';
@@ -645,15 +645,36 @@ export default function MarketplaceMatrix() {
                     {viewMode === 'flat' && rowAxes.filter((r) => r !== 'NONE').map((axis, i) => (
                       <th
                         key={i}
-                        className="text-left p-3 text-blue-400 font-semibold border-b border-r border-slate-800 sticky bg-slate-950 z-20 min-w-[140px]"
-                        style={{ left: i === 0 ? 0 : 140 * i }}
+                        className="text-left p-3 text-blue-400 font-semibold border-b border-r border-slate-800 sticky bg-slate-950 z-20 min-w-[100px] relative"
+                        style={{ left: i === 0 ? 0 : 100 * i, width: colWidths[`row-header-${i}`] || 100 }}
                       >
                         {axis}
+                        <div
+                          className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize bg-slate-600/40 hover:bg-blue-400 active:bg-blue-400 transition-colors"
+                          title="Drag to resize"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const th = e.currentTarget.parentElement;
+                            if (th) startResize(`row-header-${i}`, e.clientX, th.getBoundingClientRect().width);
+                          }}
+                        />
                       </th>
                     ))}
                     {viewMode === 'grouped' && (
-                      <th className="text-left p-3 text-slate-500 font-semibold border-b border-r border-slate-800 sticky left-0 bg-slate-950 z-20 min-w-[160px]">
+                      <th
+                        className="text-left p-3 text-slate-500 font-semibold border-b border-r border-slate-800 sticky left-0 bg-slate-950 z-20 min-w-[120px] relative"
+                        style={{ width: colWidths['row-header'] || 120 }}
+                      >
                         {row2 !== 'NONE' ? `${row1} / ${row2}` : row1}
+                        <div
+                          className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize bg-slate-600/40 hover:bg-blue-400 active:bg-blue-400 transition-colors"
+                          title="Drag to resize"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const th = e.currentTarget.parentElement;
+                            if (th) startResize('row-header', e.clientX, th.getBoundingClientRect().width);
+                          }}
+                        />
                       </th>
                     )}
                     {columns.map((col) => (
