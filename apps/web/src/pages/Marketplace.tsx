@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
-import { usePresentationOrders } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -232,8 +231,6 @@ export default function Marketplace() {
   };
 
   const navigate = useNavigate();
-  const { data: presentationOrders } = usePresentationOrders();
-  const hasGeoOrder = presentationOrders?.some((o) => o.isActive && o.steps.some((s) => s.stepType === 'COUNTRY'));
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -245,16 +242,14 @@ export default function Marketplace() {
             Browse our cloud infrastructure product catalog.
           </p>
         </div>
-        {hasGeoOrder && (
-          <Button
-            variant="outline"
-            onClick={() => navigate('/marketplace/geo')}
-            className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white min-h-[44px]"
-          >
-            <Globe className="mr-2 h-4 w-4" />
-            Browse by Location
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          onClick={() => navigate('/marketplace/geo')}
+          className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white min-h-[44px]"
+        >
+          <Globe className="mr-2 h-4 w-4" />
+          Browse by Location
+        </Button>
       </div>
 
       {hasError ? (
