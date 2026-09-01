@@ -131,7 +131,7 @@ function formatReleaseDate(dateStr?: string): string {
   if (year > now.getUTCFullYear() || (year === now.getUTCFullYear() && q > Math.floor(now.getUTCMonth() / 3) + 1)) {
     return `Q${q} ${year}`;
   }
-  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  return d.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', year: 'numeric' });
 }
 
 function getStatusBadge(status: CellStatus, releaseDate?: string) {
