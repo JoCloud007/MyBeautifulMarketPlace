@@ -558,3 +558,80 @@ export interface OrchestratorStats {
   lifecycleTransitions30Days: number;
   unhealthyInstances: number;
 }
+
+// ── Geo Marketplace ──
+
+export enum PresentationStepType {
+  COUNTRY = 'COUNTRY',
+  ZONE = 'ZONE',
+  PRODUCT = 'PRODUCT',
+  FLAVOR = 'FLAVOR',
+  USE_CASE = 'USE_CASE',
+  CATEGORY = 'CATEGORY',
+}
+
+export enum PerformanceTargetType {
+  PRODUCT = 'PRODUCT',
+  FLAVOR = 'FLAVOR',
+}
+
+export enum VisibilityType {
+  SHOW_ALL = 'SHOW_ALL',
+  INTERNAL_ONLY = 'INTERNAL_ONLY',
+  HIDDEN = 'HIDDEN',
+}
+
+export interface PresentationStep {
+  id: string;
+  orderId: string;
+  stepType: PresentationStepType;
+  position: number;
+  label: string | null;
+  filterRule: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PresentationOrder {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  isDefault: boolean;
+  steps: PresentationStep[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GeoMarketplaceState {
+  selectedOrderId: string | null;
+  currentStep: number;
+  selections: Record<string, string | null>;
+}
+
+
+export interface PerformanceMetric {
+  id: string;
+  profileId: string;
+  name: string;
+  value: number;
+  unit: string | null;
+  comparison: string | null;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PerformanceProfile {
+  id: string;
+  name: string;
+  targetType: PerformanceTargetType;
+  targetId: string;
+  overallScore: number;
+  scoreLabel: string | null;
+  colorTheme: string;
+  visibility: VisibilityType;
+  metrics: PerformanceMetric[];
+  createdAt: string;
+  updatedAt: string;
+}

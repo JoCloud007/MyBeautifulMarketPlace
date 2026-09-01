@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Search,
   Cpu,
@@ -12,6 +12,7 @@ import {
   ChevronRight,
   LayoutGrid,
   List,
+  Globe,
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
@@ -101,6 +102,7 @@ export default function Marketplace() {
           categoriesData.forEach((cat: any) => {
             expanded[cat.name] = true;
           });
+          expanded["Uncategorized"] = true;
           setExpandedCategories(expanded);
           setLoading(false);
         }
@@ -229,14 +231,26 @@ export default function Marketplace() {
     );
   };
 
+  const navigate = useNavigate();
+
   return (
     <div className="space-y-6 sm:space-y-8">
       {/* Header */}
-      <div className="flex flex-col gap-2 animate-fade-in-up">
-        <h1 className="text-3xl font-bold text-white">Marketplace</h1>
-        <p className="text-slate-400">
-          Browse our cloud infrastructure product catalog.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 animate-fade-in-up">
+        <div>
+          <h1 className="text-3xl font-bold text-white">Marketplace</h1>
+          <p className="text-slate-400">
+            Browse our cloud infrastructure product catalog.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => navigate('/marketplace/geo')}
+          className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white min-h-[44px]"
+        >
+          <Globe className="mr-2 h-4 w-4" />
+          Browse by Location
+        </Button>
       </div>
 
       {hasError ? (

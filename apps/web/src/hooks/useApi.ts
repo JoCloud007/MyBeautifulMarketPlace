@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
-import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone, Zone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, UpgradePath, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats } from '@cloudmarket/shared-types';
+import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone, Zone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, UpgradePath, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats, PresentationOrder, PresentationStep, PerformanceProfile } from '@cloudmarket/shared-types';
 
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
 
@@ -1671,4 +1671,173 @@ export function useDeleteProductVariant() {
   });
 }
 
+// ========== PRESENTATION ORDERS ==========
+
+export function usePresentationOrders() {
+  return useQuery<PresentationOrder[]>({
+    queryKey: ['presentation-orders'],
+    queryFn: () => fetchJson('/presentation-orders'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function usePresentationOrder(id: string) {
+  return useQuery<PresentationOrder>({
+    queryKey: ['presentation-order', id],
+    queryFn: () => fetchJson(`/presentation-orders/${id}`),
+    enabled: !!id,
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useBrowsePresentation(orderId: string, step: string, selections?: Record<string, string>) {
+  return useQuery<any>({
+    queryKey: ['presentation-browse', orderId, step, selections],
+    queryFn: () => fetchJson(`/presentation-orders/${orderId}/browse`, { step, ...selections }),
+    enabled: !!orderId && !!step,
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreatePresentationOrder() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (payload: Partial<PresentationOrder>) => {
+      const { data } = await api.post('/presentation-orders', payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['presentation-orders'] });
+      addToast('Presentation order created', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error creating presentation order', 'error');
+    },
+  });
+}
+
+export function useUpdatePresentationOrder() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & Partial<PresentationOrder>) => {
+      const { data } = await api.patch(`/presentation-orders/${id}`, payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['presentation-orders'] });
+      addToast('Presentation order updated', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error updating presentation order', 'error');
+    },
+  });
+}
+
+export function useDeletePresentationOrder() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/presentation-orders/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['presentation-orders'] });
+      addToast('Presentation order deleted', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error deleting presentation order', 'error');
+    },
+  });
+}
+
+export function useUpdatePresentationSteps() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ id, steps }: { id: string; steps: Array<Omit<PresentationStep, 'id'> & { id?: string }> }) => {
+      const { data } = await api.put(`/presentation-orders/${id}/steps`, { steps });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['presentation-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['presentation-order'] });
+      addToast('Flow steps updated', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error updating steps', 'error');
+    },
+  });
+}
+
+// ========== PERFORMANCE PROFILES ==========
+
+export function usePerformanceProfiles(targetType?: string, targetId?: string) {
+  return useQuery<PerformanceProfile[]>({
+    queryKey: ['performance-profiles', targetType, targetId],
+    queryFn: () => fetchJson('/performance-profiles', { targetType, targetId }),
+    enabled: targetType !== undefined && targetId !== undefined,
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreatePerformanceProfile() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (payload: Partial<PerformanceProfile>) => {
+      const { data } = await api.post('/performance-profiles', payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['performance-profiles'] });
+      addToast('Performance profile created', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error creating profile', 'error');
+    },
+  });
+}
+
+export function useUpdatePerformanceProfile() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & Partial<PerformanceProfile>) => {
+      const { data } = await api.patch(`/performance-profiles/${id}`, payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['performance-profiles'] });
+      addToast('Performance profile updated', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error updating profile', 'error');
+    },
+  });
+}
+
+export function useDeletePerformanceProfile() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/performance-profiles/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['performance-profiles'] });
+      addToast('Performance profile deleted', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error deleting profile', 'error');
+    },
+  });
+}
+
 export { api };
+

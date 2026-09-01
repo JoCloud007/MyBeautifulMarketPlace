@@ -2,9 +2,10 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import type { Product, Dependency, ProductVariant } from '@cloudmarket/shared-types';
-import { useProduct, useProducts } from '@/hooks/useApi';
+import { useProduct, useProducts, usePerformanceProfiles } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
+import PerformanceGauge from '@/components/PerformanceGauge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -420,6 +421,12 @@ export default function ProductDetail() {
   const { slug } = useParams<{ slug: string }>();
   const { data: product, isLoading, isError, refetch } = useProduct(slug || '');
 
+  // Fetch performance profiles for this product
+  const { data: perfProfiles } = usePerformanceProfiles(
+    product ? 'PRODUCT' : undefined,
+    product?.id
+  );
+
   // Fetch related products (same category, excluding current)
   const { data: relatedProducts } = useProducts(
     product ? { category: product.category?.slug } : undefined
@@ -732,6 +739,7 @@ export default function ProductDetail() {
             {uniqueAzs.length > 0 && (
               <TabsTrigger value="availability" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Availability</TabsTrigger>
             )}
+            <TabsTrigger value="performance" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Performance</TabsTrigger>
           </TabsList>
 
           {/* Overview */}
@@ -1182,6 +1190,23 @@ export default function ProductDetail() {
               </div>
             </TabsContent>
           )}
+
+          {/* Performance */}
+          <TabsContent value="performance" className="mt-4 space-y-6 animate-fade-in">
+            {perfProfiles && perfProfiles.length > 0 ? (
+              <div className="space-y-4">
+                {perfProfiles.map((profile) => (
+                  <PerformanceGauge key={profile.id} profile={profile} />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-12 text-center">
+                <Zap className="mx-auto h-12 w-12 text-slate-600" />
+                <p className="mt-4 text-lg font-medium text-slate-300">No performance data</p>
+                <p className="mt-1 text-slate-500">Performance profiles for this product will appear here.</p>
+              </div>
+            )}
+          </TabsContent>
         </Tabs>
       </AnimatedSection>
 

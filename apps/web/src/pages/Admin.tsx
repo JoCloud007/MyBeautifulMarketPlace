@@ -66,6 +66,7 @@ import { MultiPickupInput } from '@/components/ui/multi-pickup';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import AdminPresentationOrders from './AdminPresentationOrders';
 import {
   Dialog,
   DialogContent,
@@ -94,6 +95,7 @@ import {
   Monitor,
   ChevronRight,
   Box,
+  LayoutList,
 } from 'lucide-react';
 import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType } from '@cloudmarket/shared-types';
 
@@ -2479,6 +2481,7 @@ export default function Admin() {
     { value: 'users', label: 'Users', icon: UserCog },
     { value: 'zones', label: 'Zones', icon: Box },
     { value: 'availability-zones', label: 'Availability Zones', icon: MapPin },
+    { value: 'presentation-orders', label: 'Presentation', icon: LayoutList },
   ];
 
   return (
@@ -2518,6 +2521,7 @@ export default function Admin() {
         <TabsContent value="users" className="animate-fade-in"><UsersSection /></TabsContent>
         <TabsContent value="zones" className="animate-fade-in"><ZonesSection /></TabsContent>
         <TabsContent value="availability-zones" className="animate-fade-in"><AvailabilityZonesSection /></TabsContent>
+        <TabsContent value="presentation-orders" className="animate-fade-in"><AdminPresentationOrders /></TabsContent>
       </Tabs>
     </div>
   );
