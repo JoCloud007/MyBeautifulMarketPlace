@@ -39,24 +39,67 @@ interface PickUpListProps<T extends string> {
 }
 
 function PickUpList<T extends string>({ options, value, onChange, color = 'slate' }: PickUpListProps<T>) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const selected = options.find((o) => o.value === value);
+
   const colorMap = {
-    blue: 'text-blue-400 border-blue-500/30 bg-blue-500/10 data-[active]:bg-blue-600 data-[active]:text-white',
-    purple: 'text-purple-400 border-purple-500/30 bg-purple-500/10 data-[active]:bg-purple-600 data-[active]:text-white',
-    slate: 'text-slate-400 border-slate-700 bg-slate-800 data-[active]:bg-slate-600 data-[active]:text-white',
+    blue: {
+      btn: 'text-blue-300 border-blue-500/40 bg-blue-500/20 hover:bg-blue-500/30',
+      active: 'bg-blue-600 text-white border-blue-500',
+      item: 'text-blue-300 hover:bg-blue-500/20',
+    },
+    purple: {
+      btn: 'text-purple-300 border-purple-500/40 bg-purple-500/20 hover:bg-purple-500/30',
+      active: 'bg-purple-600 text-white border-purple-500',
+      item: 'text-purple-300 hover:bg-purple-500/20',
+    },
+    slate: {
+      btn: 'text-slate-300 border-slate-600 bg-slate-800 hover:bg-slate-700',
+      active: 'bg-slate-600 text-white border-slate-500',
+      item: 'text-slate-300 hover:bg-slate-700',
+    },
   };
 
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
   return (
-    <div className="flex flex-wrap gap-1">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          onClick={() => onChange(opt.value)}
-          data-active={value === opt.value ? 'true' : undefined}
-          className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-all ${colorMap[color]}`}
-        >
-          {opt.label}
-        </button>
-      ))}
+    <div ref={containerRef} className="relative">
+      <button
+        onClick={() => setIsOpen((v) => !v)}
+        className={`flex items-center gap-1 px-2.5 py-1 rounded-md border text-xs font-medium transition-all ${colorMap[color].btn}`}
+      >
+        {selected?.label}
+        <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="absolute z-50 mt-1 min-w-[120px] rounded-md border border-slate-700 bg-slate-900 shadow-lg py-1">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => {
+                onChange(opt.value);
+                setIsOpen(false);
+              }}
+              className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                opt.value === value ? colorMap[color].active : colorMap[color].item
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -95,30 +138,30 @@ function getStatusBadge(status: CellStatus, releaseDate?: string) {
   switch (status) {
     case 'AVAILABLE':
       return (
-        <div className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded px-1.5 py-1 text-[10px] font-semibold leading-tight text-center">
+        <div className="bg-emerald-500/20 text-emerald-300 border-2 border-emerald-400/40 rounded px-1.5 py-1 text-[10px] font-bold leading-tight text-center shadow-[0_0_8px_rgba(16,185,129,0.15)]">
           <div>✓</div>
-          <div className="text-[9px] text-emerald-300/70">Live</div>
+          <div className="text-[9px] text-emerald-200/80">Live</div>
         </div>
       );
     case 'RESTRICTED':
       return (
-        <div className="bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded px-1.5 py-1 text-[10px] font-semibold leading-tight text-center">
+        <div className="bg-amber-500/20 text-amber-300 border-2 border-amber-400/40 rounded px-1.5 py-1 text-[10px] font-bold leading-tight text-center shadow-[0_0_8px_rgba(245,158,11,0.15)]">
           <div>⚠</div>
-          {releaseDate && <div className="text-[9px] text-amber-300/70">{releaseDate}</div>}
+          {releaseDate && <div className="text-[9px] text-amber-200/80">{releaseDate}</div>}
         </div>
       );
     case 'ON_DEMAND':
       return (
-        <div className="bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded px-1.5 py-1 text-[10px] font-semibold leading-tight text-center">
+        <div className="bg-blue-500/20 text-blue-300 border-2 border-blue-400/40 rounded px-1.5 py-1 text-[10px] font-bold leading-tight text-center shadow-[0_0_8px_rgba(59,130,246,0.15)]">
           <div>○</div>
-          <div className="text-[9px] text-blue-300/70">On-Demand</div>
+          <div className="text-[9px] text-blue-200/80">On-Demand</div>
         </div>
       );
     case 'UNAVAILABLE':
       return (
-        <div className="bg-red-500/10 text-red-400 border border-red-500/20 rounded px-1.5 py-1 text-[10px] font-semibold leading-tight text-center">
+        <div className="bg-red-500/20 text-red-300 border-2 border-red-400/40 rounded px-1.5 py-1 text-[10px] font-bold leading-tight text-center shadow-[0_0_8px_rgba(239,68,68,0.15)]">
           <div>✕</div>
-          <div className="text-[9px] text-red-300/70">N/A</div>
+          <div className="text-[9px] text-red-200/80">N/A</div>
         </div>
       );
     default:
