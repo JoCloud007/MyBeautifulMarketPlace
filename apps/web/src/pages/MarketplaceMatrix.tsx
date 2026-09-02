@@ -180,7 +180,7 @@ export default function MarketplaceMatrix() {
   /* UI state */
   const [viewMode, setViewMode] = useState<ViewMode>('grouped');
   const [rowAxes, setRowAxes] = useState<RowAxis[]>(['PRODUCT', 'FLAVOR']);
-  const [colAxes, setColAxes] = useState<ColAxis[]>(['ZONE', 'AZ']);
+  const [colAxes, setColAxes] = useState<ColAxis[]>(['AZ', 'ZONE']);
   const row1 = rowAxes[0] || 'NONE';
   const row2 = rowAxes[1] || 'NONE';
   const col1 = colAxes[0] || 'NONE';
@@ -252,6 +252,15 @@ export default function MarketplaceMatrix() {
           if (c2 === 'AZ') {
             for (const za of z.availabilityZones || []) {
               const a = za.availabilityZone;
+              if (!showEmptyCols && products) {
+                const hasData = products.some(p =>
+                  p.variants?.some(v =>
+                    v.zones?.some((vz: any) => vz.zoneId === z.id || vz.id === z.id) &&
+                    v.availabilityZones?.some((va: any) => va.availabilityZoneId === a.id || va.id === a.id)
+                  )
+                );
+                if (!hasData) continue;
+              }
               cols.push({ id: `${z.id}|${a.id}`, label: a.code, group: z.name });
             }
           } else {
@@ -311,7 +320,7 @@ export default function MarketplaceMatrix() {
       }
     }
     return cols;
-  }, [zones, azs, colAxes, showEmptyCols]);
+  }, [zones, azs, products, colAxes, showEmptyCols]);
 
   /* Build matrix rows */
   const rows = useMemo(() => {
