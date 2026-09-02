@@ -68,9 +68,10 @@ router.post('/', async (req, res, next) => {
 
     const existing = await prisma.performanceProfile.findUnique({
       where: {
-        targetType_targetId: {
+        targetType_targetId_name: {
           targetType: data.targetType,
           targetId: data.targetId,
+          name: data.name,
         },
       },
     });
@@ -137,9 +138,10 @@ router.patch('/:id', async (req, res, next) => {
       const newTargetId = data.targetId ?? existing.targetId;
       const conflict = await prisma.performanceProfile.findUnique({
         where: {
-          targetType_targetId: {
+          targetType_targetId_name: {
             targetType: newTargetType,
             targetId: newTargetId,
+            name: data.name ?? existing.name,
           },
         },
       });
