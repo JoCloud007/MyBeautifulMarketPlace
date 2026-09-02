@@ -369,20 +369,20 @@ export default function MarketplaceMatrix() {
 
     function groupVariantsByAxis(
       variants: ProductVariant[],
-      axis: RowAxis
+      axis: RowAxis,
+      product: any
     ): Map<string, { id: string; label: string; variants: ProductVariant[] }> {
       const groups = new Map<string, { id: string; label: string; variants: ProductVariant[] }>();
 
       switch (axis) {
-        case 'PRODUCT':
-          for (const v of variants) {
-            const key = v.productId || 'unknown';
-            if (!groups.has(key)) {
-              groups.set(key, { id: key, label: 'Product', variants: [] });
-            }
-            groups.get(key)!.variants.push(v);
+        case 'PRODUCT': {
+          const key = product.id || 'unknown';
+          if (!groups.has(key)) {
+            groups.set(key, { id: key, label: product.name || 'Product', variants: [] });
           }
+          groups.get(key)!.variants.push(...variants);
           break;
+        }
         case 'FLAVOR':
           for (const v of variants) {
             const key = v.flavor?.name || v.name || 'Unknown';
@@ -467,7 +467,8 @@ export default function MarketplaceMatrix() {
     function buildRows(
       rowIndex: number,
       parentLabels: MatrixRow['labels'],
-      variants: ProductVariant[]
+      variants: ProductVariant[],
+      product: any
     ): MatrixRow[] {
       if (rowIndex >= activeRowAxes.length) {
         // Leaf: compute cells
@@ -497,12 +498,12 @@ export default function MarketplaceMatrix() {
       }
 
       const axis = activeRowAxes[rowIndex];
-      const groups = groupVariantsByAxis(variants, axis);
+      const groups = groupVariantsByAxis(variants, axis, product);
       const results: MatrixRow[] = [];
 
       for (const [_, group] of groups) {
         const label = { axis, label: group.label, id: group.id };
-        const subRows = buildRows(rowIndex + 1, [...parentLabels, label], group.variants);
+        const subRows = buildRows(rowIndex + 1, [...parentLabels, label], group.variants, product);
         results.push(...subRows);
       }
 
@@ -518,7 +519,7 @@ export default function MarketplaceMatrix() {
       const initialLabels: MatrixRow['labels'] = [];
       const startIndex = 0;
 
-      const productRows = buildRows(startIndex, initialLabels, variants);
+      const productRows = buildRows(startIndex, initialLabels, variants, product);
       matrixRows.push(...productRows);
     }
 
