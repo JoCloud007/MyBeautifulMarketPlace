@@ -564,7 +564,7 @@ export default function MarketplaceMatrix() {
                   )}
                 </div>
               ))}
-              {rowAxes.length < 3 && (
+              {rowAxes.length < 2 && (
                 <button
                   onClick={() => setRowAxes([...rowAxes, 'FLAVOR'])}
                   className="text-blue-400 hover:text-blue-300 text-xs border border-blue-500/30 rounded px-2 py-1"
@@ -603,7 +603,7 @@ export default function MarketplaceMatrix() {
                   )}
                 </div>
               ))}
-              {colAxes.length < 3 && (
+              {colAxes.length < 2 && (
                 <button
                   onClick={() => setColAxes([...colAxes, 'AZ'])}
                   className="text-purple-400 hover:text-purple-300 text-xs border border-purple-500/30 rounded px-2 py-1"
