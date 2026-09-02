@@ -418,6 +418,18 @@ export default function MarketplaceMatrix() {
     return Array.from(cats).sort();
   }, [products]);
 
+  /* Sticky left offsets for flat mode row headers */
+  const flatRowLefts = useMemo(() => {
+    const activeRowAxes = rowAxes.filter((r) => r !== 'NONE');
+    const lefts: number[] = [];
+    let sum = 0;
+    for (let i = 0; i < activeRowAxes.length; i++) {
+      lefts.push(sum);
+      sum += colWidths[`row-header-${i}`] || 140;
+    }
+    return lefts;
+  }, [rowAxes, colWidths]);
+
   /* Loading & error */
   const isLoading = productsLoading || zonesLoading || azsLoading;
   if (productsError) return <QueryError message="Unable to load catalog data." onRetry={refetchProducts} />;
@@ -587,8 +599,8 @@ export default function MarketplaceMatrix() {
       </Card>
 
       {/* Matrix Table */}
-      <Card className="bg-slate-900 border-slate-800 flex flex-col">
-        <CardContent className="p-0 flex flex-col flex-1">
+      <Card className="bg-slate-900 border-slate-800 overflow-hidden flex flex-col">
+        <CardContent className="p-0 flex flex-col flex-1 overflow-x-auto">
           {isLoading ? (
             <div className="p-8 space-y-4">
               <Skeleton className="h-8 w-full" />
@@ -600,162 +612,164 @@ export default function MarketplaceMatrix() {
               <p className="text-slate-500">No products match your filters.</p>
             </div>
           ) : (
-            (() => {
-              const rowHeaders = viewMode === 'flat'
-                ? rowAxes.filter((r) => r !== 'NONE').map((_, i) => `${colWidths[`row-header-${i}`] || 100}px`).join(' ')
-                : `${colWidths['row-header'] || 120}px`;
-              const dataCols = columns.map((col) => colWidths[col.id] ? `${colWidths[col.id]}px` : 'minmax(0, 1fr)').join(' ');
-              const gridTemplateColumns = `${rowHeaders} ${dataCols}`.trim();
-              return (
-                <div className="flex-1 relative overflow-auto">
-                  <div
-                    className="absolute inset-0 text-xs"
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns,
-                    }}
-                  >
-                {/* Col 1 headers (groups) */}
-                {viewMode === 'grouped' && columns.length > 0 && (
-                  <>
-                    <div className="border-b border-r border-slate-800 sticky left-0 bg-slate-950 z-20"></div>
-                    {(() => {
-                      const groups: { label: string; count: number }[] = [];
-                      let currentGroup = '';
-                      let count = 0;
-                      for (const col of columns) {
-                        if (col.group !== currentGroup) {
-                          if (count > 0) groups.push({ label: currentGroup, count });
-                          currentGroup = col.group || '';
-                          count = 1;
-                        } else {
-                          count++;
-                        }
-                      }
-                      if (count > 0) groups.push({ label: currentGroup, count });
-                      if (groups.length === 0) {
-                        return (
-                          <div className="text-center text-xs text-red-400 border-b border-slate-800">
-                            No groups
-                          </div>
-                        );
-                      }
-                      return groups.map((g, i) => (
-                        <div
-                          key={i}
-                          className="text-center p-2 text-purple-400 font-semibold border-b border-slate-800 border-r-2 border-r-slate-700"
-                          style={{ gridColumn: `span ${g.count}` }}
-                        >
-                          {g.label}
-                        </div>
-                      ));
-                    })()}
-                  </>
-                )}
-                {/* Col 2 headers (actual columns) */}
-                {viewMode === 'flat' && rowAxes.filter((r) => r !== 'NONE').map((axis, i) => (
-                  <div
-                    key={i}
-                    className="text-left p-3 text-blue-400 font-semibold border-b border-r border-slate-800 sticky bg-slate-950 z-20 relative"
-                    style={{ left: i === 0 ? 0 : 100 * i }}
-                  >
-                    {axis}
-                    <div
-                      className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize bg-slate-600/40 hover:bg-blue-400 active:bg-blue-400 transition-colors"
-                      title="Drag to resize"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const th = e.currentTarget.parentElement;
-                        if (th) startResize(`row-header-${i}`, e.clientX, th.getBoundingClientRect().width);
-                      }}
-                    />
-                  </div>
-                ))}
-                {viewMode === 'grouped' && (
-                  <div
-                    className="text-left p-3 text-slate-500 font-semibold border-b border-r border-slate-800 sticky left-0 bg-slate-950 z-20 relative"
-                  >
-                    {row2 !== 'NONE' ? `${row1} / ${row2}` : row1}
-                    <div
-                      className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize bg-slate-600/40 hover:bg-blue-400 active:bg-blue-400 transition-colors"
-                      title="Drag to resize"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const th = e.currentTarget.parentElement;
-                        if (th) startResize('row-header', e.clientX, th.getBoundingClientRect().width);
-                      }}
-                    />
-                  </div>
-                )}
-                {columns.map((col) => (
-                  <div
-                    key={col.id}
-                    className="text-center p-2 text-slate-400 font-medium border-b border-slate-800 relative"
-                  >
-                    {viewMode === 'flat' && col.group ? col.group : col.label}
-                    <div
-                      className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize bg-slate-600/40 hover:bg-blue-400 active:bg-blue-400 transition-colors"
-                      title="Drag to resize"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        const th = e.currentTarget.parentElement;
-                        if (th) startResize(col.id, e.clientX, th.getBoundingClientRect().width);
-                      }}
-                    />
-                  </div>
-                ))}
-                {/* Body */}
-                {viewMode === 'grouped'
-                  ? Array.from(groupedRows.entries()).map(([groupName, groupRows]) => (
-                      <div key={groupName} style={{ display: 'contents' }}>
-                        {/* Group header */}
-                        <div
-                          className="p-2.5 pl-4 text-sm font-bold text-blue-400 border-b border-slate-800 bg-slate-900/50"
-                          style={{ gridColumn: '1 / -1' }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <ChevronDown className="h-3.5 w-3.5" />
-                            {groupName}
-                          </div>
-                        </div>
-                        {/* Group rows */}
-                        {groupRows.map((row) => (
-                          <div key={row.id} style={{ display: 'contents' }}>
-                            <div className="p-3 pl-8 text-slate-300 sticky left-0 bg-slate-900 z-10 border-r border-slate-800">
-                              {row.labels[row.labels.length - 1]?.label || ''}
-                            </div>
-                            {columns.map((col) => (
-                              <div key={col.id} className="p-2 text-center border-r border-slate-800/50">
-                                {getStatusBadge(row.cells[col.id]?.status, row.cells[col.id]?.releaseDate)}
-                              </div>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    ))
-                  : rows.map((row) => (
-                      <div key={row.id} style={{ display: 'contents' }}>
-                        {row.labels.map((lab, i) => (
-                          <div
+            <table className="w-full text-xs" style={{ width: '100%' }}>
+                <thead>
+                  {/* Group headers (grouped always, flat when multi-level cols) */}
+                  {(viewMode === 'grouped' || (viewMode === 'flat' && colAxes.filter((c) => c !== 'NONE').length > 1)) && columns.length > 0 && (
+                    <tr className="bg-slate-950">
+                      {viewMode === 'grouped' ? (
+                        <th className="border-b border-r border-slate-800 sticky left-0 bg-slate-950 z-20 min-w-[180px]" style={{ width: colWidths['row-header'] || 180 }}></th>
+                      ) : (
+                        rowAxes.filter((r) => r !== 'NONE').map((_, i) => (
+                          <th
                             key={i}
-                            className={`p-3 text-slate-300 font-medium sticky bg-slate-900 z-10 border-r border-slate-800 ${i === 0 ? 'left-0' : ''}`}
-                            style={{ left: i * 140 }}
+                            className="border-b border-r border-slate-800 sticky bg-slate-950 z-20"
+                            style={{ left: flatRowLefts[i], width: colWidths[`row-header-${i}`] || 140 }}
+                          ></th>
+                        ))
+                      )}
+                      {(() => {
+                        const groups: { label: string; count: number }[] = [];
+                        let currentGroup = '';
+                        let count = 0;
+                        for (const col of columns) {
+                          if (col.group !== currentGroup) {
+                            if (count > 0) groups.push({ label: currentGroup, count });
+                            currentGroup = col.group || '';
+                            count = 1;
+                          } else {
+                            count++;
+                          }
+                        }
+                        if (count > 0) groups.push({ label: currentGroup, count });
+                        if (groups.length === 0) {
+                          return (
+                            <th colSpan={columns.length} className="text-center text-xs text-red-400 border-b border-slate-800">
+                              No groups
+                            </th>
+                          );
+                        }
+                        return groups.map((g, i) => (
+                          <th
+                            key={i}
+                            colSpan={g.count}
+                            className="text-center p-2 text-purple-400 font-semibold border-b border-slate-800 border-r-2 border-r-slate-700"
                           >
-                            {lab.label}
-                          </div>
-                        ))}
-                        {columns.map((col) => (
-                          <div key={col.id} className="p-2 text-center border-r border-slate-800/50">
-                            {getStatusBadge(row.cells[col.id]?.status, row.cells[col.id]?.releaseDate)}
-                          </div>
-                        ))}
-                      </div>
+                            {g.label}
+                          </th>
+                        ));
+                      })()}
+                    </tr>
+                  )}
+                  {/* Column labels header row */}
+                  <tr className="bg-slate-950">
+                    {viewMode === 'flat' && rowAxes.filter((r) => r !== 'NONE').map((axis, i) => (
+                      <th
+                        key={i}
+                        className="text-left p-3 text-blue-400 font-semibold border-b border-r border-slate-800 sticky bg-slate-950 z-20 min-w-[140px] relative"
+                        style={{ left: flatRowLefts[i], width: colWidths[`row-header-${i}`] || 140 }}
+                      >
+                        {axis}
+                        <div
+                          className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize bg-slate-600/40 hover:bg-blue-400 active:bg-blue-400 transition-colors"
+                          title="Drag to resize"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const th = e.currentTarget.parentElement;
+                            if (th) startResize(`row-header-${i}`, e.clientX, th.getBoundingClientRect().width);
+                          }}
+                        />
+                      </th>
                     ))}
-              </div>
-            </div>
-          );
-        })()
-      )}
+                    {viewMode === 'grouped' && (
+                      <th
+                        className="text-left p-3 text-slate-500 font-semibold border-b border-r border-slate-800 sticky left-0 bg-slate-950 z-20 min-w-[180px] relative"
+                        style={{ width: colWidths['row-header'] || 180 }}
+                      >
+                        {row2 !== 'NONE' ? `${row1} / ${row2}` : row1}
+                        <div
+                          className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize bg-slate-600/40 hover:bg-blue-400 active:bg-blue-400 transition-colors"
+                          title="Drag to resize"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const th = e.currentTarget.parentElement;
+                            if (th) startResize('row-header', e.clientX, th.getBoundingClientRect().width);
+                          }}
+                        />
+                      </th>
+                    )}
+                    {columns.map((col) => (
+                      <th
+                        key={col.id}
+                        className="text-center p-2 text-slate-400 font-medium border-b border-slate-800 min-w-[65px] relative"
+                        style={{ width: colWidths[col.id] || undefined }}
+                      >
+                        {viewMode === 'flat' ? col.label : (col.group || col.label)}
+                        <div
+                          className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize bg-slate-600/40 hover:bg-blue-400 active:bg-blue-400 transition-colors"
+                          title="Drag to resize"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const th = e.currentTarget.parentElement;
+                            if (th) startResize(col.id, e.clientX, th.getBoundingClientRect().width);
+                          }}
+                        />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {viewMode === 'grouped'
+                    ? Array.from(groupedRows.entries()).map(([groupName, groupRows]) => (
+                        <>
+                          {/* Group header */}
+                          <tr key={`group-${groupName}`} className="bg-slate-900/50">
+                            <td
+                              colSpan={columns.length + 2}
+                              className="p-2.5 pl-4 text-sm font-bold text-blue-400 border-b border-slate-800"
+                            >
+                              <div className="flex items-center gap-2">
+                                <ChevronDown className="h-3.5 w-3.5" />
+                                {groupName}
+                              </div>
+                            </td>
+                          </tr>
+                          {/* Group rows */}
+                          {groupRows.map((row) => (
+                            <tr key={row.id} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                              <td className="p-3 pl-8 text-slate-300 sticky left-0 bg-slate-900 z-10 border-r border-slate-800">
+                                {row.labels[row.labels.length - 1]?.label || ''}
+                              </td>
+                              {columns.map((col) => (
+                                <td key={col.id} className="p-2 text-center border-r border-slate-800/50" style={{ width: colWidths[col.id] || undefined }}>
+                                  {getStatusBadge(row.cells[col.id]?.status, row.cells[col.id]?.releaseDate)}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </>
+                      ))
+                    : rows.map((row) => (
+                        <tr key={row.id} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                          {row.labels.map((lab, i) => (
+                            <td
+                              key={i}
+                              className="p-3 text-slate-300 font-medium sticky bg-slate-900 z-10 border-r border-slate-800"
+                              style={{ left: flatRowLefts[i], width: colWidths[`row-header-${i}`] || 140 }}
+                            >
+                              {lab.label}
+                            </td>
+                          ))}
+                          {columns.map((col) => (
+                            <td key={col.id} className="p-2 text-center border-r border-slate-800/50" style={{ width: colWidths[col.id] || undefined }}>
+                              {getStatusBadge(row.cells[col.id]?.status, row.cells[col.id]?.releaseDate)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                </tbody>
+              </table>
+          )}
         </CardContent>
       </Card>
 
@@ -807,8 +821,18 @@ function computeCell(
   }
 
   if (col1 === 'AZ') {
-    const inAZ = variant.availabilityZones?.some((a: any) => a.availabilityZoneId === col.id || a.id === col.id);
+    // col.id may be "zoneId|azId" when a secondary column axis is present
+    let azId = col.id;
+    let zoneId: string | undefined;
+    if (col.id.includes('|')) {
+      [zoneId, azId] = col.id.split('|');
+    }
+    const inAZ = variant.availabilityZones?.some((a: any) => a.availabilityZoneId === azId || a.id === azId);
     if (inAZ) {
+      if (zoneId) {
+        const inZone = variant.zones?.some((z: any) => z.zoneId === zoneId || z.id === zoneId);
+        if (!inZone) return { status: 'NONE' };
+      }
       return {
         status: getStatusFromVariant(variant),
         releaseDate: variant.availabilityType === 'RESTRICTED' ? formatReleaseDate(variant.osVersion?.releaseDate) : undefined,

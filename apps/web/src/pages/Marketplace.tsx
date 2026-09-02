@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   List,
   Globe,
+  Minimize2,
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
@@ -55,7 +56,7 @@ function AnimatedCard({ children, delay = 0 }: { children: React.ReactNode; dela
 }
 
 export default function Marketplace() {
-  const { filters, sortBy, viewMode, setFilters, removeFilter, clearFilters, setSortBy, setViewMode } = useAppStore();
+  const { filters, sortBy, viewMode, compactMode, setFilters, removeFilter, clearFilters, setSortBy, setViewMode, setCompactMode } = useAppStore();
   const [products, setProducts] = useState<any[] | null>(null);
   const [categories, setCategories] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -236,21 +237,11 @@ export default function Marketplace() {
   return (
     <div className="space-y-6 sm:space-y-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 animate-fade-in-up">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Marketplace</h1>
-          <p className="text-slate-400">
-            Browse our cloud infrastructure product catalog.
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => navigate('/marketplace/geo')}
-          className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white min-h-[44px]"
-        >
-          <Globe className="mr-2 h-4 w-4" />
-          Browse by Location
-        </Button>
+      <div className="animate-fade-in-up">
+        <h1 className="text-3xl font-bold text-white">Marketplace</h1>
+        <p className="text-slate-400">
+          Browse our cloud infrastructure product catalog.
+        </p>
       </div>
 
       {hasError ? (
@@ -308,6 +299,29 @@ export default function Marketplace() {
                   )}
                 >
                   Group by Category
+                </Button>
+                <Button
+                  size="sm"
+                  variant={compactMode ? 'default' : 'outline'}
+                  onClick={() => setCompactMode(!compactMode)}
+                  className={cn(
+                    'min-h-[36px]',
+                    compactMode
+                      ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                      : 'border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white'
+                  )}
+                >
+                  <Minimize2 className="h-3.5 w-3.5 mr-1.5" />
+                  Compact
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => navigate('/marketplace/geo')}
+                  className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white min-h-[36px]"
+                >
+                  <Globe className="h-3.5 w-3.5 mr-1.5" />
+                  Browse by Location
                 </Button>
                 {activeFilterCount > 0 && (
                   <Button variant="ghost" size="sm" onClick={clearFilters} className="text-slate-400 hover:text-white min-h-[44px]">
@@ -448,9 +462,9 @@ export default function Marketplace() {
 
           {/* Product Grid / Grouped View */}
           {loading ? (
-            <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-56 rounded-lg bg-slate-800 animate-pulse-soft" />
+            <div className={cn('grid gap-4 sm:gap-6', compactMode ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3')}>
+              {Array.from({ length: compactMode ? 8 : 6 }).map((_, i) => (
+                <Skeleton key={i} className={cn('rounded-lg bg-slate-800 animate-pulse-soft', compactMode ? 'h-44' : 'h-56')} />
               ))}
             </div>
           ) : sortedProducts.length === 0 ? (
@@ -474,14 +488,14 @@ export default function Marketplace() {
                       {catProducts.length}
                     </Badge>
                   </h2>
-                  <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className={cn('grid gap-4 sm:gap-6', compactMode ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3')}>
                     {catProducts.map((product, i) => renderProductCard(product, i))}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className={cn('grid gap-4 sm:gap-6', compactMode ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3')}>
               {sortedProducts.map((product, i) => renderProductCard(product, i))}
             </div>
           )}

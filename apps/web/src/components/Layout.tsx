@@ -58,6 +58,13 @@ function isGroupActive(items: { path: string }[], pathname: string) {
   return items.some((i) => pathname === i.path || pathname.startsWith(i.path + '/'));
 }
 
+function getBestMatch(items: { path: string }[], pathname: string) {
+  const matches = items.filter((i) => pathname === i.path || pathname.startsWith(i.path + '/'));
+  if (matches.length === 0) return null;
+  // longest path wins (most specific match)
+  return matches.sort((a, b) => b.path.length - a.path.length)[0];
+}
+
 /* ── Component ─────────────────────────────────────────────────── */
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -151,7 +158,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     <div className="absolute left-0 top-full mt-1 w-48 rounded-lg border border-slate-800 bg-slate-900 py-1 shadow-lg shadow-black/30 z-50">
                       {group.items.map((item) => {
                         const Icon = item.icon;
-                        const itemActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+                        const bestMatch = getBestMatch(group.items, location.pathname);
+                        const itemActive = bestMatch?.path === item.path;
                         return (
                           <Link
                             key={item.path}
