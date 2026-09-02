@@ -56,6 +56,9 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     fi && \
     npx prisma generate
 
+# Compile TypeScript to JavaScript (avoids esbuild platform mismatch at runtime)
+RUN npx tsc -p tsconfig.json
+
 EXPOSE 3001
 
-CMD ["npx", "tsx", "src/index.ts"]
+CMD ["node", "dist/index.js"]

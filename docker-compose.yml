@@ -47,7 +47,6 @@ services:
       PRISMA_SCHEMA_ENGINE_BINARY: /app/lib/prisma/schema-engine
     ports:
       - "3001:3001"
-    command: ["npx", "tsx", "src/index.ts"]
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]
       interval: 5s
