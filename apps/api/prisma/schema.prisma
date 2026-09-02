@@ -345,7 +345,7 @@ model PerformanceProfile {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
-  @@unique([targetType, targetId])
+  @@unique([targetType, targetId, name])
 }
 
 model PerformanceMetric {
