@@ -25,9 +25,6 @@ WORKDIR /app
 # Copy full project including node_modules (installed on host before build)
 COPY . .
 
-# Rebuild native deps for container architecture
-RUN npm rebuild esbuild
-
 # Build shared types
 RUN npx tsc -p packages/shared-types/tsconfig.json
 
