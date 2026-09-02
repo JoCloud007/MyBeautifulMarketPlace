@@ -203,8 +203,11 @@ function matchesAxis(
       return variant.availabilityZones?.some((a: any) => countryAZs.has(a.availabilityZoneId)) ?? false;
     }
     case 'PRODUCT':
+      return variant.productId === id;
     case 'FLAVOR':
+      return variant.flavorId === id || variant.flavor?.id === id;
     case 'OS':
+      return variant.osId === id || variant.os?.id === id;
     case 'NONE':
     default:
       return true;
