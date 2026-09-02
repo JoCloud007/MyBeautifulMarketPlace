@@ -61,7 +61,7 @@ build:
 ## all Docker images.
 deploy:
 	. "$(shell pwd)/.source.prisma" && \
-	if [ ! -d node_modules ]; then npm install --force --legacy-peer-deps --no-package-lock $(NPM_PLATFORM_FLAGS); fi && \
+	rm -rf node_modules && npm install --force --legacy-peer-deps --no-package-lock $(NPM_PLATFORM_FLAGS) && \
 	npm run build -w packages/shared-types && \
 	npx prisma generate --schema=apps/api/prisma/schema.prisma && \
 	npm run build -w apps/web && \
