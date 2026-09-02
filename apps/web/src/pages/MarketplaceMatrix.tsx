@@ -722,7 +722,7 @@ export default function MarketplaceMatrix() {
                         className="text-center p-2 text-slate-400 font-medium border-b border-slate-800 min-w-[65px] relative"
                         style={{ width: colWidths[col.id] || undefined }}
                       >
-                        {viewMode === 'flat' ? col.label : (col.group || col.label)}
+                        {col.label}
                         <div
                           className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize bg-slate-600/40 hover:bg-blue-400 active:bg-blue-400 transition-colors"
                           title="Drag to resize"
