@@ -7,12 +7,14 @@
 # Force bash — avoids POSIX/dash incompatibilities on Ubuntu
 SHELL := /bin/bash
 
-# Detect OS for platform-specific npm install
-UNAME_S := $(shell uname -s)
-ifeq ($(UNAME_S),Darwin)
-    NPM_PLATFORM_FLAGS := --cpu=arm64 --os=linux --libc=musl
+# Detect host architecture for platform-specific npm install
+UNAME_M := $(shell uname -m)
+ifeq ($(UNAME_M),arm64)
+    NPM_PLATFORM_FLAGS := --arch=arm64 --platform=linux
+else ifeq ($(UNAME_M),aarch64)
+    NPM_PLATFORM_FLAGS := --arch=arm64 --platform=linux
 else
-    NPM_PLATFORM_FLAGS := --cpu=x64 --os=linux --libc=musl
+    NPM_PLATFORM_FLAGS := --arch=x64 --platform=linux
 endif
 
 ## Show available targets
@@ -35,17 +37,14 @@ help:
 clean:
 	rm -rf node_modules apps/*/node_modules packages/*/node_modules
 	rm -rf apps/web/dist packages/shared-types/dist
-	docker compose down
-	docker system prune -f
+	docker compose down --rmi all
 
 ## Build — Generate Prisma engine binaries on a host with internet access.
 ## Run this ONCE on any machine that can reach binaries.prisma.sh.
 ## After this, commit lib/prisma/ to git.
 build:
-	npm install
-	PRISMA_CLI_BINARY_TARGETS=debian-openssl-3.0.x npx prisma generate --schema=apps/api/prisma/schema.prisma
-	PRISMA_CLI_BINARY_TARGETS=linux-arm64-openssl-3.0.x npx prisma generate --schema=apps/api/prisma/schema.prisma
-	PRISMA_CLI_BINARY_TARGETS=darwin npx prisma generate --schema=apps/api/prisma/schema.prisma
+	npm install --legacy-peer-deps
+	npx prisma generate --schema=apps/api/prisma/schema.prisma
 	mkdir -p lib/prisma
 	cp node_modules/.prisma/client/libquery_engine-*.node lib/prisma/
 	cp node_modules/@prisma/engines/schema-engine-* lib/prisma/
@@ -59,8 +58,7 @@ build:
 ## all Docker images.
 deploy:
 	. $(shell pwd)/.source.prisma && \
-	npm install && \
-	npm install $(NPM_PLATFORM_FLAGS) && \
+	npm install --force --legacy-peer-deps --no-package-lock $(NPM_PLATFORM_FLAGS) && \
 	npx prisma generate --schema=apps/api/prisma/schema.prisma && \
 	docker compose build --no-cache
 	@echo ""
