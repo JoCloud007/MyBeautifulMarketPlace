@@ -63,6 +63,7 @@ deploy:
 	. "$(shell pwd)/.source.prisma" && \
 	npm install --force --legacy-peer-deps --no-package-lock $(NPM_PLATFORM_FLAGS) && \
 	npx prisma generate --schema=apps/api/prisma/schema.prisma && \
+	npm run build -w apps/web && \
 	docker compose build --no-cache
 	@echo ""
 	@echo "✓ Images built. Run 'make run' to start containers."

@@ -2,11 +2,6 @@
 # node_modules/.prisma/ and node_modules/@prisma/client/ from the host
 # because they contain the generated Prisma client with the Linux binary.
 
-# node_modules — installed inside container, not copied from host
-node_modules
-apps/*/node_modules
-packages/*/node_modules
-
 # Git
 .git
 .gitignore

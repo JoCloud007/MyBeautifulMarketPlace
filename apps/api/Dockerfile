@@ -22,11 +22,8 @@ RUN if [ "$NODE_TLS_REJECT_UNAUTHORIZED" = "0" ]; then npm config set strict-ssl
 
 WORKDIR /app
 
-# Copy source code (node_modules is excluded by .dockerignore)
+# Copy full project including node_modules (installed on host before build)
 COPY . .
-
-# Install dependencies inside container for correct architecture
-RUN npm install --legacy-peer-deps
 
 # Rebuild native deps for container architecture
 RUN npm rebuild esbuild

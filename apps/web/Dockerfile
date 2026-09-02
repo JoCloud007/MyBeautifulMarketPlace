@@ -1,41 +1,6 @@
-ARG REPO_URL=""
-ARG IMAGE=node
-ARG TAG=20-alpine
-ARG FULL_IMAGE=${REPO_URL:+$REPO_URL/}${IMAGE}:${TAG}
-FROM ${FULL_IMAGE} AS base
-
-# Optional proxy configuration
-ARG HTTP_PROXY=""
-ARG HTTPS_PROXY=""
-ARG NO_PROXY=""
-ARG NODE_TLS_REJECT_UNAUTHORIZED="1"
-
-ENV HTTP_PROXY=${HTTP_PROXY}
-ENV HTTPS_PROXY=${HTTPS_PROXY}
-ENV NO_PROXY=${NO_PROXY}
-ENV NODE_TLS_REJECT_UNAUTHORIZED=${NODE_TLS_REJECT_UNAUTHORIZED}
-
-# Configure npm proxy if set
-RUN if [ -n "$HTTP_PROXY" ]; then npm config set proxy "$HTTP_PROXY"; fi
-RUN if [ -n "$HTTPS_PROXY" ]; then npm config set https-proxy "$HTTPS_PROXY"; fi
-RUN if [ "$NODE_TLS_REJECT_UNAUTHORIZED" = "0" ]; then npm config set strict-ssl false; fi
-
-WORKDIR /app
-
-# Copy source code (node_modules is excluded by .dockerignore)
-COPY . .
-
-# Install dependencies inside container for correct architecture
-RUN npm install --legacy-peer-deps
-
-# Build shared types
-RUN npx tsc -p packages/shared-types/tsconfig.json
-
-# Build web app — run tsc from project root so node_modules is found
-RUN npx tsc -p apps/web/tsconfig.json --noEmit && cd apps/web && npx vite build
-
+FROM node:20-alpine
 WORKDIR /app/apps/web
-
+COPY apps/web/dist ./dist
+COPY apps/web/server.js .
 EXPOSE 5192
-
 CMD ["node", "server.js"]
