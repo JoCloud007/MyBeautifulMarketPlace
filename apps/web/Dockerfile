@@ -26,7 +26,7 @@ WORKDIR /app
 COPY . .
 
 # Rebuild native deps for container architecture
-RUN rm -rf node_modules/@rollup/rollup-darwin-*
+RUN rm -rf node_modules/@rollup/rollup-darwin-* && npm install --force --no-package-lock
 
 # Build shared types
 RUN npm run build -w packages/shared-types

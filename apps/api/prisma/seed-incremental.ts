@@ -1,4 +1,4 @@
-import { PrismaClient, DependencyType, ComputeType } from '@prisma/client';
+import { PrismaClient, DependencyType, ComputeType, PerformanceTargetType, VisibilityType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -152,6 +152,129 @@ async function main() {
   //     data: { /* new object */ },
   //   });
   // }
+
+  // ── Presentation Orders ─────────────────────────────────────────────
+  await prisma.presentationOrder.upsert({
+    where: { name: 'Default Browse Flow' },
+    update: {},
+    create: {
+      name: 'Default Browse Flow',
+      description: 'Browse by country → zone → product → flavor → continuity',
+      isActive: true,
+      isDefault: true,
+      steps: {
+        create: [
+          { stepType: 'COUNTRY', position: 0, label: 'Country' },
+          { stepType: 'ZONE', position: 1, label: 'Zone' },
+          { stepType: 'PRODUCT', position: 2, label: 'Product' },
+          { stepType: 'FLAVOR', position: 3, label: 'Flavor' },
+          { stepType: 'CONTINUITY', position: 4, label: 'Continuity Level' },
+        ],
+      },
+    },
+  });
+
+  await prisma.presentationOrder.upsert({
+    where: { name: 'Use Case Guided' },
+    update: {},
+    create: {
+      name: 'Use Case Guided',
+      description: 'Start with use case, then narrow down',
+      isActive: true,
+      isDefault: false,
+      steps: {
+        create: [
+          { stepType: 'USE_CASE', position: 0, label: 'Use Case' },
+          { stepType: 'CATEGORY', position: 1, label: 'Category' },
+          { stepType: 'PRODUCT', position: 2, label: 'Product' },
+          { stepType: 'FLAVOR', position: 3, label: 'Flavor' },
+        ],
+      },
+    },
+  });
+  console.log('  🎨 Presentation orders upserted');
+
+  // ── Performance Profiles ────────────────────────────────────────────
+  const perfSeedData = [
+    {
+      name: 'Virtual Machine — Small',
+      targetType: PerformanceTargetType.PRODUCT,
+      targetId: vmProduct.id,
+      overallScore: 72,
+      scoreLabel: 'Good',
+      colorTheme: 'blue',
+      visibility: VisibilityType.SHOW_ALL,
+      metrics: [
+        { name: 'vCPU Performance', value: 65, unit: 'index', comparison: 'vs. Medium', displayOrder: 0 },
+        { name: 'Memory Bandwidth', value: 58, unit: 'GB/s', comparison: 'vs. Medium', displayOrder: 1 },
+        { name: 'Network IOPS', value: 8200, unit: 'IOPS', comparison: 'vs. Medium', displayOrder: 2 },
+      ],
+    },
+    {
+      name: 'Virtual Machine — Medium',
+      targetType: PerformanceTargetType.PRODUCT,
+      targetId: vmProduct.id,
+      overallScore: 85,
+      scoreLabel: 'Very Good',
+      colorTheme: 'green',
+      visibility: VisibilityType.SHOW_ALL,
+      metrics: [
+        { name: 'vCPU Performance', value: 82, unit: 'index', comparison: 'vs. Large', displayOrder: 0 },
+        { name: 'Memory Bandwidth', value: 76, unit: 'GB/s', comparison: 'vs. Large', displayOrder: 1 },
+        { name: 'Network IOPS', value: 12500, unit: 'IOPS', comparison: 'vs. Large', displayOrder: 2 },
+      ],
+    },
+    {
+      name: 'Load Balancer',
+      targetType: PerformanceTargetType.PRODUCT,
+      targetId: loadBalancer.id,
+      overallScore: 88,
+      scoreLabel: 'Very Good',
+      colorTheme: 'green',
+      visibility: VisibilityType.SHOW_ALL,
+      metrics: [
+        { name: 'Throughput', value: 45000, unit: 'req/s', comparison: 'peak', displayOrder: 0 },
+        { name: 'Latency (p99)', value: 8, unit: 'ms', comparison: 'avg', displayOrder: 1 },
+        { name: 'SSL TPS', value: 3200, unit: 'handshakes/s', comparison: 'peak', displayOrder: 2 },
+      ],
+    },
+  ];
+
+  for (const p of perfSeedData) {
+    const existing = await prisma.performanceProfile.findFirst({
+      where: { targetType: p.targetType, targetId: p.targetId },
+    });
+    if (existing) {
+      await prisma.performanceProfile.update({
+        where: { id: existing.id },
+        data: {
+          name: p.name,
+          overallScore: p.overallScore,
+          scoreLabel: p.scoreLabel,
+          colorTheme: p.colorTheme,
+          visibility: p.visibility,
+          metrics: {
+            deleteMany: {},
+            create: p.metrics,
+          },
+        },
+      });
+    } else {
+      await prisma.performanceProfile.create({
+        data: {
+          name: p.name,
+          targetType: p.targetType,
+          targetId: p.targetId,
+          overallScore: p.overallScore,
+          scoreLabel: p.scoreLabel,
+          colorTheme: p.colorTheme,
+          visibility: p.visibility,
+          metrics: { create: p.metrics },
+        },
+      });
+    }
+  }
+  console.log('  🎯 Performance profiles upserted');
 
   console.log('✅ Incremental seed completed — no data was deleted');
 }
