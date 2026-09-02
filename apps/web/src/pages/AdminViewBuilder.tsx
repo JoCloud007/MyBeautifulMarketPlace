@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { usePresentationOrder, useUpdatePresentationSteps } from '@/hooks/useApi';
 import QueryError from '@/components/QueryError';
@@ -46,11 +46,20 @@ export default function AdminViewBuilder() {
   const [localSteps, setLocalSteps] = useState<EditableStep[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
   const [editingRule, setEditingRule] = useState<{ index: number; rule: string } | null>(null);
+  const [initialized, setInitialized] = useState(false);
 
-  // Sync local steps when order loads
-  if (order && localSteps.length === 0 && !hasChanges) {
-    setLocalSteps([...order.steps].sort((a, b) => a.position - b.position));
-  }
+  // Reset initialization guard when navigating to a different order
+  useEffect(() => {
+    setInitialized(false);
+  }, [id]);
+
+  // Sync local steps when order loads (useEffect to avoid infinite renders when steps are empty)
+  useEffect(() => {
+    if (order && !initialized) {
+      setLocalSteps([...order.steps].sort((a, b) => a.position - b.position));
+      setInitialized(true);
+    }
+  }, [order, initialized]);
 
   const addStep = (type: SharedTypes.PresentationStepType) => {
     const paletteItem = stepPalette.find((p) => p.type === type);
@@ -149,6 +158,7 @@ export default function AdminViewBuilder() {
             onClick={() => {
               setLocalSteps([...(order?.steps || [])].sort((a, b) => a.position - b.position));
               setHasChanges(false);
+              setInitialized(false);
             }}
             disabled={!hasChanges}
             className="border-slate-700 text-slate-300 hover:bg-slate-800"

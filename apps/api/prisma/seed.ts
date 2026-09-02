@@ -1,4 +1,4 @@
-import { PrismaClient, DependencyType, ApprovalStatus, LifecyclePhase, InstanceStatus, HealthStatus, MaintenanceStatus, ComputeType } from '@prisma/client';
+import { PrismaClient, DependencyType, ApprovalStatus, LifecyclePhase, InstanceStatus, HealthStatus, MaintenanceStatus, ComputeType, PerformanceTargetType, VisibilityType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -14,6 +14,10 @@ async function main() {
     await prisma.zoneAvailabilityZone.deleteMany();
     await prisma.zone.deleteMany();
     await prisma.forecast.deleteMany();
+    await prisma.presentationStep.deleteMany();
+    await prisma.presentationOrder.deleteMany();
+    await prisma.performanceMetric.deleteMany();
+    await prisma.performanceProfile.deleteMany();
     await prisma.healthCheck.deleteMany();
     await prisma.maintenanceWindow.deleteMany();
     await prisma.instance.deleteMany();
@@ -684,6 +688,116 @@ async function main() {
       status: MaintenanceStatus.SCHEDULED,
     },
   });
+
+  // Create Presentation Orders
+  const defaultOrder = await prisma.presentationOrder.create({
+    data: {
+      name: 'Default Browse Flow',
+      description: 'Browse by country → zone → product → flavor → continuity',
+      isActive: true,
+      isDefault: true,
+      steps: {
+        create: [
+          { stepType: 'COUNTRY', position: 0, label: 'Country' },
+          { stepType: 'ZONE', position: 1, label: 'Zone' },
+          { stepType: 'PRODUCT', position: 2, label: 'Product' },
+          { stepType: 'FLAVOR', position: 3, label: 'Flavor' },
+          { stepType: 'CONTINUITY', position: 4, label: 'Continuity Level' },
+        ],
+      },
+    },
+  });
+
+  const useCaseOrder = await prisma.presentationOrder.create({
+    data: {
+      name: 'Use Case Guided',
+      description: 'Start with use case, then narrow down',
+      isActive: true,
+      isDefault: false,
+      steps: {
+        create: [
+          { stepType: 'USE_CASE', position: 0, label: 'Use Case' },
+          { stepType: 'CATEGORY', position: 1, label: 'Category' },
+          { stepType: 'PRODUCT', position: 2, label: 'Product' },
+          { stepType: 'FLAVOR', position: 3, label: 'Flavor' },
+        ],
+      },
+    },
+  });
+
+  // Create Performance Profiles for Products
+  const perfProfiles = [
+    {
+      name: 'Virtual Machine — Small',
+      targetType: PerformanceTargetType.PRODUCT,
+      targetId: vmProduct.id,
+      overallScore: 72,
+      scoreLabel: 'Good',
+      colorTheme: 'blue',
+      visibility: VisibilityType.SHOW_ALL,
+      metrics: [
+        { name: 'vCPU Performance', value: 65, unit: 'index', comparison: 'vs. Medium', displayOrder: 0 },
+        { name: 'Memory Bandwidth', value: 58, unit: 'GB/s', comparison: 'vs. Medium', displayOrder: 1 },
+        { name: 'Network IOPS', value: 8200, unit: 'IOPS', comparison: 'vs. Medium', displayOrder: 2 },
+      ],
+    },
+    {
+      name: 'Virtual Machine — Medium',
+      targetType: PerformanceTargetType.PRODUCT,
+      targetId: vmProduct.id,
+      overallScore: 85,
+      scoreLabel: 'Very Good',
+      colorTheme: 'green',
+      visibility: VisibilityType.SHOW_ALL,
+      metrics: [
+        { name: 'vCPU Performance', value: 82, unit: 'index', comparison: 'vs. Large', displayOrder: 0 },
+        { name: 'Memory Bandwidth', value: 76, unit: 'GB/s', comparison: 'vs. Large', displayOrder: 1 },
+        { name: 'Network IOPS', value: 12500, unit: 'IOPS', comparison: 'vs. Large', displayOrder: 2 },
+      ],
+    },
+    {
+      name: 'Bare Metal HPC — Large',
+      targetType: PerformanceTargetType.PRODUCT,
+      targetId: bareMetalHpc.id,
+      overallScore: 96,
+      scoreLabel: 'Excellent',
+      colorTheme: 'green',
+      visibility: VisibilityType.SHOW_ALL,
+      metrics: [
+        { name: 'vCPU Performance', value: 96, unit: 'index', comparison: 'vs. XL', displayOrder: 0 },
+        { name: 'Memory Bandwidth', value: 112, unit: 'GB/s', comparison: 'vs. XL', displayOrder: 1 },
+        { name: 'GPU Compute', value: 94, unit: 'TFLOPS', comparison: 'vs. XL', displayOrder: 2 },
+        { name: 'Network IOPS', value: 28500, unit: 'IOPS', comparison: 'vs. XL', displayOrder: 3 },
+      ],
+    },
+    {
+      name: 'Object Storage',
+      targetType: PerformanceTargetType.PRODUCT,
+      targetId: objectStorage.id,
+      overallScore: 78,
+      scoreLabel: 'Good',
+      colorTheme: 'yellow',
+      visibility: VisibilityType.SHOW_ALL,
+      metrics: [
+        { name: 'Read Throughput', value: 3200, unit: 'MB/s', comparison: 'peak', displayOrder: 0 },
+        { name: 'Write Throughput', value: 2100, unit: 'MB/s', comparison: 'peak', displayOrder: 1 },
+        { name: 'Latency (p99)', value: 12, unit: 'ms', comparison: 'avg', displayOrder: 2 },
+      ],
+    },
+  ];
+
+  for (const profile of perfProfiles) {
+    const { metrics, ...profileData } = profile;
+    const created = await prisma.performanceProfile.create({
+      data: {
+        ...profileData,
+        metrics: { create: metrics },
+      },
+    });
+    console.log(`  🎯 Performance profile created: ${created.name} (${created.overallScore})`);
+  }
+
+  console.log(`  🎨 Presentation orders created: ${defaultOrder.name}, ${useCaseOrder.name}`);
 
   console.log('✅ Seed completed successfully');
 }
