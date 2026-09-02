@@ -47,7 +47,7 @@ clean:
 ## After this, commit lib/prisma/ to git.
 build:
 	npm install --legacy-peer-deps
-	npx prisma generate --schema=apps/api/prisma/schema.prisma
+	PRISMA_CLI_BINARY_TARGETS=darwin,debian-openssl-3.0.x,linux-arm64-openssl-3.0.x npx prisma generate --schema=apps/api/prisma/schema.prisma
 	mkdir -p lib/prisma
 	cp node_modules/.prisma/client/libquery_engine-*.node lib/prisma/
 	cp node_modules/@prisma/engines/schema-engine-* lib/prisma/
@@ -61,7 +61,7 @@ build:
 ## all Docker images.
 deploy:
 	. "$(shell pwd)/.source.prisma" && \
-	npm install --force --legacy-peer-deps --no-package-lock $(NPM_PLATFORM_FLAGS) && \
+	if [ ! -d node_modules ]; then npm install --force --legacy-peer-deps --no-package-lock $(NPM_PLATFORM_FLAGS); fi && \
 	npx prisma generate --schema=apps/api/prisma/schema.prisma && \
 	npm run build -w apps/web && \
 	docker compose build --no-cache
