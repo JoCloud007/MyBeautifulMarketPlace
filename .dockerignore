@@ -22,12 +22,13 @@ Thumbs.db
 **/*.test.tsx
 **/__tests__
 
-# Build outputs (will be rebuilt inside container)
-# WARNING: do not use **/dist — it would exclude node_modules/*/dist/
-apps/*/dist
-packages/*/dist
-apps/*/build
-packages/*/build
+# Build outputs (built on host for air-gap, copied into containers)
+# NOTE: we used to exclude these when building inside containers.
+# Now builds run on the host, so dist/ must be in the build context.
+# apps/*/dist
+# packages/*/dist
+# apps/*/build
+# packages/*/build
 
 # Logs
 *.log
