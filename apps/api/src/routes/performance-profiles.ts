@@ -132,8 +132,8 @@ router.patch('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Performance profile not found' });
     }
 
-    // Check unique constraint if targetType or targetId changed
-    if (data.targetType || data.targetId) {
+    // Check unique constraint if targetType, targetId, or name changed
+    if (data.targetType || data.targetId || data.name) {
       const newTargetType = data.targetType ?? existing.targetType;
       const newTargetId = data.targetId ?? existing.targetId;
       const conflict = await prisma.performanceProfile.findUnique({
