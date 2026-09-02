@@ -22,8 +22,11 @@ RUN if [ "$NODE_TLS_REJECT_UNAUTHORIZED" = "0" ]; then npm config set strict-ssl
 
 WORKDIR /app
 
-# Copy full project including node_modules (installed on host before build)
+# Copy source code (node_modules is excluded by .dockerignore)
 COPY . .
+
+# Install dependencies inside container for correct architecture
+RUN npm install --force --legacy-peer-deps
 
 # Rebuild native deps for container architecture
 RUN npm rebuild esbuild
@@ -64,4 +67,4 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
 
 EXPOSE 3001
 
-CMD ["npx", "tsx", "watch", "src/index.ts"]
+CMD ["npx", "tsx", "src/index.ts"]

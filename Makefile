@@ -35,9 +35,12 @@ help:
 ## NOTE: Docker volumes (including postgres_data) are PRESERVED.
 ## Use `docker compose down -v` manually if you really want to wipe the DB.
 clean:
-	rm -rf node_modules apps/*/node_modules packages/*/node_modules
-	rm -rf apps/web/dist packages/shared-types/dist
-	docker compose down --rmi all
+	# Move-then-delete avoids "Directory not empty" when a process holds the dir open
+	-mv node_modules node_modules.old.$$$$ 2>/dev/null && rm -rf node_modules.old.$$$$ 2>/dev/null || true
+	-find apps -type d -name node_modules -exec sh -c 'mv "$$1" "$$1.old.$$$$"; rm -rf "$$1.old.$$$$"' _ {} \; 2>/dev/null || true
+	-find packages -type d -name node_modules -exec sh -c 'mv "$$1" "$$1.old.$$$$"; rm -rf "$$1.old.$$$$"' _ {} \; 2>/dev/null || true
+	rm -rf apps/web/dist packages/shared-types/dist 2>/dev/null || true
+	docker compose down --rmi all 2>/dev/null || true
 
 ## Build — Generate Prisma engine binaries on a host with internet access.
 ## Run this ONCE on any machine that can reach binaries.prisma.sh.
@@ -57,7 +60,7 @@ build:
 ## dependencies, regenerates Prisma client from local binaries, and builds
 ## all Docker images.
 deploy:
-	. $(shell pwd)/.source.prisma && \
+	. "$(shell pwd)/.source.prisma" && \
 	npm install --force --legacy-peer-deps --no-package-lock $(NPM_PLATFORM_FLAGS) && \
 	npx prisma generate --schema=apps/api/prisma/schema.prisma && \
 	docker compose build --no-cache

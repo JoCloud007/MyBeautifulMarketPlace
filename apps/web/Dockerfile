@@ -22,11 +22,11 @@ RUN if [ "$NODE_TLS_REJECT_UNAUTHORIZED" = "0" ]; then npm config set strict-ssl
 
 WORKDIR /app
 
-# Copy full project including node_modules (installed on host before build)
+# Copy source code (node_modules is excluded by .dockerignore)
 COPY . .
 
-# Rebuild native deps for container architecture
-RUN rm -rf node_modules/@rollup/rollup-darwin-* && npm install --force --no-package-lock
+# Install dependencies inside container for correct architecture
+RUN npm install --force --legacy-peer-deps
 
 # Build shared types
 RUN npm run build -w packages/shared-types
