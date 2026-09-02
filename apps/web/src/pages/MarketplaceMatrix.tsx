@@ -284,6 +284,15 @@ export default function MarketplaceMatrix() {
           for (const z of zones) {
             for (const za of z.availabilityZones || []) {
               const a = za.availabilityZone;
+              if (!showEmptyCols && products) {
+                const hasData = products.some(p =>
+                  p.variants?.some(v =>
+                    v.zones?.some((vz: any) => vz.zoneId === z.id || vz.id === z.id) &&
+                    v.availabilityZones?.some((va: any) => va.availabilityZoneId === a.id || va.id === a.id)
+                  )
+                );
+                if (!hasData) continue;
+              }
               cols.push({ id: `${z.id}|${a.id}`, label: z.name, group: a.code });
             }
           }
