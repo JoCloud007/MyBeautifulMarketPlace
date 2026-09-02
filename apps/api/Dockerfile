@@ -26,13 +26,13 @@ WORKDIR /app
 COPY . .
 
 # Install dependencies inside container for correct architecture
-RUN npm install --force --legacy-peer-deps
+RUN npm install --legacy-peer-deps
 
 # Rebuild native deps for container architecture
 RUN npm rebuild esbuild
 
 # Build shared types
-RUN npm run build -w packages/shared-types
+RUN npx tsc -p packages/shared-types/tsconfig.json
 
 WORKDIR /app/apps/api
 

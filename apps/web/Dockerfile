@@ -26,10 +26,10 @@ WORKDIR /app
 COPY . .
 
 # Install dependencies inside container for correct architecture
-RUN npm install --force --legacy-peer-deps
+RUN npm install --legacy-peer-deps
 
 # Build shared types
-RUN npm run build -w packages/shared-types
+RUN npx tsc -p packages/shared-types/tsconfig.json
 
 # Build web app — run tsc from project root so node_modules is found
 RUN npx tsc -p apps/web/tsconfig.json --noEmit && cd apps/web && npx vite build
