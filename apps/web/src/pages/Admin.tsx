@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   useAdminDashboard,
   useAdminProducts,
@@ -100,6 +100,7 @@ import {
   ChevronRight,
   Box,
   LayoutList,
+  Globe,
 } from 'lucide-react';
 import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType } from '@cloudmarket/shared-types';
 import { PerformanceTargetType, VisibilityType } from '@cloudmarket/shared-types';
@@ -2013,6 +2014,173 @@ function AvailabilityZonesSection() {
 }
 
 // ============ ZONES SECTION ============
+function RegionsSection() {
+  const { data: azs, isLoading, isError, refetch } = useAvailabilityZones();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [expandedRegion, setExpandedRegion] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingRegion, setEditingRegion] = useState<string>('');
+  const [editName, setEditName] = useState('');
+  const [editSlug, setEditSlug] = useState('');
+
+  const [customNames, setCustomNames] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('cloudmarket_region_names') || '{}'); }
+    catch { return {}; }
+  });
+
+  const [customSlugs, setCustomSlugs] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('cloudmarket_region_slugs') || '{}'); }
+    catch { return {}; }
+  });
+
+  const saveCustomName = (code: string, name: string) => {
+    const next = { ...customNames, [code]: name };
+    setCustomNames(next);
+    localStorage.setItem('cloudmarket_region_names', JSON.stringify(next));
+  };
+
+  const saveCustomSlug = (code: string, slug: string) => {
+    const next = { ...customSlugs, [code]: slug };
+    setCustomSlugs(next);
+    localStorage.setItem('cloudmarket_region_slugs', JSON.stringify(next));
+  };
+
+  const getRegionCode = (az: AvailabilityZone) => az.region || 'unknown';
+
+  const apiRegionToDisplay: Record<string, string> = {
+    'eu-west': 'Europe',
+    'us-east': 'North America',
+    'ap-south': 'Asia-Pacific',
+  };
+
+  const getDisplayName = (code: string) => customNames[code] || apiRegionToDisplay[code] || code;
+
+  const regions = useMemo(() => {
+    const map = new Map<string, { code: string; azs: AvailabilityZone[] }>();
+    azs?.forEach((az) => {
+      const code = getRegionCode(az);
+      const name = getDisplayName(code);
+      if (!map.has(name)) map.set(name, { code, azs: [] });
+      map.get(name)!.azs.push(az);
+    });
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [azs, customNames]);
+
+  const filtered = regions.filter(([name]) =>
+    name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const openEdit = (name: string, code: string) => {
+    setEditingRegion(code);
+    setEditName(customNames[code] || apiRegionToDisplay[code] || code);
+    setEditSlug(customSlugs[code] || code);
+    setEditOpen(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (editingRegion && editName.trim()) {
+      saveCustomName(editingRegion, editName.trim());
+    }
+    if (editingRegion && editSlug.trim()) {
+      saveCustomSlug(editingRegion, editSlug.trim());
+    }
+    setEditOpen(false);
+  };
+
+  if (isError) return <QueryError message="Unable to load regions." onRetry={refetch} />;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <Input placeholder="Search region..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]" />
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-32 rounded-lg bg-slate-800 animate-pulse-soft" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <Card className="bg-slate-900 border-slate-800">
+          <CardContent className="p-12 text-center">
+            <p className="text-slate-500">No regions found.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filtered.map(([regionName, { code, azs: regionAZs }]) => (
+            <Card key={regionName} className="bg-slate-900 border-slate-800 transition-all hover:border-slate-700">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <Globe className="h-4 w-4 text-blue-400" />
+                    {regionName}
+                    <span className="text-xs text-slate-500 font-normal">({customSlugs[code] || code})</span>
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="border-blue-500/20 text-blue-400">
+                      {regionAZs.length} AZ{regionAZs.length > 1 ? 's' : ''}
+                    </Badge>
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(regionName, code)} className="h-7 w-7 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <button
+                  onClick={() => setExpandedRegion(expandedRegion === regionName ? null : regionName)}
+                  className="text-xs text-slate-400 hover:text-blue-400 transition-colors flex items-center gap-1"
+                >
+                  <ChevronRight className={`h-3 w-3 transition-transform ${expandedRegion === regionName ? 'rotate-90' : ''}`} />
+                  {expandedRegion === regionName ? 'Hide AZs' : 'Show AZs'}
+                </button>
+                {expandedRegion === regionName && (
+                  <div className="mt-3 space-y-1.5">
+                    {regionAZs.map((az) => (
+                      <div key={az.id} className="flex items-center justify-between text-sm">
+                        <span className="text-slate-300">{az.name} <span className="text-slate-500">({az.code})</span></span>
+                        <Badge variant="outline" className={az.isActive ? 'border-emerald-500/20 text-emerald-500 text-[10px]' : 'border-slate-600 text-slate-500 text-[10px]'}>
+                          {az.isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-sm">
+          <DialogHeader><DialogTitle className="text-white">Edit Region Name</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Display Name</label>
+              <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Slug</label>
+              <Input value={editSlug} onChange={(e) => setEditSlug(e.target.value)} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+            </div>
+            <p className="text-xs text-slate-500">API Code: {editingRegion}</p>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button type="button" variant="outline" onClick={() => setEditOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+            <Button type="button" onClick={handleSaveEdit} className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function ZonesSection() {
   const { data: zones, isLoading, isError, refetch } = useZones();
   const { data: allAZs } = useAvailabilityZones();
@@ -2634,7 +2802,6 @@ export default function Admin() {
     { value: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { value: 'os', label: 'OS', icon: Monitor },
     { value: 'products', label: 'Products', icon: Package },
-    { value: 'os', label: 'OS', icon: Monitor },
     { value: 'categories', label: 'Categories', icon: Layers },
     { value: 'flavors', label: 'Flavors', icon: Cpu },
     { value: 'dependencies', label: 'Dependencies', icon: Link2 },
@@ -2642,6 +2809,7 @@ export default function Admin() {
     { value: 'continuity-levels', label: 'Continuity', icon: TrendingUp },
     { value: 'forecasts', label: 'Forecasts', icon: Activity },
     { value: 'users', label: 'Users', icon: UserCog },
+    { value: 'regions', label: 'Regions', icon: Globe },
     { value: 'zones', label: 'Zones', icon: Box },
     { value: 'availability-zones', label: 'Availability Zones', icon: MapPin },
     { value: 'performance-profiles', label: 'Performance', icon: BarChart3 },
@@ -2656,7 +2824,7 @@ export default function Admin() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-slate-900 border border-slate-800 flex-wrap h-auto gap-1 p-1">
+        <TabsList className="bg-slate-900 border border-slate-800 flex-wrap h-auto gap-1 p-1 justify-center w-full">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -2683,6 +2851,7 @@ export default function Admin() {
         <TabsContent value="continuity-levels" className="animate-fade-in"><ContinuityLevelsSection /></TabsContent>
         <TabsContent value="forecasts" className="animate-fade-in"><ForecastsAdminSection /></TabsContent>
         <TabsContent value="users" className="animate-fade-in"><UsersSection /></TabsContent>
+        <TabsContent value="regions" className="animate-fade-in"><RegionsSection /></TabsContent>
         <TabsContent value="zones" className="animate-fade-in"><ZonesSection /></TabsContent>
         <TabsContent value="availability-zones" className="animate-fade-in"><AvailabilityZonesSection /></TabsContent>
         <TabsContent value="performance-profiles" className="animate-fade-in"><PerformanceProfilesSection /></TabsContent>

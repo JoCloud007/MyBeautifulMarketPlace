@@ -21,25 +21,32 @@ import {
 } from 'lucide-react';
 import type { AvailabilityZone } from '@cloudmarket/shared-types';
 
-const regions = ['All', 'Europe', 'North America', 'Asia-Pacific'];
-
-const regionColors: Record<string, string> = {
-  Europe: '#3b82f6',
-  'North America': '#10b981',
-  'Asia-Pacific': '#f59e0b',
-};
-
-const apiRegionToDisplay: Record<string, string> = {
+const defaultRegionNames: Record<string, string> = {
   'eu-west': 'Europe',
   'us-east': 'North America',
   'ap-south': 'Asia-Pacific',
 };
 
-const displayRegionToApi: Record<string, string[]> = {
-  'Europe': ['eu-west'],
-  'North America': ['us-east'],
-  'Asia-Pacific': ['ap-south'],
+function getRegionNames(): Record<string, string> {
+  try {
+    const saved = JSON.parse(localStorage.getItem('cloudmarket_region_names') || '{}');
+    return { ...defaultRegionNames, ...saved };
+  } catch {
+    return defaultRegionNames;
+  }
+}
+
+const defaultColors: Record<string, string> = {
+  'eu-west': '#3b82f6',
+  'us-east': '#10b981',
+  'ap-south': '#f59e0b',
 };
+
+function getRegionColor(name: string, regionNames: Record<string, string>): string {
+  const entry = Object.entries(regionNames).find(([, n]) => n === name);
+  if (entry) return defaultColors[entry[0]] || '#64748b';
+  return '#64748b';
+}
 
 function AnimatedSection({ children, className, delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
   const { ref, isVisible } = useScrollReveal<HTMLDivElement>();
@@ -59,13 +66,20 @@ export default function AvailabilityZonesPage() {
   const [selectedRegion, setSelectedRegion] = useState('All');
   const [selectedZone, setSelectedZone] = useState<AvailabilityZone | null>(null);
 
+  const regionNames = useMemo(() => getRegionNames(), []);
+  const regions = useMemo(() => ['All', ...Object.values(regionNames)], [regionNames]);
+  const displayRegionToApi = useMemo(() =>
+    Object.fromEntries(Object.entries(regionNames).map(([code, name]) => [name, [code]])),
+    [regionNames]
+  );
+
   const filteredZones = useMemo(() => {
     if (!zones) return [];
     if (selectedRegion === 'All') return zones;
     const apiRegions = displayRegionToApi[selectedRegion];
     if (!apiRegions) return [];
     return zones.filter((z) => apiRegions.includes(z.region));
-  }, [zones, selectedRegion]);
+  }, [zones, selectedRegion, displayRegionToApi]);
 
   const activeCount = useMemo(() => filteredZones.filter((z) => z.isActive).length, [filteredZones]);
 
@@ -253,7 +267,7 @@ export default function AvailabilityZonesPage() {
                         <Badge
                           variant="outline"
                           className="text-xs"
-                          style={{ borderColor: regionColors[apiRegionToDisplay[selectedZone.region] || selectedZone.region] || '#64748b', color: regionColors[apiRegionToDisplay[selectedZone.region] || selectedZone.region] || '#64748b' }}
+                          style={{ borderColor: getRegionColor(regionNames[selectedZone.region] || selectedZone.region, regionNames), color: getRegionColor(regionNames[selectedZone.region] || selectedZone.region, regionNames) }}
                         >
                           {selectedZone.region}
                         </Badge>
@@ -334,7 +348,7 @@ export default function AvailabilityZonesPage() {
                       <Badge
                         variant="outline"
                         className="text-[10px]"
-                        style={{ borderColor: regionColors[apiRegionToDisplay[zone.region] || zone.region] || '#64748b', color: regionColors[apiRegionToDisplay[zone.region] || zone.region] || '#64748b' }}
+                        style={{ borderColor: getRegionColor(regionNames[zone.region] || zone.region, regionNames), color: getRegionColor(regionNames[zone.region] || zone.region, regionNames) }}
                       >
                         {zone.region}
                       </Badge>
