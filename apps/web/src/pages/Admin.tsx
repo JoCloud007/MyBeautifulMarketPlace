@@ -2072,7 +2072,7 @@ function RegionsSection() {
 
   const openEdit = (name: string, code: string) => {
     setEditingRegion(code);
-    setEditName(customNames[code] || apiRegionToDisplay[code] || code);
+    setEditName(customNames[code] || name || apiRegionToDisplay[code] || code);
     setEditSlug(customSlugs[code] || code);
     setEditOpen(true);
   };

@@ -1,19 +1,12 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { BarChart3, Table, Filter, Download, Search, ChevronDown, Save, Trash2 } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import { useProducts, useZones, useAvailabilityZones } from '@/hooks/useApi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import QueryError from '@/components/QueryError';
-import type { ProductVariant, AvailabilityZone } from '@cloudmarket/shared-types';
+import type { Product, ProductVariant, AvailabilityZone } from '@cloudmarket/shared-types';
 
 /* ── Region name helper ────────────────────────────────────────── */
 
