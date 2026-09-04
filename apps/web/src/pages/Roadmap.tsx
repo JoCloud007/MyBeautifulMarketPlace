@@ -32,6 +32,12 @@ function getFamilyLabel(family: string | null) {
   return familyConfig[family || ''] || { label: family || 'OTHER', color: 'text-slate-400', bg: 'bg-slate-500/10 border-slate-500/30' };
 }
 
+const defaultPhaseConfig = { label: 'Unknown', color: 'text-slate-400', bg: 'bg-slate-500', border: 'border-slate-500/30' };
+
+function getPhaseConfig(phase: LifecyclePhase | string | undefined) {
+  return phaseConfig[phase as LifecyclePhase] ?? defaultPhaseConfig;
+}
+
 /* ── Axis config ───────────────────────────────────────────────── */
 
 type Axis = 'FAMILY' | 'OS' | 'PHASE' | 'VERSION';
@@ -150,7 +156,7 @@ function GanttBar({ version, yearStart, yearEnd }: { version: OsVersion; yearSta
   const normalPct = toPct(normalEnd);
   const extendedPct = toPct(extendedEnd);
   const eolPct = toPct(eolDate);
-  const phaseCfg = phaseConfig[version.phase];
+  const phaseCfg = getPhaseConfig(version.phase);
 
   return (
     <div className="flex-1 h-4 relative rounded overflow-hidden bg-slate-800">
@@ -212,7 +218,7 @@ function getAxisValue(os: OperatingSystem, version: OsVersion, axis: Axis): { id
     case 'OS':
       return { id: os.id, label: os.name };
     case 'PHASE':
-      return { id: version.phase, label: phaseConfig[version.phase].label };
+      return { id: version.phase, label: getPhaseConfig(version.phase).label };
     case 'VERSION':
       return { id: version.id, label: version.version };
   }
@@ -307,7 +313,7 @@ function TreeNodeRow({
           </span>
         )}
         {node.axis === 'PHASE' && (
-          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${phaseConfig[node.label as LifecyclePhase]?.color || 'text-slate-400'} ${phaseConfig[node.label as LifecyclePhase]?.border || 'border-slate-500/30'}`}>
+          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${getPhaseConfig(node.label).color} ${getPhaseConfig(node.label).border}`}>
             {node.label}
           </span>
         )}
@@ -337,7 +343,7 @@ function TreeNodeRow({
 /* ── Version Row ───────────────────────────────────────────────── */
 
 function VersionRow({ version, yearStart, yearEnd }: { version: OsVersion; yearStart: number; yearEnd: number }) {
-  const phase = phaseConfig[version.phase];
+  const phase = getPhaseConfig(version.phase);
   return (
     <div className="flex items-center gap-3 h-7">
       <div className="w-[240px] flex items-center gap-2 shrink-0">
@@ -393,7 +399,7 @@ function FlatTable({
       {rows.map((row, idx) => (
         <div key={row.version.id + idx} className="flex items-center gap-3 h-7">
           <div className="w-[240px] flex items-center gap-2 shrink-0 overflow-hidden">
-            <span className={`inline-block w-1.5 h-1.5 rounded-full ${phaseConfig[row.version.phase].bg}`} />
+            <span className={`inline-block w-1.5 h-1.5 rounded-full ${getPhaseConfig(row.version.phase).bg}`} />
             <span className="text-xs text-slate-300 font-medium truncate">
               {axes.length === 0 ? row.version.version : row.labels.map((l) => l.label).join(' / ')}
             </span>
