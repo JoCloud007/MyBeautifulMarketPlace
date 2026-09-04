@@ -1,12 +1,16 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useOperatingSystems } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
-import { Filter, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  Filter, ChevronDown, ChevronRight, BarChart3, Table,
+} from 'lucide-react';
 import type { OsVersion, LifecyclePhase, OperatingSystem } from '@cloudmarket/shared-types';
+
+/* ── Phase config ──────────────────────────────────────────────── */
 
 const phaseConfig: Record<LifecyclePhase, { label: string; color: string; bg: string; border: string }> = {
   RELEASED: { label: 'Released', color: 'text-emerald-400', bg: 'bg-emerald-500', border: 'border-emerald-500/30' },
@@ -28,6 +32,28 @@ function getFamilyLabel(family: string | null) {
   return familyConfig[family || ''] || { label: family || 'OTHER', color: 'text-slate-400', bg: 'bg-slate-500/10 border-slate-500/30' };
 }
 
+/* ── Axis config ───────────────────────────────────────────────── */
+
+type Axis = 'FAMILY' | 'OS' | 'PHASE' | 'VERSION';
+
+const axisLabels: Record<Axis, string> = {
+  FAMILY: 'Family',
+  OS: 'OS',
+  PHASE: 'Phase',
+  VERSION: 'Version',
+};
+
+const axisOptions: { value: Axis; label: string }[] = [
+  { value: 'FAMILY', label: 'Family' },
+  { value: 'OS', label: 'OS' },
+  { value: 'PHASE', label: 'Phase' },
+  { value: 'VERSION', label: 'Version' },
+];
+
+type ViewMode = 'grouped' | 'flat';
+
+/* ── AnimatedSection ───────────────────────────────────────────── */
+
 function AnimatedSection({ children, className, delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
   const { ref, isVisible } = useScrollReveal<HTMLDivElement>();
   return (
@@ -41,10 +67,75 @@ function AnimatedSection({ children, className, delay = 0 }: { children: React.R
   );
 }
 
+/* ── PickUpList (reused from Matrix) ───────────────────────────── */
+
+function PickUpList<T extends string>({
+  options,
+  value,
+  onChange,
+  color = 'slate',
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+  color?: 'slate' | 'blue' | 'purple';
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const colorMap = {
+    slate: { btn: 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' },
+    blue: { btn: 'bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20' },
+    purple: { btn: 'bg-purple-500/10 border-purple-500/30 text-purple-400 hover:bg-purple-500/20' },
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        className={`flex items-center gap-1 px-2.5 py-1 rounded-md border text-xs font-medium transition-all ${colorMap[color].btn}`}
+      >
+        {options.find((o) => o.value === value)?.label || value}
+        <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="absolute z-50 mt-1 min-w-[120px] rounded-md border border-slate-700 bg-slate-900 shadow-lg py-1">
+          {options.map((opt) => (
+            <button
+              type="button"
+              key={opt.value}
+              onClick={() => {
+                onChange(opt.value);
+                setIsOpen(false);
+              }}
+              className={`block w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                opt.value === value ? 'bg-blue-500/10 text-blue-400' : 'text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Gantt Bar ─────────────────────────────────────────────────── */
 
 function GanttBar({ version, yearStart, yearEnd }: { version: OsVersion; yearStart: number; yearEnd: number }) {
-  const totalYears = yearEnd - yearStart;
+  const totalYears = yearEnd - yearStart + 1;
   const releaseDate = new Date(version.releaseDate);
   const normalEnd = new Date(version.normalSupportEnd);
   const extendedEnd = new Date(version.extendedSupportEnd);
@@ -59,32 +150,26 @@ function GanttBar({ version, yearStart, yearEnd }: { version: OsVersion; yearSta
   const normalPct = toPct(normalEnd);
   const extendedPct = toPct(extendedEnd);
   const eolPct = toPct(eolDate);
-
   const phaseCfg = phaseConfig[version.phase];
 
   return (
     <div className="flex-1 h-4 relative rounded overflow-hidden bg-slate-800">
-      {/* Released → Normal Support */}
       <div
         className="absolute top-0 h-full bg-emerald-500/60"
         style={{ left: `${releasePct}%`, width: `${Math.max(0, normalPct - releasePct)}%` }}
       />
-      {/* Normal Support → Extended Support */}
       <div
         className="absolute top-0 h-full bg-blue-500/60"
         style={{ left: `${normalPct}%`, width: `${Math.max(0, extendedPct - normalPct)}%` }}
       />
-      {/* Extended Support → EOL */}
       <div
         className="absolute top-0 h-full bg-amber-500/60"
         style={{ left: `${extendedPct}%`, width: `${Math.max(0, eolPct - extendedPct)}%` }}
       />
-      {/* Current phase indicator */}
       <div
         className={`absolute top-0 h-full ${phaseCfg.bg} opacity-80`}
         style={{ left: `${releasePct}%`, width: `${Math.max(0, eolPct - releasePct)}%` }}
       />
-      {/* Phase marker */}
       <div
         className={`absolute top-0 h-full w-0.5 ${phaseCfg.bg}`}
         style={{ left: `${toPct(new Date())}%` }}
@@ -110,6 +195,145 @@ function YearAxis({ yearStart, yearEnd }: { yearStart: number; yearEnd: number }
   );
 }
 
+/* ── Tree helpers ──────────────────────────────────────────────── */
+
+interface TreeNode {
+  id: string;
+  label: string;
+  axis: Axis;
+  children: TreeNode[];
+  versions: OsVersion[];
+}
+
+function getAxisValue(os: OperatingSystem, version: OsVersion, axis: Axis): { id: string; label: string } {
+  switch (axis) {
+    case 'FAMILY':
+      return { id: os.family || 'OTHER', label: getFamilyLabel(os.family).label };
+    case 'OS':
+      return { id: os.id, label: os.name };
+    case 'PHASE':
+      return { id: version.phase, label: phaseConfig[version.phase].label };
+    case 'VERSION':
+      return { id: version.id, label: version.version };
+  }
+}
+
+function buildTree(osList: OperatingSystem[], axes: Axis[]): TreeNode[] {
+  if (axes.length === 0) return [];
+
+  const root: Map<string, TreeNode> = new Map();
+
+  for (const os of osList) {
+    for (const version of os.versions || []) {
+      let currentLevel = root;
+      let path = '';
+
+      for (let i = 0; i < axes.length; i++) {
+        const axis = axes[i];
+        const { id, label } = getAxisValue(os, version, axis);
+        path = path ? `${path}|${id}` : id;
+
+        if (!currentLevel.has(path)) {
+          currentLevel.set(path, {
+            id: path,
+            label,
+            axis,
+            children: [],
+            versions: [],
+          });
+        }
+
+        const node = currentLevel.get(path)!;
+
+        if (i === axes.length - 1) {
+          node.versions.push(version);
+        } else {
+          // Next level uses children map
+          if (!node.childrenMap) {
+            (node as any).childrenMap = new Map<string, TreeNode>();
+          }
+          currentLevel = (node as any).childrenMap;
+        }
+      }
+    }
+  }
+
+  // Convert nested maps to arrays recursively
+  function mapToArray(levelMap: Map<string, TreeNode>): TreeNode[] {
+    return Array.from(levelMap.values()).map((node) => ({
+      ...node,
+      children: (node as any).childrenMap ? mapToArray((node as any).childrenMap) : [],
+    }));
+  }
+
+  return mapToArray(root);
+}
+
+/* ── Grouped Tree Node ─────────────────────────────────────────── */
+
+function TreeNodeRow({
+  node,
+  yearStart,
+  yearEnd,
+  depth = 0,
+}: {
+  node: TreeNode;
+  yearStart: number;
+  yearEnd: number;
+  depth?: number;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const hasChildren = node.children.length > 0;
+  const isLeaf = !hasChildren && node.versions.length > 0;
+
+  return (
+    <div className={depth > 0 ? 'ml-4' : ''}>
+      <button
+        onClick={() => hasChildren && setExpanded(!expanded)}
+        className="flex items-center gap-2 mb-2 text-left group w-full"
+      >
+        {hasChildren && (
+          expanded
+            ? <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
+            : <ChevronRight className="h-3.5 w-3.5 text-slate-500" />
+        )}
+        {!hasChildren && <span className="w-3.5" />}
+        <span className="text-sm font-medium text-slate-200 group-hover:text-cyan-400 transition-colors">
+          {node.label}
+        </span>
+        {node.axis === 'FAMILY' && (
+          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${getFamilyLabel(node.label).color} ${getFamilyLabel(node.label).bg}`}>
+            {node.label}
+          </span>
+        )}
+        {node.axis === 'PHASE' && (
+          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${phaseConfig[node.label as LifecyclePhase]?.color || 'text-slate-400'} ${phaseConfig[node.label as LifecyclePhase]?.border || 'border-slate-500/30'}`}>
+            {node.label}
+          </span>
+        )}
+        {node.versions.length > 0 && (
+          <Badge variant="outline" className="text-[10px] h-5">{node.versions.length} version{node.versions.length > 1 ? 's' : ''}</Badge>
+        )}
+      </button>
+
+      {expanded && (
+        <div>
+          {node.children.map((child) => (
+            <TreeNodeRow key={child.id} node={child} yearStart={yearStart} yearEnd={yearEnd} depth={depth + 1} />
+          ))}
+          {isLeaf && (
+            <div className="ml-5 space-y-1">
+              {node.versions.map((version) => (
+                <VersionRow key={version.id} version={version} yearStart={yearStart} yearEnd={yearEnd} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Version Row ───────────────────────────────────────────────── */
 
 function VersionRow({ version, yearStart, yearEnd }: { version: OsVersion; yearStart: number; yearEnd: number }) {
@@ -128,63 +352,55 @@ function VersionRow({ version, yearStart, yearEnd }: { version: OsVersion; yearS
   );
 }
 
-/* ── OS Section ────────────────────────────────────────────────── */
+/* ── Flat Row ──────────────────────────────────────────────────── */
 
-function OSSection({ os, yearStart, yearEnd }: { os: OperatingSystem; yearStart: number; yearEnd: number }) {
-  const [expanded, setExpanded] = useState(true);
-  const versions = os.versions || [];
-
-  if (versions.length === 0) return null;
-
-  return (
-    <div className="mb-4">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 mb-2 text-left group w-full"
-      >
-        {expanded ? <ChevronDown className="h-3.5 w-3.5 text-slate-500" /> : <ChevronRight className="h-3.5 w-3.5 text-slate-500" />}
-        <h4 className="text-sm font-medium text-slate-200 group-hover:text-cyan-400 transition-colors">{os.name}</h4>
-        <Badge variant="outline" className="text-[10px] h-5">{versions.length} versions</Badge>
-      </button>
-
-      {expanded && (
-        <div className="ml-5 space-y-1">
-          {versions.map((version) => (
-            <VersionRow key={version.id} version={version} yearStart={yearStart} yearEnd={yearEnd} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+interface FlatRow {
+  version: OsVersion;
+  os: OperatingSystem;
+  labels: { axis: Axis; label: string }[];
 }
 
-/* ── Family Section ────────────────────────────────────────────── */
+function buildFlatRows(osList: OperatingSystem[], axes: Axis[]): FlatRow[] {
+  const rows: FlatRow[] = [];
+  for (const os of osList) {
+    for (const version of os.versions || []) {
+      rows.push({
+        version,
+        os,
+        labels: axes.map((axis) => ({
+          axis,
+          label: getAxisValue(os, version, axis).label,
+        })),
+      });
+    }
+  }
+  return rows.sort((a, b) => new Date(a.version.releaseDate).getTime() - new Date(b.version.releaseDate).getTime());
+}
 
-function FamilySection({ family, osList, yearStart, yearEnd }: { family: string; osList: OperatingSystem[]; yearStart: number; yearEnd: number }) {
-  const [expanded, setExpanded] = useState(true);
-  const totalVersions = osList.reduce((sum, os) => sum + (os.versions?.length || 0), 0);
-  const famCfg = getFamilyLabel(family);
-
+function FlatTable({
+  rows,
+  axes,
+  yearStart,
+  yearEnd,
+}: {
+  rows: FlatRow[];
+  axes: Axis[];
+  yearStart: number;
+  yearEnd: number;
+}) {
   return (
-    <div className="mb-6">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 mb-3 text-left group w-full"
-      >
-        {expanded ? <ChevronDown className="h-4 w-4 text-cyan-500" /> : <ChevronRight className="h-4 w-4 text-cyan-500" />}
-        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${famCfg.color} ${famCfg.bg}`}>
-          {famCfg.label}
-        </span>
-        <span className="text-[11px] text-slate-500">{osList.length} OS{osList.length > 1 ? 'es' : ''} · {totalVersions} version{totalVersions > 1 ? 's' : ''}</span>
-      </button>
-
-      {expanded && (
-        <div className="ml-4">
-          {osList.map((os) => (
-            <OSSection key={os.id} os={os} yearStart={yearStart} yearEnd={yearEnd} />
-          ))}
+    <div className="space-y-1">
+      {rows.map((row, idx) => (
+        <div key={row.version.id + idx} className="flex items-center gap-3 h-7">
+          <div className="w-[240px] flex items-center gap-2 shrink-0 overflow-hidden">
+            <span className={`inline-block w-1.5 h-1.5 rounded-full ${phaseConfig[row.version.phase].bg}`} />
+            <span className="text-xs text-slate-300 font-medium truncate">
+              {axes.length === 0 ? row.version.version : row.labels.map((l) => l.label).join(' / ')}
+            </span>
+          </div>
+          <GanttBar version={row.version} yearStart={yearStart} yearEnd={yearEnd} />
         </div>
-      )}
+      ))}
     </div>
   );
 }
@@ -194,7 +410,10 @@ function FamilySection({ family, osList, yearStart, yearEnd }: { family: string;
 export default function Roadmap() {
   const { data: osList, isLoading, isError, refetch } = useOperatingSystems();
   const [selectedFamily, setSelectedFamily] = useState('');
+  const [selectedPhase, setSelectedPhase] = useState<LifecyclePhase | ''>('');
   const [timeRange, setTimeRange] = useState<'3y' | '5y' | '10y'>('5y');
+  const [viewMode, setViewMode] = useState<ViewMode>('grouped');
+  const [rowAxes, setRowAxes] = useState<Axis[]>(['FAMILY', 'OS', 'VERSION']);
 
   const now = new Date().getFullYear();
   const rangeMap = { '3y': 3, '5y': 5, '10y': 10 };
@@ -212,18 +431,33 @@ export default function Roadmap() {
     if (selectedFamily) {
       result = result.filter((os) => os.family === selectedFamily);
     }
-    return result;
-  }, [osList, selectedFamily]);
-
-  const families = useMemo(() => {
-    const groups: Record<string, OperatingSystem[]> = {};
-    for (const os of filtered) {
-      const fam = os.family || 'OTHER';
-      if (!groups[fam]) groups[fam] = [];
-      groups[fam].push(os);
+    if (selectedPhase) {
+      result = result.map((os) => ({
+        ...os,
+        versions: os.versions?.filter((v) => v.phase === selectedPhase) || [],
+      })).filter((os) => os.versions.length > 0);
     }
-    return groups;
-  }, [filtered]);
+    return result;
+  }, [osList, selectedFamily, selectedPhase]);
+
+  const tree = useMemo(() => buildTree(filtered, rowAxes), [filtered, rowAxes]);
+  const flatRows = useMemo(() => buildFlatRows(filtered, rowAxes), [filtered, rowAxes]);
+
+  const addAxis = () => {
+    const used = new Set(rowAxes);
+    const next = axisOptions.find((a) => !used.has(a.value));
+    if (next) setRowAxes([...rowAxes, next.value]);
+  };
+
+  const removeAxis = (idx: number) => {
+    setRowAxes(rowAxes.filter((_, i) => i !== idx));
+  };
+
+  const changeAxis = (idx: number, value: Axis) => {
+    const next = [...rowAxes];
+    next[idx] = value;
+    setRowAxes(next);
+  };
 
   if (isLoading) {
     return (
@@ -249,23 +483,30 @@ export default function Roadmap() {
         </div>
       </AnimatedSection>
 
+      {/* Toolbar */}
       <AnimatedSection delay={100}>
-        <div className="flex flex-wrap gap-3 mb-6 p-4 rounded-xl bg-slate-900/50 border border-slate-800">
+        <div className="flex flex-wrap items-center gap-3 mb-6 p-4 rounded-xl bg-slate-900/50 border border-slate-800">
           <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-slate-400" />
-            <span className="text-sm text-slate-400 font-medium">Filters</span>
+            <Filter className="h-4 w-4 text-slate-500" />
+            <span className="text-xs font-medium text-slate-400">FILTERS</span>
           </div>
 
-          <Select
+          <span className="text-xs text-slate-500">Family:</span>
+          <PickUpList
+            options={[{ value: '', label: 'All' }, ...allFamilies.map((f) => ({ value: f, label: f }))]}
             value={selectedFamily}
-            onChange={(e) => setSelectedFamily(e.target.value)}
-            className="min-w-[140px]"
-          >
-            <option value="">All OS Families</option>
-            {allFamilies.map((fam) => (
-              <option key={fam} value={fam}>{fam}</option>
-            ))}
-          </Select>
+            onChange={(v) => setSelectedFamily(v)}
+          />
+
+          <span className="text-xs text-slate-500">Phase:</span>
+          <PickUpList
+            options={[
+              { value: '', label: 'All' },
+              ...Object.keys(phaseConfig).map((p) => ({ value: p as LifecyclePhase, label: phaseConfig[p as LifecyclePhase].label })),
+            ]}
+            value={selectedPhase}
+            onChange={(v) => setSelectedPhase(v)}
+          />
 
           <div className="flex gap-1 ml-auto">
             {(['3y', '5y', '10y'] as const).map((range) => (
@@ -285,6 +526,67 @@ export default function Roadmap() {
         </div>
       </AnimatedSection>
 
+      {/* View Mode + Axes */}
+      <AnimatedSection delay={150}>
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          {/* View mode toggle */}
+          <div className="flex rounded-md border border-slate-700 overflow-hidden">
+            <button
+              onClick={() => setViewMode('grouped')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                viewMode === 'grouped'
+                  ? 'bg-blue-500/10 text-blue-400'
+                  : 'text-slate-400 hover:bg-slate-800'
+              }`}
+            >
+              <BarChart3 className="h-3.5 w-3.5" />
+              Grouped
+            </button>
+            <button
+              onClick={() => setViewMode('flat')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                viewMode === 'flat'
+                  ? 'bg-blue-500/10 text-blue-400'
+                  : 'text-slate-400 hover:bg-slate-800'
+              }`}
+            >
+              <Table className="h-3.5 w-3.5" />
+              Flat
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-slate-700" />
+
+          {/* Row axes */}
+          <span className="text-xs text-slate-500">Group by:</span>
+          {rowAxes.map((axis, i) => (
+            <div key={`${axis}-${i}`} className="flex items-center gap-1">
+              <PickUpList
+                options={axisOptions.filter((a) => !rowAxes.slice(0, i).includes(a.value) || a.value === axis)}
+                value={axis}
+                onChange={(v) => changeAxis(i, v)}
+                color="blue"
+              />
+              <button
+                onClick={() => removeAxis(i)}
+                className="text-slate-500 hover:text-red-400 transition-colors text-xs px-1"
+                title="Remove axis"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          {rowAxes.length < axisOptions.length && (
+            <button
+              onClick={addAxis}
+              className="px-2 py-1 rounded-md border border-dashed border-slate-600 text-xs text-slate-400 hover:border-slate-400 hover:text-slate-300 transition-colors"
+            >
+              + Axis
+            </button>
+          )}
+        </div>
+      </AnimatedSection>
+
       <AnimatedSection delay={200}>
         {/* Legend */}
         <div className="flex flex-wrap gap-4 mb-4 text-xs">
@@ -301,18 +603,26 @@ export default function Roadmap() {
         <div className="p-5 rounded-xl bg-slate-900/50 border border-slate-800">
           <YearAxis yearStart={yearStart} yearEnd={yearEnd} />
 
-          {Object.keys(families).length === 0 ? (
-            <div className="text-slate-500 text-center py-12">No versions match your filters</div>
-          ) : (
-            Object.entries(families).map(([family, familyOsList]) => (
-              <FamilySection
-                key={family}
-                family={family}
-                osList={familyOsList}
-                yearStart={yearStart}
-                yearEnd={yearEnd}
-              />
-            ))
+          {viewMode === 'grouped' && (
+            <>
+              {tree.length === 0 ? (
+                <div className="text-slate-500 text-center py-12">No versions match your filters</div>
+              ) : (
+                tree.map((node) => (
+                  <TreeNodeRow key={node.id} node={node} yearStart={yearStart} yearEnd={yearEnd} />
+                ))
+              )}
+            </>
+          )}
+
+          {viewMode === 'flat' && (
+            <>
+              {flatRows.length === 0 ? (
+                <div className="text-slate-500 text-center py-12">No versions match your filters</div>
+              ) : (
+                <FlatTable rows={flatRows} axes={rowAxes} yearStart={yearStart} yearEnd={yearEnd} />
+              )}
+            </>
           )}
         </div>
       </AnimatedSection>
