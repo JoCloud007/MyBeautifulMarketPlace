@@ -208,7 +208,7 @@ export default function MarketplaceGeo() {
       {/* Header */}
       <div className="animate-fade-in-up">
         <h1 className="text-3xl font-bold text-white">{activeOrder.name}</h1>
-        <p className="mt-2 text-slate-400">{activeOrder.description || 'Browse products by location.'}</p>
+        <p className="mt-2 text-slate-400">{activeOrder.description || 'Browse products by custom views.'}</p>
       </div>
 
       {/* Mode Toggle */}
