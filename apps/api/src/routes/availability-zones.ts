@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
+import { getCapitalCoordinates } from '../lib/countryCapitals';
 
 const router = Router();
 
@@ -10,8 +11,8 @@ const createAZSchema = z.object({
   city: z.string().min(1, 'City is required').max(100),
   country: z.string().min(1, 'Country is required').max(100),
   region: z.string().min(1, 'Region is required').max(100),
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -19,13 +20,23 @@ const updateAZSchema = createAZSchema.partial();
 
 const idParamSchema = z.string().uuid();
 
+function injectCapitalCoordinates(zone: { latitude: number | null; longitude: number | null; country: string; [key: string]: unknown }) {
+  if (zone.latitude == null || zone.longitude == null) {
+    const coords = getCapitalCoordinates(zone.country);
+    if (coords) {
+      return { ...zone, latitude: coords[0], longitude: coords[1] };
+    }
+  }
+  return zone;
+}
+
 // GET /api/availability-zones
 router.get('/', async (_req, res, next) => {
   try {
     const zones = await prisma.availabilityZone.findMany({
       orderBy: { region: 'asc' },
     });
-    res.json(zones);
+    res.json(zones.map(injectCapitalCoordinates));
   } catch (err) {
     next(err);
   }
@@ -44,7 +55,7 @@ router.get('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Availability zone not found' });
     }
 
-    res.json(zone);
+    res.json(injectCapitalCoordinates(zone));
   } catch (err) {
     next(err);
   }

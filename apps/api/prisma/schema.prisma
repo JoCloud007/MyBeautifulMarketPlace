@@ -93,6 +93,11 @@ model ProductVariant {
   continuityLevel   ContinuityLevel?                 @relation(fields: [continuityLevelId], references: [id])
   instances         Instance[]
   forecastLines     ForecastLine[]
+  releaseDate        DateTime?
+  normalSupportEnd   DateTime?
+  extendedSupportEnd DateTime?
+  eolDate            DateTime?
+  phase              LifecyclePhase                  @default(RELEASED)
   isActive          Boolean                          @default(true)
   availabilityType  AvailabilityType                 @default(STANDARD)
   createdAt         DateTime                         @default(now())
@@ -223,8 +228,8 @@ model AvailabilityZone {
   city          String
   country       String
   region        String
-  latitude      Float
-  longitude     Float
+  latitude      Float?
+  longitude     Float?
   isActive      Boolean                          @default(true)
   variantZones  ProductVariantAvailabilityZone[]
   zones         ZoneAvailabilityZone[]

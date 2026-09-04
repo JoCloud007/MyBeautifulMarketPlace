@@ -123,6 +123,11 @@ export interface ProductVariant {
   continuityLevelId: string | null;
   continuityLevel: ContinuityLevel | null;
   instances: Instance[];
+  releaseDate: string | null;
+  normalSupportEnd: string | null;
+  extendedSupportEnd: string | null;
+  eolDate: string | null;
+  phase: LifecyclePhase;
   isActive: boolean;
   availabilityType: AvailabilityType;
   createdAt: string;
@@ -363,8 +368,8 @@ export interface AvailabilityZone {
   city: string;
   country: string;
   region: string;
-  latitude: number;
-  longitude: number;
+  latitude: number | null;
+  longitude: number | null;
   isActive: boolean;
   variantZones?: { variant?: ProductVariant }[];
   createdAt: string;

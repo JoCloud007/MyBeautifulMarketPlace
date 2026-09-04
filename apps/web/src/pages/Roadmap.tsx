@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { useOperatingSystems } from '@/hooks/useApi';
+import { useOperatingSystems, useProducts } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Filter, ChevronDown, ChevronRight, BarChart3, Table,
 } from 'lucide-react';
-import type { OsVersion, LifecyclePhase, OperatingSystem } from '@cloudmarket/shared-types';
+import type { OsVersion, LifecyclePhase, OperatingSystem, Product, ProductVariant } from '@cloudmarket/shared-types';
 
 /* ── Phase config ──────────────────────────────────────────────── */
 
@@ -47,6 +47,51 @@ const axisLabels: Record<Axis, string> = {
   PHASE: 'Phase',
   VERSION: 'Version',
 };
+
+/* ── Unified Roadmap Version ───────────────────────────────────── */
+
+interface RoadmapVersion {
+  id: string;
+  name: string;
+  releaseDate: string;
+  normalSupportEnd: string;
+  extendedSupportEnd: string;
+  eolDate: string;
+  phase: LifecyclePhase;
+  family: string;
+  group: string;
+  type: 'os' | 'product';
+}
+
+function osVersionToRoadmap(os: OperatingSystem, version: OsVersion): RoadmapVersion {
+  return {
+    id: version.id,
+    name: version.version,
+    releaseDate: version.releaseDate,
+    normalSupportEnd: version.normalSupportEnd,
+    extendedSupportEnd: version.extendedSupportEnd,
+    eolDate: version.eolDate,
+    phase: version.phase,
+    family: os.family || 'OTHER',
+    group: os.name,
+    type: 'os',
+  };
+}
+
+function productVariantToRoadmap(product: Product, variant: ProductVariant): RoadmapVersion {
+  return {
+    id: variant.id,
+    name: variant.name,
+    releaseDate: variant.releaseDate || product.createdAt,
+    normalSupportEnd: variant.normalSupportEnd || variant.eolDate || product.createdAt,
+    extendedSupportEnd: variant.extendedSupportEnd || variant.eolDate || product.createdAt,
+    eolDate: variant.eolDate || product.createdAt,
+    phase: variant.phase,
+    family: product.category?.name || product.name,
+    group: product.name,
+    type: 'product',
+  };
+}
 
 const axisOptions: { value: Axis; label: string }[] = [
   { value: 'FAMILY', label: 'Family' },
@@ -139,7 +184,7 @@ function PickUpList<T extends string>({
 
 /* ── Gantt Bar ─────────────────────────────────────────────────── */
 
-function GanttBar({ version, yearStart, yearEnd }: { version: OsVersion; yearStart: number; yearEnd: number }) {
+function GanttBar({ version, yearStart, yearEnd }: { version: RoadmapVersion; yearStart: number; yearEnd: number }) {
   const totalYears = yearEnd - yearStart + 1;
   const releaseDate = new Date(version.releaseDate);
   const normalEnd = new Date(version.normalSupportEnd);
@@ -207,23 +252,23 @@ interface TreeNode {
   label: string;
   axis: Axis;
   children: TreeNode[];
-  versions: OsVersion[];
+  versions: RoadmapVersion[];
 }
 
-function getAxisValue(os: OperatingSystem, version: OsVersion, axis: Axis): { id: string; label: string } {
+function getAxisValue(version: RoadmapVersion, axis: Axis): { id: string; label: string } {
   switch (axis) {
     case 'FAMILY':
-      return { id: os.family || 'OTHER', label: getFamilyLabel(os.family).label };
+      return { id: version.family, label: getFamilyLabel(version.family).label };
     case 'OS':
-      return { id: os.id, label: os.name };
+      return { id: version.group, label: version.group };
     case 'PHASE':
       return { id: version.phase, label: getPhaseConfig(version.phase).label };
     case 'VERSION':
-      return { id: version.id, label: version.version };
+      return { id: version.id, label: version.name };
   }
 }
 
-function buildTree(osList: OperatingSystem[], axes: Axis[]): TreeNode[] {
+function buildTree(versions: RoadmapVersion[], axes: Axis[]): TreeNode[] {
   if (axes.length === 0) return [];
 
   type InternalNode = {
@@ -231,38 +276,36 @@ function buildTree(osList: OperatingSystem[], axes: Axis[]): TreeNode[] {
     label: string;
     axis: Axis;
     children: Map<string, InternalNode>;
-    versions: OsVersion[];
+    versions: RoadmapVersion[];
   };
 
   const root: Map<string, InternalNode> = new Map();
 
-  for (const os of osList) {
-    for (const version of os.versions || []) {
-      let currentLevel = root;
-      let path = '';
+  for (const version of versions) {
+    let currentLevel = root;
+    let path = '';
 
-      for (let i = 0; i < axes.length; i++) {
-        const axis = axes[i];
-        const { id, label } = getAxisValue(os, version, axis);
-        path = path ? `${path}|${id}` : id;
+    for (let i = 0; i < axes.length; i++) {
+      const axis = axes[i];
+      const { id, label } = getAxisValue(version, axis);
+      path = path ? `${path}|${id}` : id;
 
-        if (!currentLevel.has(path)) {
-          currentLevel.set(path, {
-            id: path,
-            label,
-            axis,
-            children: new Map(),
-            versions: [],
-          });
-        }
+      if (!currentLevel.has(path)) {
+        currentLevel.set(path, {
+          id: path,
+          label,
+          axis,
+          children: new Map(),
+          versions: [],
+        });
+      }
 
-        const node = currentLevel.get(path)!;
+      const node = currentLevel.get(path)!;
 
-        if (i === axes.length - 1) {
-          node.versions.push(version);
-        } else {
-          currentLevel = node.children;
-        }
+      if (i === axes.length - 1) {
+        node.versions.push(version);
+      } else {
+        currentLevel = node.children;
       }
     }
   }
@@ -347,13 +390,13 @@ function TreeNodeRow({
 
 /* ── Version Row ───────────────────────────────────────────────── */
 
-function VersionRow({ version, yearStart, yearEnd }: { version: OsVersion; yearStart: number; yearEnd: number }) {
+function VersionRow({ version, yearStart, yearEnd }: { version: RoadmapVersion; yearStart: number; yearEnd: number }) {
   const phase = getPhaseConfig(version.phase);
   return (
     <div className="flex items-center gap-3 h-7">
       <div className="w-[240px] flex items-center gap-2 shrink-0">
         <span className={`inline-block w-1.5 h-1.5 rounded-full ${phase.bg}`} />
-        <span className="text-xs text-slate-300 font-medium truncate">{version.version}</span>
+        <span className="text-xs text-slate-300 font-medium truncate">{version.name}</span>
         <span className="text-[10px] text-slate-500 ml-auto">
           {new Date(version.releaseDate).getFullYear()} → {new Date(version.eolDate).getFullYear()}
         </span>
@@ -366,26 +409,20 @@ function VersionRow({ version, yearStart, yearEnd }: { version: OsVersion; yearS
 /* ── Flat Row ──────────────────────────────────────────────────── */
 
 interface FlatRow {
-  version: OsVersion;
-  os: OperatingSystem;
+  version: RoadmapVersion;
   labels: { axis: Axis; label: string }[];
 }
 
-function buildFlatRows(osList: OperatingSystem[], axes: Axis[]): FlatRow[] {
-  const rows: FlatRow[] = [];
-  for (const os of osList) {
-    for (const version of os.versions || []) {
-      rows.push({
-        version,
-        os,
-        labels: axes.map((axis) => ({
-          axis,
-          label: getAxisValue(os, version, axis).label,
-        })),
-      });
-    }
-  }
-  return rows.sort((a, b) => new Date(a.version.releaseDate).getTime() - new Date(b.version.releaseDate).getTime());
+function buildFlatRows(versions: RoadmapVersion[], axes: Axis[]): FlatRow[] {
+  return versions
+    .map((version) => ({
+      version,
+      labels: axes.map((axis) => ({
+        axis,
+        label: getAxisValue(version, axis).label,
+      })),
+    }))
+    .sort((a, b) => new Date(a.version.releaseDate).getTime() - new Date(b.version.releaseDate).getTime());
 }
 
 function FlatTable({
@@ -420,7 +457,7 @@ function FlatTable({
             {axes.length === 0 ? (
               <div className="flex items-center gap-2 px-1" style={{ width: colWidth, minWidth: colWidth }}>
                 <span className={`inline-block w-1.5 h-1.5 rounded-full ${getPhaseConfig(row.version.phase).bg}`} />
-                <span className="text-xs text-slate-300 font-medium truncate">{row.version.version}</span>
+                <span className="text-xs text-slate-300 font-medium truncate">{row.version.name}</span>
               </div>
             ) : (
               row.labels.map((label, i) => (
@@ -442,7 +479,8 @@ function FlatTable({
 /* ── Main Page ─────────────────────────────────────────────────── */
 
 export default function Roadmap() {
-  const { data: osList, isLoading, isError, refetch } = useOperatingSystems();
+  const { data: osList, isLoading: osLoading, isError: osError, refetch: refetchOs } = useOperatingSystems();
+  const { data: products, isLoading: productsLoading, isError: productsError, refetch: refetchProducts } = useProducts();
   const [selectedFamily, setSelectedFamily] = useState('');
   const [selectedPhase, setSelectedPhase] = useState<LifecyclePhase | ''>('');
   const [timeRange, setTimeRange] = useState<'3y' | '5y' | '10y'>('5y');
@@ -454,25 +492,41 @@ export default function Roadmap() {
   const yearStart = now - 1;
   const yearEnd = now + rangeMap[timeRange];
 
+  const allVersions = useMemo(() => {
+    const versions: RoadmapVersion[] = [];
+    if (osList) {
+      for (const os of osList) {
+        for (const version of os.versions || []) {
+          versions.push(osVersionToRoadmap(os, version));
+        }
+      }
+    }
+    if (products) {
+      for (const product of products) {
+        for (const variant of product.variants || []) {
+          if (variant.releaseDate) {
+            versions.push(productVariantToRoadmap(product, variant));
+          }
+        }
+      }
+    }
+    return versions;
+  }, [osList, products]);
+
   const allFamilies = useMemo(() => {
-    if (!osList) return [];
-    return Array.from(new Set(osList.map((os) => os.family).filter(Boolean))) as string[];
-  }, [osList]);
+    return Array.from(new Set(allVersions.map((v) => v.family).filter(Boolean)));
+  }, [allVersions]);
 
   const filtered = useMemo(() => {
-    if (!osList) return [];
-    let result = osList.filter((os) => (os.versions || []).length > 0);
+    let result = [...allVersions];
     if (selectedFamily) {
-      result = result.filter((os) => os.family === selectedFamily);
+      result = result.filter((v) => v.family === selectedFamily);
     }
     if (selectedPhase) {
-      result = result.map((os) => ({
-        ...os,
-        versions: os.versions?.filter((v) => v.phase === selectedPhase) || [],
-      })).filter((os) => os.versions.length > 0);
+      result = result.filter((v) => v.phase === selectedPhase);
     }
     return result;
-  }, [osList, selectedFamily, selectedPhase]);
+  }, [allVersions, selectedFamily, selectedPhase]);
 
   const tree = useMemo(() => buildTree(filtered, rowAxes), [filtered, rowAxes]);
   const flatRows = useMemo(() => buildFlatRows(filtered, rowAxes), [filtered, rowAxes]);
@@ -493,6 +547,10 @@ export default function Roadmap() {
     setRowAxes(next);
   };
 
+  const isLoading = osLoading || productsLoading;
+  const isError = osError || productsError;
+  const refetch = () => { refetchOs(); refetchProducts(); };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-300 p-4 space-y-4">
@@ -506,7 +564,7 @@ export default function Roadmap() {
   }
 
   if (isError) return <QueryError message="Unable to load roadmap data" onRetry={refetch} />;
-  if (!osList) return <div className="text-slate-400 text-center py-12">No OS data available</div>;
+  if (!allVersions.length) return <div className="text-slate-400 text-center py-12">No roadmap data available</div>;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-300 p-4 space-y-4">

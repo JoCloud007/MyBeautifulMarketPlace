@@ -320,6 +320,11 @@ async function main() {
           continuityLevelId: clModerate.id,
           isActive: true,
           availabilityType: isRecommended ? 'RECOMMENDED' : isRestricted ? 'RESTRICTED' : 'STANDARD',
+          releaseDate: osVer.releaseDate,
+          normalSupportEnd: osVer.normalSupportEnd,
+          extendedSupportEnd: osVer.extendedSupportEnd,
+          eolDate: osVer.eolDate,
+          phase: osVer.phase,
           availabilityZones: {
             create: [
               { availabilityZoneId: parisAz1.id },
@@ -348,6 +353,11 @@ async function main() {
           continuityLevelId: clSerious.id,
           isActive: true,
           availabilityType: isOnDemand ? 'ON_DEMAND' : 'RECOMMENDED',
+          releaseDate: osVer.releaseDate,
+          normalSupportEnd: osVer.normalSupportEnd,
+          extendedSupportEnd: osVer.extendedSupportEnd,
+          eolDate: osVer.eolDate,
+          phase: osVer.phase,
           availabilityZones: {
             create: [
               { availabilityZoneId: parisAz1.id },

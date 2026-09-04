@@ -8,6 +8,7 @@ import {
 } from 'react-simple-maps';
 import type { AvailabilityZone } from '@cloudmarket/shared-types';
 import { getCountryFlag } from '@/lib/countryFlags';
+import { getCapitalCoordinates } from '@/lib/countryCapitals';
 
 const GEO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json';
 const MAP_W = 800;
@@ -53,6 +54,17 @@ interface TooltipState {
   zone: AvailabilityZone;
   x: number;
   y: number;
+}
+
+function resolveCoordinates(zone: AvailabilityZone): [number, number] {
+  if (zone.latitude != null && zone.longitude != null) {
+    return [zone.longitude, zone.latitude];
+  }
+  const fallback = getCapitalCoordinates(zone.country);
+  if (fallback) {
+    return [fallback[1], fallback[0]]; // [lon, lat]
+  }
+  return [0, 0];
 }
 
 export default function WorldMap({ zones, selectedZone, onSelectZone }: WorldMapProps) {
@@ -158,7 +170,7 @@ export default function WorldMap({ zones, selectedZone, onSelectZone }: WorldMap
             const r = isSelected ? 6 : isHovered ? 5 : 4;
 
             return (
-              <Marker key={zone.id} coordinates={[zone.longitude, zone.latitude]}>
+              <Marker key={zone.id} coordinates={resolveCoordinates(zone)}>
                 <g
                   style={{ cursor: 'pointer' }}
                   onClick={() => onSelectZone(zone)}
