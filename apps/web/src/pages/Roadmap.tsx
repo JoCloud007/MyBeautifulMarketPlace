@@ -39,13 +39,16 @@ function getPhaseConfig(phase: LifecyclePhase | string | undefined) {
 
 /* ── Axis config ───────────────────────────────────────────────── */
 
-type Axis = 'FAMILY' | 'OS' | 'PHASE' | 'VERSION';
+type Axis = 'FAMILY' | 'OS' | 'PHASE' | 'VERSION' | 'CATEGORY' | 'PRODUCT' | 'FLAVOR';
 
 const axisLabels: Record<Axis, string> = {
   FAMILY: 'Family',
   OS: 'OS',
   PHASE: 'Phase',
   VERSION: 'Version',
+  CATEGORY: 'Category',
+  PRODUCT: 'Product',
+  FLAVOR: 'Flavor',
 };
 
 /* ── Unified Roadmap Version ───────────────────────────────────── */
@@ -59,7 +62,10 @@ interface RoadmapVersion {
   eolDate: string;
   phase: LifecyclePhase;
   family: string;
-  group: string;
+  os: string;
+  category: string;
+  product: string;
+  flavor: string;
   type: 'os' | 'product';
 }
 
@@ -73,7 +79,10 @@ function osVersionToRoadmap(os: OperatingSystem, version: OsVersion): RoadmapVer
     eolDate: version.eolDate,
     phase: version.phase,
     family: os.family || 'OTHER',
-    group: os.name,
+    os: os.name,
+    category: 'Operating System',
+    product: os.name,
+    flavor: '—',
     type: 'os',
   };
 }
@@ -87,8 +96,11 @@ function productVariantToRoadmap(product: Product, variant: ProductVariant): Roa
     extendedSupportEnd: variant.extendedSupportEnd || variant.eolDate || product.createdAt,
     eolDate: variant.eolDate || product.createdAt,
     phase: variant.phase,
-    family: product.category?.name || product.name,
-    group: product.name,
+    family: variant.os?.family || 'OTHER',
+    os: variant.os?.name || '—',
+    category: product.category?.name || 'OTHER',
+    product: product.name,
+    flavor: variant.flavor?.name || '—',
     type: 'product',
   };
 }
@@ -98,6 +110,9 @@ const axisOptions: { value: Axis; label: string }[] = [
   { value: 'OS', label: 'OS' },
   { value: 'PHASE', label: 'Phase' },
   { value: 'VERSION', label: 'Version' },
+  { value: 'CATEGORY', label: 'Category' },
+  { value: 'PRODUCT', label: 'Product' },
+  { value: 'FLAVOR', label: 'Flavor' },
 ];
 
 type ViewMode = 'grouped' | 'flat';
@@ -260,11 +275,17 @@ function getAxisValue(version: RoadmapVersion, axis: Axis): { id: string; label:
     case 'FAMILY':
       return { id: version.family, label: getFamilyLabel(version.family).label };
     case 'OS':
-      return { id: version.group, label: version.group };
+      return { id: version.os, label: version.os };
     case 'PHASE':
       return { id: version.phase, label: getPhaseConfig(version.phase).label };
     case 'VERSION':
       return { id: version.id, label: version.name };
+    case 'CATEGORY':
+      return { id: version.category, label: version.category };
+    case 'PRODUCT':
+      return { id: version.product, label: version.product };
+    case 'FLAVOR':
+      return { id: version.flavor, label: version.flavor };
   }
 }
 
