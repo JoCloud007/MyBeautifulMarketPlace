@@ -276,6 +276,34 @@ async function main() {
   }
   console.log('  🎯 Performance profiles upserted');
 
+  // ── ProductVariant lifecycle dates ────────────────────────────────
+  // Backfill releaseDate / support dates from OsVersion when missing
+  const variantsWithoutDates = await prisma.productVariant.findMany({
+    where: { releaseDate: null },
+    include: { osVersion: true },
+  });
+
+  if (variantsWithoutDates.length > 0) {
+    console.log(`  📅 Backfilling ${variantsWithoutDates.length} ProductVariant lifecycle dates from OsVersion...`);
+    for (const pv of variantsWithoutDates) {
+      if (pv.osVersion) {
+        await prisma.productVariant.update({
+          where: { id: pv.id },
+          data: {
+            releaseDate: pv.osVersion.releaseDate,
+            normalSupportEnd: pv.osVersion.normalSupportEnd,
+            extendedSupportEnd: pv.osVersion.extendedSupportEnd,
+            eolDate: pv.osVersion.eolDate,
+            phase: pv.osVersion.phase,
+          },
+        });
+      }
+    }
+    console.log('  ✅ Lifecycle dates backfilled');
+  } else {
+    console.log('  ✅ All ProductVariants already have lifecycle dates');
+  }
+
   console.log('✅ Incremental seed completed — no data was deleted');
 }
 
