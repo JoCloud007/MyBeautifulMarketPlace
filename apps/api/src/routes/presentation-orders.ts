@@ -224,8 +224,48 @@ router.get('/:id/browse', async (req, res, next) => {
           UAE: '🇦🇪',
           SouthKorea: '🇰🇷',
           'South Korea': '🇰🇷',
+          Malaysia: '🇲🇾',
+          Indonesia: '🇮🇩',
+          Thailand: '🇹🇭',
+          Vietnam: '🇻🇳',
+          Philippines: '🇵🇭',
+          Taiwan: '🇹🇼',
+          'Hong Kong': '🇭🇰',
+          Mexico: '🇲🇽',
+          Argentina: '🇦🇷',
+          Chile: '🇨🇱',
+          Colombia: '🇨🇴',
+          Peru: '🇵🇪',
+          'New Zealand': '🇳🇿',
+          Turkey: '🇹🇷',
+          Israel: '🇮🇱',
+          'Saudi Arabia': '🇸🇦',
+          'South Africa': '🇿🇦',
+          Nigeria: '🇳🇬',
+          Kenya: '🇰🇪',
+          Egypt: '🇪🇬',
+          Morocco: '🇲🇦',
+          Austria: '🇦🇹',
+          Belgium: '🇧🇪',
+          Norway: '🇳🇴',
+          Finland: '🇫🇮',
+          Denmark: '🇩🇰',
+          Portugal: '🇵🇹',
+          'Czech Republic': '🇨🇿',
+          Hungary: '🇭🇺',
+          Romania: '🇷🇴',
+          Greece: '🇬🇷',
+          Ukraine: '🇺🇦',
+          Russia: '🇷🇺',
         };
-        res.json(countries.map((c) => ({ id: c.country, name: c.country, meta: { flag: flagMap[c.country] || '🌍' } })));
+        // ISO alpha-2 fallback
+        function isoToFlag(code: string): string {
+          const c = code.toUpperCase();
+          if (c.length !== 2) return '';
+          const offset = 127397;
+          return String.fromCodePoint(c.charCodeAt(0) + offset, c.charCodeAt(1) + offset);
+        }
+        res.json(countries.map((c) => ({ id: c.country, name: c.country, meta: { flag: flagMap[c.country] || isoToFlag(c.country) || '🌍' } })));
         break;
       }
 

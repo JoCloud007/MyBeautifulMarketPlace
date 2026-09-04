@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Server, MapPin, Globe, Cpu, Shield, Monitor } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getCountryFlag, getFlagEmoji } from '@/lib/countryFlags';
 
 const stepIcons: Record<string, React.ElementType> = {
   COUNTRY: Globe,
@@ -290,7 +291,7 @@ export default function MarketplaceGeo() {
                         <div className="min-w-0 flex-1">
                           <div className="text-[10px] text-slate-500 uppercase tracking-wider">{s.label || s.stepType}</div>
                           <div className="text-sm font-medium text-white truncate">
-                            {hasFlag ? `🇨🇳 ` : ''}{name || id || '—'}
+                            {hasFlag ? `${getCountryFlag(name) || getFlagEmoji(name) || '🌍'} ` : ''}{name || id || '—'}
                           </div>
                         </div>
                       </div>
