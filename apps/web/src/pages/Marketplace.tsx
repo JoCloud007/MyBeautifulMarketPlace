@@ -321,7 +321,7 @@ export default function Marketplace() {
                   className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white min-h-[36px]"
                 >
                   <Globe className="h-3.5 w-3.5 mr-1.5" />
-                  Browse by Location
+                  Browse by custom views
                 </Button>
                 {activeFilterCount > 0 && (
                   <Button variant="ghost" size="sm" onClick={clearFilters} className="text-slate-400 hover:text-white min-h-[44px]">

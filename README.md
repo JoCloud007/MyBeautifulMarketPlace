@@ -203,10 +203,12 @@ Key variables in `.env` to review before running:
 #### Available Makefile targets
 
 ```bash
-make help    # Show all targets and workflow
-make clean   # Remove node_modules, dist, Docker containers (DB volume is preserved)
-make deploy  # Build Docker images (offline-friendly, uses lib/prisma/ binaries)
-make run     # Start all containers
+make help              # Show all targets and workflow
+make clean             # Remove node_modules, dist, Docker containers (DB volume is preserved)
+make deploy            # Build Docker images (offline-friendly, uses lib/prisma/ binaries)
+make run               # Start all containers
+make backfill-variants # Populate ProductVariant lifecycle dates from OsVersion
+make restart-api       # Restart API container (clears Prisma caches)
 ```
 
 | Service | URL | Description |
