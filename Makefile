@@ -2,7 +2,7 @@
 # Simplifies build, deploy, and run workflows for both online (build)
 # and air-gapped (deploy) environments.
 
-.PHONY: clean build deploy run help
+.PHONY: clean build deploy run help backfill-variants restart-api
 
 # Force bash — avoids POSIX/dash incompatibilities on Ubuntu
 SHELL := /bin/bash
@@ -83,7 +83,7 @@ run:
 ## Fixes "No roadmap data available" when variants lack releaseDate.
 ## Idempotent: safe to run multiple times.
 backfill-variants:
-	@docker exec forge-mybeautifulmarketplace-db-1 \
+	@docker compose exec db \
 		psql -U cloudmarket -d cloudmarket -c \
 		"UPDATE \"ProductVariant\" pv SET \"releaseDate\" = ov.\"releaseDate\", \"normalSupportEnd\" = ov.\"normalSupportEnd\", \"extendedSupportEnd\" = ov.\"extendedSupportEnd\", \"eolDate\" = ov.\"eolDate\", phase = ov.phase FROM \"OsVersion\" ov WHERE pv.\"osVersionId\" = ov.id;"
 	@echo ""
