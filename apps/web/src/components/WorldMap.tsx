@@ -7,7 +7,7 @@ import {
   ZoomableGroup,
 } from 'react-simple-maps';
 import type { AvailabilityZone } from '@cloudmarket/shared-types';
-import { getCountryFlag } from '@/lib/countryFlags';
+import { getCountryFlag, getFlagEmoji } from '@/lib/countryFlags';
 import { getCapitalCoordinates } from '@/lib/countryCapitals';
 
 const GEO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json';
@@ -224,7 +224,7 @@ export default function WorldMap({ zones, selectedZone, onSelectZone }: WorldMap
           >
             <p className="text-xs font-semibold text-white">{tooltip.zone.name}</p>
             <p className="text-[10px] text-slate-400">
-              {tooltip.zone.city}, {getCountryFlag(tooltip.zone.country)} {tooltip.zone.country}
+              {tooltip.zone.city}, {getCountryFlag(tooltip.zone.country) || getFlagEmoji(tooltip.zone.country)} {tooltip.zone.country}
             </p>
           </div>
         </div>
