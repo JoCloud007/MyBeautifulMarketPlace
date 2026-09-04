@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { useOperatingSystems, useProducts } from '@/hooks/useApi';
+import { useProducts } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Filter, ChevronDown, ChevronRight, BarChart3, Table,
 } from 'lucide-react';
-import type { OsVersion, LifecyclePhase, OperatingSystem, Product, ProductVariant } from '@cloudmarket/shared-types';
+import type { LifecyclePhase, Product, ProductVariant } from '@cloudmarket/shared-types';
 
 /* ── Phase config ──────────────────────────────────────────────── */
 
@@ -67,24 +67,6 @@ interface RoadmapVersion {
   product: string;
   flavor: string;
   type: 'os' | 'product';
-}
-
-function osVersionToRoadmap(os: OperatingSystem, version: OsVersion): RoadmapVersion {
-  return {
-    id: version.id,
-    name: version.version,
-    releaseDate: version.releaseDate,
-    normalSupportEnd: version.normalSupportEnd,
-    extendedSupportEnd: version.extendedSupportEnd,
-    eolDate: version.eolDate,
-    phase: version.phase,
-    family: os.family || 'OTHER',
-    os: os.name,
-    category: 'Operating System',
-    product: os.name,
-    flavor: '—',
-    type: 'os',
-  };
 }
 
 function productVariantToRoadmap(product: Product, variant: ProductVariant): RoadmapVersion {
@@ -500,13 +482,12 @@ function FlatTable({
 /* ── Main Page ─────────────────────────────────────────────────── */
 
 export default function Roadmap() {
-  const { data: osList, isLoading: osLoading, isError: osError, refetch: refetchOs } = useOperatingSystems();
   const { data: products, isLoading: productsLoading, isError: productsError, refetch: refetchProducts } = useProducts();
   const [selectedFamily, setSelectedFamily] = useState('');
   const [selectedPhase, setSelectedPhase] = useState<LifecyclePhase | ''>('');
   const [timeRange, setTimeRange] = useState<'3y' | '5y' | '10y'>('5y');
   const [viewMode, setViewMode] = useState<ViewMode>('grouped');
-  const [rowAxes, setRowAxes] = useState<Axis[]>(['FAMILY', 'OS', 'VERSION']);
+  const [rowAxes, setRowAxes] = useState<Axis[]>(['PRODUCT', 'OS', 'VERSION']);
 
   const now = new Date().getFullYear();
   const rangeMap = { '3y': 3, '5y': 5, '10y': 10 };
@@ -515,13 +496,7 @@ export default function Roadmap() {
 
   const allVersions = useMemo(() => {
     const versions: RoadmapVersion[] = [];
-    if (osList) {
-      for (const os of osList) {
-        for (const version of os.versions || []) {
-          versions.push(osVersionToRoadmap(os, version));
-        }
-      }
-    }
+    // Only ProductVariants are products; OsVersions alone are not products
     if (products) {
       for (const product of products) {
         for (const variant of product.variants || []) {
@@ -532,7 +507,7 @@ export default function Roadmap() {
       }
     }
     return versions;
-  }, [osList, products]);
+  }, [products]);
 
   const allFamilies = useMemo(() => {
     return Array.from(new Set(allVersions.map((v) => v.family).filter(Boolean)));
@@ -568,9 +543,9 @@ export default function Roadmap() {
     setRowAxes(next);
   };
 
-  const isLoading = osLoading || productsLoading;
-  const isError = osError || productsError;
-  const refetch = () => { refetchOs(); refetchProducts(); };
+  const isLoading = productsLoading;
+  const isError = productsError;
+  const refetch = () => { refetchProducts(); };
 
   if (isLoading) {
     return (
@@ -592,7 +567,7 @@ export default function Roadmap() {
       <AnimatedSection>
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Product Lifecycle Roadmap</h1>
-          <p className="text-slate-400">Visual timeline of OS version lifecycles and support phases</p>
+          <p className="text-slate-400">Visual timeline of product lifecycles and support phases</p>
         </div>
       </AnimatedSection>
 
