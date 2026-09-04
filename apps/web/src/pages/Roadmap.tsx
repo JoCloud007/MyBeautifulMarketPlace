@@ -241,7 +241,7 @@ export default function Roadmap() {
   if (!osList) return <div className="text-slate-400 text-center py-12">No OS data available</div>;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+    <div className="min-h-screen bg-slate-950 text-slate-300 p-4 space-y-4">
       <AnimatedSection>
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Product Lifecycle Roadmap</h1>
