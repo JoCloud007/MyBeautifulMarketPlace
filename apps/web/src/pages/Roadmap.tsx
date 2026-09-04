@@ -227,7 +227,7 @@ export default function Roadmap() {
 
   if (isLoading) {
     return (
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+      <div className="min-h-screen bg-slate-950 text-slate-300 p-4 space-y-4">
         <Skeleton className="h-10 w-64" />
         <Skeleton className="h-12 w-full" />
         {[1, 2, 3].map((i) => (
