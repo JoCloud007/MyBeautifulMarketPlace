@@ -4,7 +4,6 @@ import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { Select } from '@/components/ui/select';
 import {
   Filter, ChevronDown, ChevronRight, BarChart3, Table,
 } from 'lucide-react';
@@ -227,7 +226,15 @@ function getAxisValue(os: OperatingSystem, version: OsVersion, axis: Axis): { id
 function buildTree(osList: OperatingSystem[], axes: Axis[]): TreeNode[] {
   if (axes.length === 0) return [];
 
-  const root: Map<string, TreeNode> = new Map();
+  type InternalNode = {
+    id: string;
+    label: string;
+    axis: Axis;
+    children: Map<string, InternalNode>;
+    versions: OsVersion[];
+  };
+
+  const root: Map<string, InternalNode> = new Map();
 
   for (const os of osList) {
     for (const version of os.versions || []) {
@@ -244,7 +251,7 @@ function buildTree(osList: OperatingSystem[], axes: Axis[]): TreeNode[] {
             id: path,
             label,
             axis,
-            children: [],
+            children: new Map(),
             versions: [],
           });
         }
@@ -254,21 +261,19 @@ function buildTree(osList: OperatingSystem[], axes: Axis[]): TreeNode[] {
         if (i === axes.length - 1) {
           node.versions.push(version);
         } else {
-          // Next level uses children map
-          if (!node.childrenMap) {
-            (node as any).childrenMap = new Map<string, TreeNode>();
-          }
-          currentLevel = (node as any).childrenMap;
+          currentLevel = node.children;
         }
       }
     }
   }
 
-  // Convert nested maps to arrays recursively
-  function mapToArray(levelMap: Map<string, TreeNode>): TreeNode[] {
+  function mapToArray(levelMap: Map<string, InternalNode>): TreeNode[] {
     return Array.from(levelMap.values()).map((node) => ({
-      ...node,
-      children: (node as any).childrenMap ? mapToArray((node as any).childrenMap) : [],
+      id: node.id,
+      label: node.label,
+      axis: node.axis,
+      children: mapToArray(node.children),
+      versions: node.versions,
     }));
   }
 
