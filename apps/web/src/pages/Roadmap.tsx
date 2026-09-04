@@ -186,12 +186,12 @@ function GanttBar({ version, yearStart, yearEnd }: { version: OsVersion; yearSta
 
 /* ── Year Axis ─────────────────────────────────────────────────── */
 
-function YearAxis({ yearStart, yearEnd }: { yearStart: number; yearEnd: number }) {
+function YearAxis({ yearStart, yearEnd, labelWidth = 240 }: { yearStart: number; yearEnd: number; labelWidth?: number }) {
   const years: number[] = [];
   for (let y = yearStart; y <= yearEnd; y++) years.push(y);
 
   return (
-    <div className="flex ml-[240px] border-b border-slate-700 pb-1 mb-2 text-[11px] text-slate-500 font-mono">
+    <div className="flex border-b border-slate-700 pb-1 mb-2 text-[11px] text-slate-500 font-mono" style={{ marginLeft: labelWidth }}>
       {years.map((year) => (
         <div key={year} className="flex-1 text-center">
           {year}
@@ -394,19 +394,42 @@ function FlatTable({
   yearStart: number;
   yearEnd: number;
 }) {
+  const colWidth = 130;
+
   return (
-    <div className="space-y-1">
-      {rows.map((row, idx) => (
-        <div key={row.version.id + idx} className="flex items-center gap-3 h-7">
-          <div className="w-[240px] flex items-center gap-2 shrink-0 overflow-hidden">
-            <span className={`inline-block w-1.5 h-1.5 rounded-full ${getPhaseConfig(row.version.phase).bg}`} />
-            <span className="text-xs text-slate-300 font-medium truncate">
-              {axes.length === 0 ? row.version.version : row.labels.map((l) => l.label).join(' / ')}
-            </span>
+    <div className="flex flex-col">
+      {/* Header */}
+      <div className="flex border-b border-slate-700 pb-1 mb-2">
+        {axes.map((axis) => (
+          <div key={axis} className="text-[11px] text-blue-400 font-semibold px-1" style={{ width: colWidth, minWidth: colWidth }}>
+            {axisLabels[axis]}
           </div>
-          <GanttBar version={row.version} yearStart={yearStart} yearEnd={yearEnd} />
-        </div>
-      ))}
+        ))}
+        <div className="flex-1 text-[11px] text-slate-500 font-mono text-center">Timeline</div>
+      </div>
+
+      {/* Rows */}
+      <div className="space-y-1">
+        {rows.map((row, idx) => (
+          <div key={row.version.id + idx} className="flex items-center h-7">
+            {axes.length === 0 ? (
+              <div className="flex items-center gap-2 px-1" style={{ width: colWidth, minWidth: colWidth }}>
+                <span className={`inline-block w-1.5 h-1.5 rounded-full ${getPhaseConfig(row.version.phase).bg}`} />
+                <span className="text-xs text-slate-300 font-medium truncate">{row.version.version}</span>
+              </div>
+            ) : (
+              row.labels.map((label, i) => (
+                <div key={i} className="px-1 text-xs text-slate-300 truncate" style={{ width: colWidth, minWidth: colWidth }}>
+                  {label.label}
+                </div>
+              ))
+            )}
+            <div className="flex-1">
+              <GanttBar version={row.version} yearStart={yearStart} yearEnd={yearEnd} />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -607,7 +630,7 @@ export default function Roadmap() {
 
       <AnimatedSection delay={300}>
         <div className="p-5 rounded-xl bg-slate-900/50 border border-slate-800">
-          <YearAxis yearStart={yearStart} yearEnd={yearEnd} />
+          <YearAxis yearStart={yearStart} yearEnd={yearEnd} labelWidth={viewMode === 'flat' ? Math.max(240, rowAxes.length * 130) : 240} />
 
           {viewMode === 'grouped' && (
             <>
