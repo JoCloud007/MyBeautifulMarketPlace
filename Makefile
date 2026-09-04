@@ -78,3 +78,20 @@ run:
 	@echo "  Web:    http://localhost:5192"
 	@echo "  API:    http://localhost:3001"
 	@echo "  Health: http://localhost:3001/health"
+
+## Backfill — Populate ProductVariant lifecycle dates from OsVersion.
+## Fixes "No roadmap data available" when variants lack releaseDate.
+## Idempotent: safe to run multiple times.
+backfill-variants:
+	@docker exec forge-mybeautifulmarketplace-db-1 \
+		psql -U cloudmarket -d cloudmarket -c \
+		"UPDATE \"ProductVariant\" pv SET \"releaseDate\" = ov.\"releaseDate\", \"normalSupportEnd\" = ov.\"normalSupportEnd\", \"extendedSupportEnd\" = ov.\"extendedSupportEnd\", \"eolDate\" = ov.\"eolDate\", phase = ov.phase FROM \"OsVersion\" ov WHERE pv.\"osVersionId\" = ov.id;"
+	@echo ""
+	@echo "✓ ProductVariant lifecycle dates backfilled from OsVersion"
+	@echo "  Restart the API to clear caches: make restart-api"
+
+## Restart API container (useful after DB changes).
+restart-api:
+	docker compose restart api
+	@echo ""
+	@echo "✓ API restarted"
