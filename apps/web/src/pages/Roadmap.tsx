@@ -105,7 +105,7 @@ function PickUpList<T extends string>({
   };
 
   return (
-    <div ref={containerRef} className="relative z-50">
+    <div ref={containerRef} className="relative">
       <button
         type="button"
         onClick={() => setIsOpen((v) => !v)}
@@ -115,7 +115,7 @@ function PickUpList<T extends string>({
         <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       {isOpen && (
-        <div className="absolute z-50 mt-1 min-w-[120px] rounded-md border border-slate-700 bg-slate-900 shadow-lg py-1">
+        <div className="absolute z-50 mt-1 min-w-[120px] rounded-md border border-slate-600 bg-slate-950 shadow-2xl py-1">
           {options.map((opt) => (
             <button
               type="button"
@@ -125,7 +125,7 @@ function PickUpList<T extends string>({
                 setIsOpen(false);
               }}
               className={`block w-full text-left px-3 py-1.5 text-xs transition-colors ${
-                opt.value === value ? 'bg-blue-500/10 text-blue-400' : 'text-slate-300 hover:bg-slate-800'
+                opt.value === value ? 'bg-blue-500/10 text-blue-400' : 'bg-slate-950 text-slate-300 hover:bg-slate-800'
               }`}
             >
               {opt.label}
@@ -518,7 +518,7 @@ export default function Roadmap() {
       </AnimatedSection>
 
       {/* Toolbar */}
-      <AnimatedSection delay={100}>
+      <AnimatedSection delay={100} className="relative z-50">
         <div className="flex flex-wrap items-center gap-3 mb-6 p-4 rounded-xl bg-slate-900/50 border border-slate-800">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-slate-500" />
@@ -561,7 +561,7 @@ export default function Roadmap() {
       </AnimatedSection>
 
       {/* View Mode + Axes */}
-      <AnimatedSection delay={150}>
+      <AnimatedSection delay={150} className="relative z-50">
         <div className="flex flex-wrap items-center gap-3 mb-4">
           {/* View mode toggle */}
           <div className="flex rounded-md border border-slate-700 overflow-hidden">
@@ -594,7 +594,7 @@ export default function Roadmap() {
           {/* Row axes */}
           <span className="text-xs text-slate-500">Group by:</span>
           {rowAxes.map((axis, i) => (
-            <div key={`${axis}-${i}`} className="flex items-center gap-1 relative z-50">
+            <div key={`${axis}-${i}`} className="flex items-center gap-1 relative z-[9999]">
               <PickUpList
                 options={axisOptions.filter((a) => !rowAxes.slice(0, i).includes(a.value) || a.value === axis)}
                 value={axis}
