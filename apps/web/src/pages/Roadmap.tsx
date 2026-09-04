@@ -594,7 +594,7 @@ export default function Roadmap() {
           {/* Row axes */}
           <span className="text-xs text-slate-500">Group by:</span>
           {rowAxes.map((axis, i) => (
-            <div key={`${axis}-${i}`} className="flex items-center gap-1">
+            <div key={`${axis}-${i}`} className="flex items-center gap-1 relative z-50">
               <PickUpList
                 options={axisOptions.filter((a) => !rowAxes.slice(0, i).includes(a.value) || a.value === axis)}
                 value={axis}
