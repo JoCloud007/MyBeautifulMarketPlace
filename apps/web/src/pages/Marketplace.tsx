@@ -186,24 +186,30 @@ export default function Marketplace() {
     return (
       <AnimatedCard key={product.id} delay={Math.min(index * 80, 400)}>
         <Link to={`/products/${product.slug}`} className="group block h-full">
-          <Card className="h-full bg-slate-900 border-slate-800 transition-all duration-300 hover:border-blue-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-1">
-            <CardHeader className="pb-3">
+          <Card className={cn(
+            'h-full bg-slate-900 border-slate-800 transition-all duration-300 hover:border-blue-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-1',
+            compactMode && 'p-3'
+          )}>
+            <CardHeader className={cn('pb-3', compactMode && 'p-0 pb-2')}>
               <div className="flex items-center justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
-                  <Icon className="h-5 w-5 text-blue-500 transition-transform group-hover:scale-110" />
+                <div className={cn(
+                  'flex items-center justify-center rounded-lg bg-blue-500/10 transition-colors group-hover:bg-blue-500/20',
+                  compactMode ? 'h-8 w-8' : 'h-10 w-10'
+                )}>
+                  <Icon className={cn('text-blue-500 transition-transform group-hover:scale-110', compactMode ? 'h-4 w-4' : 'h-5 w-5')} />
                 </div>
                 <Badge variant="secondary" className="text-xs bg-slate-800 text-slate-300 border-slate-700">
                   {product.category?.name}
                 </Badge>
               </div>
-              <CardTitle className="text-lg text-white mt-3 group-hover:text-blue-400 transition-colors">
+              <CardTitle className={cn('text-white group-hover:text-blue-400 transition-colors', compactMode ? 'text-sm mt-2' : 'text-lg mt-3')}>
                 {product.name}
               </CardTitle>
-              <CardDescription className="text-slate-400 line-clamp-2">
+              <CardDescription className={cn('text-slate-400', compactMode ? 'text-xs line-clamp-1' : 'line-clamp-2')}>
                 {product.description}
               </CardDescription>
             </CardHeader>
-            <CardContent className="pt-0">
+            <CardContent className={cn('pt-0', compactMode && 'p-0')}>
               <div className="flex flex-wrap items-center gap-2">
                 {isCompute && product.computeType && (
                   <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
@@ -221,7 +227,10 @@ export default function Marketplace() {
                   </Badge>
                 )}
               </div>
-              <div className="mt-4 flex items-center text-xs text-blue-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+              <div className={cn(
+                'flex items-center text-xs text-blue-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300',
+                compactMode ? 'mt-2' : 'mt-4'
+              )}>
                 View details
                 <ChevronRight className="ml-1 h-3 w-3 transition-transform group-hover:translate-x-0.5" />
               </div>
