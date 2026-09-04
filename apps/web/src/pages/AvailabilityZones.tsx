@@ -289,11 +289,11 @@ export default function AvailabilityZonesPage() {
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="rounded-md bg-slate-950 p-2">
                         <p className="text-slate-500">Latitude</p>
-                        <p className="text-white font-medium">{selectedZone.latitude.toFixed(4)}</p>
+                        <p className="text-white font-medium">{selectedZone.latitude?.toFixed(4) ?? '—'}</p>
                       </div>
                       <div className="rounded-md bg-slate-950 p-2">
                         <p className="text-slate-500">Longitude</p>
-                        <p className="text-white font-medium">{selectedZone.longitude.toFixed(4)}</p>
+                        <p className="text-white font-medium">{selectedZone.longitude?.toFixed(4) ?? '—'}</p>
                       </div>
                     </div>
 
