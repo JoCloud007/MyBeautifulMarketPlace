@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useProducts } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import {
   Filter, ChevronDown, ChevronRight, BarChart3, Table,
+  Crosshair, Eye, EyeOff, ZoomIn, ZoomOut
 } from 'lucide-react';
 import type { LifecyclePhase, Product, ProductVariant } from '@cloudmarket/shared-types';
 
@@ -39,7 +40,9 @@ function getPhaseConfig(phase: LifecyclePhase | string | undefined) {
 
 /* ── Axis config ───────────────────────────────────────────────── */
 
-type Axis = 'FAMILY' | 'OS' | 'PHASE' | 'VERSION' | 'CATEGORY' | 'PRODUCT' | 'FLAVOR';
+type Axis = 'FAMILY' | 'OS' | 'PHASE' | 'VERSION' | 'CATEGORY' | 'PRODUCT' | 'FLAVOR' | 'REGION' | 'COUNTRY' | 'AZ';
+type Scale = 'month' | 'quarter' | 'year';
+type ViewMode = 'grouped' | 'flat';
 
 const axisLabels: Record<Axis, string> = {
   FAMILY: 'Family',
@@ -49,6 +52,9 @@ const axisLabels: Record<Axis, string> = {
   CATEGORY: 'Category',
   PRODUCT: 'Product',
   FLAVOR: 'Flavor',
+  REGION: 'Region',
+  COUNTRY: 'Country',
+  AZ: 'AZ',
 };
 
 /* ── Unified Roadmap Version ───────────────────────────────────── */
@@ -56,6 +62,7 @@ const axisLabels: Record<Axis, string> = {
 interface RoadmapVersion {
   id: string;
   name: string;
+  osVersionName: string;
   releaseDate: string;
   normalSupportEnd: string;
   extendedSupportEnd: string;
@@ -67,12 +74,17 @@ interface RoadmapVersion {
   product: string;
   flavor: string;
   type: 'os' | 'product';
+  regions: string[];
+  countries: string[];
+  azs: string[];
 }
 
 function productVariantToRoadmap(product: Product, variant: ProductVariant): RoadmapVersion {
+  const azList = variant.availabilityZones?.map((z) => z.availabilityZone) || [];
   return {
     id: variant.id,
     name: variant.name,
+    osVersionName: variant.osVersion?.version || variant.name,
     releaseDate: variant.releaseDate || product.createdAt,
     normalSupportEnd: variant.normalSupportEnd || variant.eolDate || product.createdAt,
     extendedSupportEnd: variant.extendedSupportEnd || variant.eolDate || product.createdAt,
@@ -84,6 +96,9 @@ function productVariantToRoadmap(product: Product, variant: ProductVariant): Roa
     product: product.name,
     flavor: variant.flavor?.name || '—',
     type: 'product',
+    regions: [...new Set(azList.map((az) => az.region).filter(Boolean))],
+    countries: [...new Set(azList.map((az) => az.country).filter(Boolean))],
+    azs: [...new Set(azList.map((az) => az.code).filter(Boolean))],
   };
 }
 
@@ -95,9 +110,16 @@ const axisOptions: { value: Axis; label: string }[] = [
   { value: 'CATEGORY', label: 'Category' },
   { value: 'PRODUCT', label: 'Product' },
   { value: 'FLAVOR', label: 'Flavor' },
+  { value: 'REGION', label: 'Region' },
+  { value: 'COUNTRY', label: 'Country' },
+  { value: 'AZ', label: 'AZ' },
 ];
 
-type ViewMode = 'grouped' | 'flat';
+const scaleOptions: { value: Scale; label: string }[] = [
+  { value: 'year', label: 'Year' },
+  { value: 'quarter', label: 'Quarter' },
+  { value: 'month', label: 'Month' },
+];
 
 /* ── AnimatedSection ───────────────────────────────────────────── */
 
@@ -157,7 +179,7 @@ function PickUpList<T extends string>({
         <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       {isOpen && (
-        <div className="absolute z-50 mt-1 min-w-[120px] rounded-md border border-slate-600 bg-slate-950 shadow-2xl py-1">
+        <div className="absolute z-50 mt-1 min-w-[140px] rounded-lg border border-slate-500 bg-slate-900 shadow-[0_8px_30px_rgb(0,0,0,0.5)] py-1">
           {options.map((opt) => (
             <button
               type="button"
@@ -179,19 +201,122 @@ function PickUpList<T extends string>({
   );
 }
 
+/* ── Timeline Axis ─────────────────────────────────────────────── */
+
+const monthInitials = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+
+interface TimelineRow {
+  label: string;
+  leftPct: number;
+  widthPct: number;
+  isMajor?: boolean;
+}
+
+function TimelineAxis({ timelineStart, timelineEnd, scale, labelWidth, onResizeLabel }: { timelineStart: Date; timelineEnd: Date; scale: Scale; labelWidth: number; onResizeLabel?: (e: React.MouseEvent) => void }) {
+  const rows = useMemo(() => {
+    const totalMs = timelineEnd.getTime() - timelineStart.getTime();
+    const toPct = (d: Date) => ((d.getTime() - timelineStart.getTime()) / totalMs) * 100;
+
+    const makeYearRow = (): TimelineRow[] => {
+      const segs: TimelineRow[] = [];
+      const startYear = timelineStart.getFullYear();
+      const endYear = timelineEnd.getFullYear();
+      for (let y = startYear; y < endYear; y++) {
+        const yStart = new Date(y, 0, 1);
+        const yEnd = new Date(y + 1, 0, 1);
+        const left = Math.max(0, toPct(yStart));
+        const right = Math.min(100, toPct(yEnd));
+        const width = right - left;
+        if (width > 0) segs.push({ label: String(y), leftPct: left, widthPct: width, isMajor: true });
+      }
+      return segs;
+    };
+
+    const makeQuarterRow = (): TimelineRow[] => {
+      const segs: TimelineRow[] = [];
+      let d = new Date(timelineStart);
+      d = new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1);
+      while (d < timelineEnd) {
+        const qStart = new Date(d);
+        const qEnd = new Date(d.getFullYear(), d.getMonth() + 3, 1);
+        const left = Math.max(0, toPct(qStart));
+        const right = Math.min(100, toPct(qEnd));
+        const width = right - left;
+        if (width > 0) {
+          const qNum = Math.floor(qStart.getMonth() / 3) + 1;
+          segs.push({ label: `Q${qNum}`, leftPct: left, widthPct: width, isMajor: qStart.getMonth() === 0 });
+        }
+        d = qEnd;
+      }
+      return segs;
+    };
+
+    const makeMonthRow = (): TimelineRow[] => {
+      const segs: TimelineRow[] = [];
+      let d = new Date(timelineStart);
+      d = new Date(d.getFullYear(), d.getMonth(), 1);
+      while (d < timelineEnd) {
+        const mStart = new Date(d);
+        const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+        const left = Math.max(0, toPct(mStart));
+        const right = Math.min(100, toPct(mEnd));
+        const width = right - left;
+        if (width > 0) {
+          segs.push({
+            label: monthInitials[mStart.getMonth()],
+            leftPct: left,
+            widthPct: width,
+            isMajor: mStart.getMonth() === 0,
+          });
+        }
+        d = mEnd;
+      }
+      return segs;
+    };
+
+    if (scale === 'year') return [makeYearRow()];
+    if (scale === 'quarter') return [makeYearRow(), makeQuarterRow()];
+    return [makeYearRow(), makeQuarterRow(), makeMonthRow()];
+  }, [timelineStart, timelineEnd, scale]);
+
+  const rowHeight = scale === 'month' ? 18 : scale === 'quarter' ? 18 : 20;
+  const totalHeight = rows.length * rowHeight;
+
+  return (
+    <div className="relative" style={{ marginLeft: labelWidth }}>
+      {onResizeLabel && (
+        <div
+          className="absolute left-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-blue-500/50 z-20 -translate-x-full"
+          onMouseDown={onResizeLabel}
+        />
+      )}
+      <div className="relative border-b border-slate-700 pb-1 mb-2 text-[11px] text-slate-500 font-mono select-none" style={{ height: `${totalHeight}px` }}>
+        {rows.map((row, rowIdx) =>
+          row.map((seg, i) => (
+            <div
+              key={`${rowIdx}-${i}`}
+              className={`absolute flex items-center justify-center border-l ${seg.isMajor ? 'border-slate-500' : 'border-slate-700/30'} ${rowIdx < rows.length - 1 ? 'border-b border-slate-700/30' : ''}`}
+              style={{ left: `${seg.leftPct}%`, width: `${seg.widthPct}%`, top: `${rowIdx * rowHeight}px`, height: `${rowHeight}px` }}
+            >
+              <span className="truncate px-1">{seg.label}</span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── Gantt Bar ─────────────────────────────────────────────────── */
 
-function GanttBar({ version, yearStart, yearEnd }: { version: RoadmapVersion; yearStart: number; yearEnd: number }) {
-  const totalYears = yearEnd - yearStart + 1;
+function GanttBar({ version, timelineStart, timelineEnd, showTodayBar }: { version: RoadmapVersion; timelineStart: Date; timelineEnd: Date; showTodayBar: boolean }) {
+  const totalMs = timelineEnd.getTime() - timelineStart.getTime();
+  const toPct = (d: Date) => Math.max(0, Math.min(100, ((d.getTime() - timelineStart.getTime()) / totalMs) * 100));
+
   const releaseDate = new Date(version.releaseDate);
   const normalEnd = new Date(version.normalSupportEnd);
   const extendedEnd = new Date(version.extendedSupportEnd);
   const eolDate = new Date(version.eolDate);
-
-  const toPct = (d: Date) => {
-    const years = d.getFullYear() + (d.getMonth() / 12) - yearStart;
-    return Math.max(0, Math.min(100, (years / totalYears) * 100));
-  };
 
   const releasePct = toPct(releaseDate);
   const normalPct = toPct(normalEnd);
@@ -201,43 +326,13 @@ function GanttBar({ version, yearStart, yearEnd }: { version: RoadmapVersion; ye
 
   return (
     <div className="flex-1 h-4 relative rounded overflow-hidden bg-slate-800">
-      <div
-        className="absolute top-0 h-full bg-emerald-500/60"
-        style={{ left: `${releasePct}%`, width: `${Math.max(0, normalPct - releasePct)}%` }}
-      />
-      <div
-        className="absolute top-0 h-full bg-blue-500/60"
-        style={{ left: `${normalPct}%`, width: `${Math.max(0, extendedPct - normalPct)}%` }}
-      />
-      <div
-        className="absolute top-0 h-full bg-amber-500/60"
-        style={{ left: `${extendedPct}%`, width: `${Math.max(0, eolPct - extendedPct)}%` }}
-      />
-      <div
-        className={`absolute top-0 h-full ${phaseCfg.bg} opacity-80`}
-        style={{ left: `${releasePct}%`, width: `${Math.max(0, eolPct - releasePct)}%` }}
-      />
-      <div
-        className={`absolute top-0 h-full w-0.5 ${phaseCfg.bg}`}
-        style={{ left: `${toPct(new Date())}%` }}
-      />
-    </div>
-  );
-}
-
-/* ── Year Axis ─────────────────────────────────────────────────── */
-
-function YearAxis({ yearStart, yearEnd, labelWidth = 240 }: { yearStart: number; yearEnd: number; labelWidth?: number }) {
-  const years: number[] = [];
-  for (let y = yearStart; y <= yearEnd; y++) years.push(y);
-
-  return (
-    <div className="flex border-b border-slate-700 pb-1 mb-2 text-[11px] text-slate-500 font-mono" style={{ marginLeft: labelWidth }}>
-      {years.map((year) => (
-        <div key={year} className="flex-1 text-center">
-          {year}
-        </div>
-      ))}
+      <div className="absolute top-0 h-full bg-emerald-500/60" style={{ left: `${releasePct}%`, width: `${Math.max(0, normalPct - releasePct)}%` }} />
+      <div className="absolute top-0 h-full bg-blue-500/60" style={{ left: `${normalPct}%`, width: `${Math.max(0, extendedPct - normalPct)}%` }} />
+      <div className="absolute top-0 h-full bg-amber-500/60" style={{ left: `${extendedPct}%`, width: `${Math.max(0, eolPct - extendedPct)}%` }} />
+      <div className={`absolute top-0 h-full ${phaseCfg.bg} opacity-80`} style={{ left: `${releasePct}%`, width: `${Math.max(0, eolPct - releasePct)}%` }} />
+      {showTodayBar && (
+        <div className="absolute top-0 h-full w-0.5 bg-white/80 z-10" style={{ left: `${toPct(new Date())}%` }} />
+      )}
     </div>
   );
 }
@@ -261,13 +356,25 @@ function getAxisValue(version: RoadmapVersion, axis: Axis): { id: string; label:
     case 'PHASE':
       return { id: version.phase, label: getPhaseConfig(version.phase).label };
     case 'VERSION':
-      return { id: version.id, label: version.name };
+      return { id: version.osVersionName, label: version.osVersionName };
     case 'CATEGORY':
       return { id: version.category, label: version.category };
     case 'PRODUCT':
       return { id: version.product, label: version.product };
     case 'FLAVOR':
       return { id: version.flavor, label: version.flavor };
+    case 'REGION': {
+      const val = version.regions.join(', ') || '—';
+      return { id: val, label: val };
+    }
+    case 'COUNTRY': {
+      const val = version.countries.join(', ') || '—';
+      return { id: val, label: val };
+    }
+    case 'AZ': {
+      const val = version.azs.join(', ') || '—';
+      return { id: val, label: val };
+    }
   }
 }
 
@@ -330,14 +437,18 @@ function buildTree(versions: RoadmapVersion[], axes: Axis[]): TreeNode[] {
 
 function TreeNodeRow({
   node,
-  yearStart,
-  yearEnd,
+  timelineStart,
+  timelineEnd,
+  showTodayBar,
   depth = 0,
+  labelWidth = 240,
 }: {
   node: TreeNode;
-  yearStart: number;
-  yearEnd: number;
+  timelineStart: Date;
+  timelineEnd: Date;
+  showTodayBar: boolean;
   depth?: number;
+  labelWidth?: number;
 }) {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.children.length > 0;
@@ -376,13 +487,72 @@ function TreeNodeRow({
       {expanded && (
         <div>
           {node.children.map((child) => (
-            <TreeNodeRow key={child.id} node={child} yearStart={yearStart} yearEnd={yearEnd} depth={depth + 1} />
+            <TreeNodeRow key={child.id} node={child} timelineStart={timelineStart} timelineEnd={timelineEnd} showTodayBar={showTodayBar} depth={depth + 1} labelWidth={labelWidth} />
           ))}
           {isLeaf && (
             <div className="ml-5 space-y-1">
-              {node.versions.map((version) => (
-                <VersionRow key={version.id} version={version} yearStart={yearStart} yearEnd={yearEnd} />
-              ))}
+              {(() => {
+                // Group versions by osVersionName
+                const groups = new Map<string, RoadmapVersion[]>();
+                for (const v of node.versions) {
+                  const key = v.osVersionName;
+                  if (!groups.has(key)) groups.set(key, []);
+                  groups.get(key)!.push(v);
+                }
+                const rows: React.ReactNode[] = [];
+                for (const [, versions] of groups) {
+                  if (versions.length === 1) {
+                    rows.push(
+                      <VersionRow
+                        key={versions[0].id}
+                        version={versions[0]}
+                        timelineStart={timelineStart}
+                        timelineEnd={timelineEnd}
+                        showTodayBar={showTodayBar}
+                        displayAxis={node.axis}
+                        labelWidth={labelWidth}
+                      />
+                    );
+                  } else {
+                    // Check if all dates are identical
+                    const allSame = versions.every((v) =>
+                      v.releaseDate === versions[0].releaseDate &&
+                      v.normalSupportEnd === versions[0].normalSupportEnd &&
+                      v.extendedSupportEnd === versions[0].extendedSupportEnd &&
+                      v.eolDate === versions[0].eolDate
+                    );
+                    if (allSame) {
+                      rows.push(
+                        <VersionRow
+                          key={versions[0].id}
+                          version={versions[0]}
+                          timelineStart={timelineStart}
+                          timelineEnd={timelineEnd}
+                          showTodayBar={showTodayBar}
+                          displayAxis={node.axis}
+                          labelWidth={labelWidth}
+                        />
+                      );
+                    } else {
+                      for (const v of versions) {
+                        rows.push(
+                          <VersionRow
+                            key={v.id}
+                            version={v}
+                            timelineStart={timelineStart}
+                            timelineEnd={timelineEnd}
+                            showTodayBar={showTodayBar}
+                            displayAxis={node.axis}
+                            subtitle={v.flavor}
+                            labelWidth={labelWidth}
+                          />
+                        );
+                      }
+                    }
+                  }
+                }
+                return rows;
+              })()}
             </div>
           )}
         </div>
@@ -393,18 +563,20 @@ function TreeNodeRow({
 
 /* ── Version Row ───────────────────────────────────────────────── */
 
-function VersionRow({ version, yearStart, yearEnd }: { version: RoadmapVersion; yearStart: number; yearEnd: number }) {
+function VersionRow({ version, timelineStart, timelineEnd, showTodayBar, displayAxis, subtitle, labelWidth = 240 }: { version: RoadmapVersion; timelineStart: Date; timelineEnd: Date; showTodayBar: boolean; displayAxis?: Axis; subtitle?: string; labelWidth?: number }) {
   const phase = getPhaseConfig(version.phase);
+  const label = displayAxis ? getAxisValue(version, displayAxis).label : version.name;
   return (
     <div className="flex items-center gap-3 h-7">
-      <div className="w-[240px] flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-2 shrink-0" style={{ width: labelWidth }}>
         <span className={`inline-block w-1.5 h-1.5 rounded-full ${phase.bg}`} />
-        <span className="text-xs text-slate-300 font-medium truncate">{version.name}</span>
+        <span className="text-xs text-slate-300 font-medium truncate">{label}</span>
+        {subtitle && <span className="text-[10px] text-slate-500">({subtitle})</span>}
         <span className="text-[10px] text-slate-500 ml-auto">
           {new Date(version.releaseDate).getFullYear()} → {new Date(version.eolDate).getFullYear()}
         </span>
       </div>
-      <GanttBar version={version} yearStart={yearStart} yearEnd={yearEnd} />
+      <GanttBar version={version} timelineStart={timelineStart} timelineEnd={timelineEnd} showTodayBar={showTodayBar} />
     </div>
   );
 }
@@ -431,49 +603,140 @@ function buildFlatRows(versions: RoadmapVersion[], axes: Axis[]): FlatRow[] {
 function FlatTable({
   rows,
   axes,
-  yearStart,
-  yearEnd,
+  timelineStart,
+  timelineEnd,
+  showTodayBar,
+  columnWidths,
+  onResizeColumn,
 }: {
   rows: FlatRow[];
   axes: Axis[];
-  yearStart: number;
-  yearEnd: number;
+  timelineStart: Date;
+  timelineEnd: Date;
+  showTodayBar: boolean;
+  columnWidths: number[];
+  onResizeColumn: (index: number, e: React.MouseEvent) => void;
 }) {
-  const colWidth = 130;
-
   return (
     <div className="flex flex-col">
       {/* Header */}
-      <div className="flex border-b border-slate-700 pb-1 mb-2">
-        {axes.map((axis) => (
-          <div key={axis} className="text-[11px] text-blue-400 font-semibold px-1" style={{ width: colWidth, minWidth: colWidth }}>
+      <div className="flex border-b border-slate-700 pb-1 mb-2 select-none">
+        {axes.map((axis, i) => (
+          <div
+            key={axis}
+            className="relative text-[11px] text-blue-400 font-semibold px-1 flex items-center"
+            style={{ width: columnWidths[i], minWidth: columnWidths[i] }}
+          >
             {axisLabels[axis]}
+            <div
+              className="resize-handle absolute top-0 h-full w-3 cursor-col-resize z-20 flex items-center justify-center -right-1.5"
+              onMouseDown={(e) => onResizeColumn(i, e)}
+            >
+              <div className="w-px h-5 bg-slate-500/60 hover:bg-blue-400 transition-colors rounded-full" />
+            </div>
           </div>
         ))}
-        <div className="flex-1 text-[11px] text-slate-500 font-mono text-center">Timeline</div>
+        <div className="flex-1" />
       </div>
 
       {/* Rows */}
       <div className="space-y-1">
-        {rows.map((row, idx) => (
-          <div key={row.version.id + idx} className="flex items-center h-7">
-            {axes.length === 0 ? (
-              <div className="flex items-center gap-2 px-1" style={{ width: colWidth, minWidth: colWidth }}>
-                <span className={`inline-block w-1.5 h-1.5 rounded-full ${getPhaseConfig(row.version.phase).bg}`} />
-                <span className="text-xs text-slate-300 font-medium truncate">{row.version.name}</span>
-              </div>
-            ) : (
-              row.labels.map((label, i) => (
-                <div key={i} className="px-1 text-xs text-slate-300 truncate" style={{ width: colWidth, minWidth: colWidth }}>
-                  {label.label}
+        {(() => {
+          // Group rows by their label values
+          const groups = new Map<string, FlatRow[]>();
+          for (const row of rows) {
+            const key = row.labels.map((l) => l.label).join('|');
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key)!.push(row);
+          }
+
+          const rendered: React.ReactNode[] = [];
+          for (const [, groupRows] of groups) {
+            if (groupRows.length === 1) {
+              const row = groupRows[0];
+              rendered.push(
+                <div key={row.version.id} className="flex items-center h-7">
+                  {axes.length === 0 ? (
+                    <div className="flex items-center gap-2 px-1" style={{ width: 130, minWidth: 130 }}>
+                      <span className={`inline-block w-1.5 h-1.5 rounded-full ${getPhaseConfig(row.version.phase).bg}`} />
+                      <span className="text-xs text-slate-300 font-medium truncate">{row.version.name}</span>
+                    </div>
+                  ) : (
+                    row.labels.map((label, i) => (
+                      <div key={i} className="px-1 text-xs text-slate-300 truncate" style={{ width: columnWidths[i], minWidth: columnWidths[i] }}>
+                        {label.label}
+                      </div>
+                    ))
+                  )}
+                  <div className="flex-1">
+                    <GanttBar version={row.version} timelineStart={timelineStart} timelineEnd={timelineEnd} showTodayBar={showTodayBar} />
+                  </div>
                 </div>
-              ))
-            )}
-            <div className="flex-1">
-              <GanttBar version={row.version} yearStart={yearStart} yearEnd={yearEnd} />
-            </div>
-          </div>
-        ))}
+              );
+            } else {
+              // Check if all dates are identical
+              const allSame = groupRows.every((r) =>
+                r.version.releaseDate === groupRows[0].version.releaseDate &&
+                r.version.normalSupportEnd === groupRows[0].version.normalSupportEnd &&
+                r.version.extendedSupportEnd === groupRows[0].version.extendedSupportEnd &&
+                r.version.eolDate === groupRows[0].version.eolDate
+              );
+              if (allSame) {
+                const row = groupRows[0];
+                rendered.push(
+                  <div key={row.version.id} className="flex items-center h-7">
+                    {axes.length === 0 ? (
+                      <div className="flex items-center gap-2 px-1" style={{ width: 130, minWidth: 130 }}>
+                        <span className={`inline-block w-1.5 h-1.5 rounded-full ${getPhaseConfig(row.version.phase).bg}`} />
+                        <span className="text-xs text-slate-300 font-medium truncate">{row.version.name}</span>
+                        <span className="text-[10px] text-slate-500">({groupRows.length})</span>
+                      </div>
+                    ) : (
+                      <>
+                        {row.labels.map((label, i) => (
+                          <div key={i} className="px-1 text-xs text-slate-300 truncate" style={{ width: columnWidths[i], minWidth: columnWidths[i] }}>
+                            {label.label}
+                          </div>
+                        ))}
+                        <div className="px-1 text-[10px] text-slate-500">({groupRows.length})</div>
+                      </>
+                    )}
+                    <div className="flex-1">
+                      <GanttBar version={row.version} timelineStart={timelineStart} timelineEnd={timelineEnd} showTodayBar={showTodayBar} />
+                    </div>
+                  </div>
+                );
+              } else {
+                for (const row of groupRows) {
+                  rendered.push(
+                    <div key={row.version.id} className="flex items-center h-7">
+                      {axes.length === 0 ? (
+                        <div className="flex items-center gap-2 px-1" style={{ width: 130, minWidth: 130 }}>
+                          <span className={`inline-block w-1.5 h-1.5 rounded-full ${getPhaseConfig(row.version.phase).bg}`} />
+                          <span className="text-xs text-slate-300 font-medium truncate">{row.version.name}</span>
+                          <span className="text-[10px] text-slate-500">({row.version.flavor})</span>
+                        </div>
+                      ) : (
+                        <>
+                          {row.labels.map((label, i) => (
+                            <div key={i} className="px-1 text-xs text-slate-300 truncate" style={{ width: columnWidths[i], minWidth: columnWidths[i] }}>
+                              {label.label}
+                            </div>
+                          ))}
+                          <div className="px-1 text-[10px] text-slate-500">({row.version.flavor})</div>
+                        </>
+                      )}
+                      <div className="flex-1">
+                        <GanttBar version={row.version} timelineStart={timelineStart} timelineEnd={timelineEnd} showTodayBar={showTodayBar} />
+                      </div>
+                    </div>
+                  );
+                }
+              }
+            }
+          }
+          return rendered;
+        })()}
       </div>
     </div>
   );
@@ -485,18 +748,124 @@ export default function Roadmap() {
   const { data: products, isLoading: productsLoading, isError: productsError, refetch: refetchProducts } = useProducts();
   const [selectedFamily, setSelectedFamily] = useState('');
   const [selectedPhase, setSelectedPhase] = useState<LifecyclePhase | ''>('');
-  const [timeRange, setTimeRange] = useState<'3y' | '5y' | '10y'>('5y');
+  const [selectedRegion, setSelectedRegion] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState('');
+  const [selectedAZ, setSelectedAZ] = useState('');
+  const [timeSpan, setTimeSpan] = useState(5);
   const [viewMode, setViewMode] = useState<ViewMode>('grouped');
   const [rowAxes, setRowAxes] = useState<Axis[]>(['PRODUCT', 'OS', 'VERSION']);
+  const [scale, setScale] = useState<Scale>('year');
+  const [showTodayBar, setShowTodayBar] = useState(true);
+  const [timelineStart, setTimelineStart] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear() - 1, 0, 1);
+  });
+  const [columnWidths, setColumnWidths] = useState<number[]>([]);
+  const [labelColumnWidth, setLabelColumnWidth] = useState(240);
 
-  const now = new Date().getFullYear();
-  const rangeMap = { '3y': 3, '5y': 5, '10y': 10 };
-  const yearStart = now - 1;
-  const yearEnd = now + rangeMap[timeRange];
+  const timelineEnd = useMemo(() => {
+    const d = new Date(timelineStart);
+    d.setFullYear(d.getFullYear() + timeSpan);
+    return d;
+  }, [timelineStart, timeSpan]);
+
+  // Update column widths when axes change
+  useEffect(() => {
+    setColumnWidths(rowAxes.map(() => 130));
+  }, [rowAxes]);
+
+  // Drag state for timeline panning
+  const [dragState, setDragState] = useState<{
+    startX: number;
+    startDate: number;
+    pixelsPerMs: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!dragState) return;
+    const handleMove = (e: MouseEvent) => {
+      const dx = e.clientX - dragState.startX;
+      const msDelta = dx / dragState.pixelsPerMs;
+      const newStartMs = dragState.startDate + msDelta;
+      const minMs = new Date('2000-01-01').getTime();
+      const maxMs = new Date().getFullYear() + 20;
+      const clampedMs = Math.max(minMs, Math.min(new Date(maxMs, 11, 31).getTime(), newStartMs));
+      setTimelineStart(new Date(clampedMs));
+    };
+    const handleUp = () => setDragState(null);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [dragState]);
+
+  const handleTimelineMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('.resize-handle') || target.closest('.no-drag')) return;
+    const container = e.currentTarget;
+    const rect = container.getBoundingClientRect();
+    const totalMs = timelineEnd.getTime() - timelineStart.getTime();
+    const pixelsPerMs = rect.width / totalMs;
+    setDragState({
+      startX: e.clientX,
+      startDate: timelineStart.getTime(),
+      pixelsPerMs,
+    });
+  }, [timelineStart, timelineEnd]);
+
+  const handleResetToday = () => {
+    const now = new Date();
+    setTimelineStart(new Date(now.getFullYear() - 1, 0, 1));
+  };
+
+  const handleResizeColumn = (index: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = columnWidths[index];
+
+    const handleMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const newWidth = Math.max(60, startWidth + delta);
+      setColumnWidths((prev) => {
+        const next = [...prev];
+        next[index] = newWidth;
+        return next;
+      });
+    };
+
+    const handleUp = () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+  };
+
+  const handleResizeLabel = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = labelColumnWidth;
+
+    const handleMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const newWidth = Math.max(120, startWidth + delta);
+      setLabelColumnWidth(newWidth);
+    };
+
+    const handleUp = () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+  };
 
   const allVersions = useMemo(() => {
     const versions: RoadmapVersion[] = [];
-    // Only ProductVariants are products; OsVersions alone are not products
     if (products) {
       for (const product of products) {
         for (const variant of product.variants || []) {
@@ -513,6 +882,18 @@ export default function Roadmap() {
     return Array.from(new Set(allVersions.map((v) => v.family).filter(Boolean)));
   }, [allVersions]);
 
+  const allRegions = useMemo(() => {
+    return Array.from(new Set(allVersions.flatMap((v) => v.regions)));
+  }, [allVersions]);
+
+  const allCountries = useMemo(() => {
+    return Array.from(new Set(allVersions.flatMap((v) => v.countries)));
+  }, [allVersions]);
+
+  const allAZs = useMemo(() => {
+    return Array.from(new Set(allVersions.flatMap((v) => v.azs)));
+  }, [allVersions]);
+
   const filtered = useMemo(() => {
     let result = [...allVersions];
     if (selectedFamily) {
@@ -521,8 +902,17 @@ export default function Roadmap() {
     if (selectedPhase) {
       result = result.filter((v) => v.phase === selectedPhase);
     }
+    if (selectedRegion) {
+      result = result.filter((v) => v.regions.includes(selectedRegion));
+    }
+    if (selectedCountry) {
+      result = result.filter((v) => v.countries.includes(selectedCountry));
+    }
+    if (selectedAZ) {
+      result = result.filter((v) => v.azs.includes(selectedAZ));
+    }
     return result;
-  }, [allVersions, selectedFamily, selectedPhase]);
+  }, [allVersions, selectedFamily, selectedPhase, selectedRegion, selectedCountry, selectedAZ]);
 
   const tree = useMemo(() => buildTree(filtered, rowAxes), [filtered, rowAxes]);
   const flatRows = useMemo(() => buildFlatRows(filtered, rowAxes), [filtered, rowAxes]);
@@ -572,7 +962,7 @@ export default function Roadmap() {
       </AnimatedSection>
 
       {/* Toolbar */}
-      <AnimatedSection delay={100} className="relative z-50">
+      <AnimatedSection delay={100} className="relative z-[60]">
         <div className="flex flex-wrap items-center gap-3 mb-6 p-4 rounded-xl bg-slate-900/50 border border-slate-800">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-slate-500" />
@@ -596,21 +986,108 @@ export default function Roadmap() {
             onChange={(v) => setSelectedPhase(v)}
           />
 
-          <div className="flex gap-1 ml-auto">
-            {(['3y', '5y', '10y'] as const).map((range) => (
+          {allRegions.length > 0 && (
+            <>
+              <span className="text-xs text-slate-500">Region:</span>
+              <PickUpList
+                options={[{ value: '', label: 'All' }, ...allRegions.map((r) => ({ value: r, label: r }))]}
+                value={selectedRegion}
+                onChange={(v) => setSelectedRegion(v)}
+              />
+            </>
+          )}
+
+          {allCountries.length > 0 && (
+            <>
+              <span className="text-xs text-slate-500">Country:</span>
+              <PickUpList
+                options={[{ value: '', label: 'All' }, ...allCountries.map((c) => ({ value: c, label: c }))]}
+                value={selectedCountry}
+                onChange={(v) => setSelectedCountry(v)}
+              />
+            </>
+          )}
+
+          {allAZs.length > 0 && (
+            <>
+              <span className="text-xs text-slate-500">AZ:</span>
+              <PickUpList
+                options={[{ value: '', label: 'All' }, ...allAZs.map((z) => ({ value: z, label: z }))]}
+                value={selectedAZ}
+                onChange={(v) => setSelectedAZ(v)}
+              />
+            </>
+          )}
+
+          <div className="h-4 w-px bg-slate-700" />
+
+          {/* Scale */}
+          <span className="text-xs text-slate-500">Scale:</span>
+          <PickUpList
+            options={scaleOptions}
+            value={scale}
+            onChange={(v) => setScale(v)}
+          />
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setTimeSpan((s) => Math.max(1, s - 1))}
+              className="p-1.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 transition-colors"
+              title="Zoom in"
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </button>
+            <span className="text-xs text-slate-400 w-8 text-center">{timeSpan}y</span>
+            <button
+              onClick={() => setTimeSpan((s) => Math.min(20, s + 1))}
+              className="p-1.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 transition-colors"
+              title="Zoom out"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="flex gap-1">
+            {[3, 5, 10].map((years) => (
               <button
-                key={range}
-                onClick={() => setTimeRange(range)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  timeRange === range
+                key={years}
+                onClick={() => setTimeSpan(years)}
+                className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  timeSpan === years
                     ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
                     : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
                 }`}
               >
-                {range === '10y' ? '10y' : range}
+                {years}y
               </button>
             ))}
           </div>
+
+          <div className="h-4 w-px bg-slate-700" />
+
+          {/* Today bar toggle */}
+          <button
+            onClick={() => setShowTodayBar((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
+              showTodayBar
+                ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
+                : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
+            }`}
+            title="Toggle today bar"
+          >
+            {showTodayBar ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+            Today
+          </button>
+
+          {/* Reset to today */}
+          <button
+            onClick={handleResetToday}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700"
+            title="Reset to today"
+          >
+            <Crosshair className="h-3.5 w-3.5" />
+            Center
+          </button>
         </div>
       </AnimatedSection>
 
@@ -688,30 +1165,50 @@ export default function Roadmap() {
       </AnimatedSection>
 
       <AnimatedSection delay={300}>
-        <div className="p-5 rounded-xl bg-slate-900/50 border border-slate-800">
-          <YearAxis yearStart={yearStart} yearEnd={yearEnd} labelWidth={viewMode === 'flat' ? Math.max(240, rowAxes.length * 130) : 240} />
+        <div
+          className="p-5 rounded-xl bg-slate-900/50 border border-slate-800 overflow-x-auto"
+          onMouseDown={handleTimelineMouseDown}
+          style={{ cursor: dragState ? 'grabbing' : 'grab' }}
+        >
+          <div className="min-w-[600px]">
+            <TimelineAxis
+              timelineStart={timelineStart}
+              timelineEnd={timelineEnd}
+              scale={scale}
+              labelWidth={viewMode === 'flat' ? columnWidths.reduce((a, b) => a + b, 0) : labelColumnWidth}
+              onResizeLabel={viewMode === 'grouped' ? handleResizeLabel : undefined}
+            />
 
-          {viewMode === 'grouped' && (
-            <>
-              {tree.length === 0 ? (
-                <div className="text-slate-500 text-center py-12">No versions match your filters</div>
-              ) : (
-                tree.map((node) => (
-                  <TreeNodeRow key={node.id} node={node} yearStart={yearStart} yearEnd={yearEnd} />
-                ))
-              )}
-            </>
-          )}
+            {viewMode === 'grouped' && (
+              <>
+                {tree.length === 0 ? (
+                  <div className="text-slate-500 text-center py-12">No versions match your filters</div>
+                ) : (
+                  tree.map((node) => (
+                    <TreeNodeRow key={node.id} node={node} timelineStart={timelineStart} timelineEnd={timelineEnd} showTodayBar={showTodayBar} labelWidth={labelColumnWidth} />
+                  ))
+                )}
+              </>
+            )}
 
-          {viewMode === 'flat' && (
-            <>
-              {flatRows.length === 0 ? (
-                <div className="text-slate-500 text-center py-12">No versions match your filters</div>
-              ) : (
-                <FlatTable rows={flatRows} axes={rowAxes} yearStart={yearStart} yearEnd={yearEnd} />
-              )}
-            </>
-          )}
+            {viewMode === 'flat' && (
+              <>
+                {flatRows.length === 0 ? (
+                  <div className="text-slate-500 text-center py-12">No versions match your filters</div>
+                ) : (
+                  <FlatTable
+                    rows={flatRows}
+                    axes={rowAxes}
+                    timelineStart={timelineStart}
+                    timelineEnd={timelineEnd}
+                    showTodayBar={showTodayBar}
+                    columnWidths={columnWidths}
+                    onResizeColumn={handleResizeColumn}
+                  />
+                )}
+              </>
+            )}
+          </div>
         </div>
       </AnimatedSection>
     </div>
