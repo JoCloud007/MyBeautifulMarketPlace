@@ -48,15 +48,8 @@ ENV PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1
 ENV PRISMA_QUERY_ENGINE_LIBRARY=/app/lib/prisma/libquery_engine.so.node
 ENV PRISMA_SCHEMA_ENGINE_BINARY=/app/lib/prisma/schema-engine
 
-# Copy esbuild platform binary (air-gap: pre-downloaded on host in lib/esbuild/)
-ARG TARGETARCH
-RUN if [ "$TARGETARCH" = "arm64" ]; then \
-      mkdir -p /app/node_modules/@esbuild/linux-arm64 && \
-      cp -r /app/lib/esbuild/* /app/node_modules/@esbuild/linux-arm64/; \
-    else \
-      mkdir -p /app/node_modules/@esbuild/linux-x64 && \
-      cp -r /app/lib/esbuild-x64/* /app/node_modules/@esbuild/linux-x64/; \
-    fi
+# esbuild binary is already present in node_modules via COPY . .
+# (make deploy installs platform-native dependencies on the host)
 
 ARG TARGETARCH
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
