@@ -57,7 +57,7 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     npx prisma generate
 
 # Compile TypeScript to JavaScript (avoids esbuild platform mismatch at runtime)
-RUN npx tsc -p tsconfig.json
+RUN rm -rf dist && npx tsc -p tsconfig.json
 
 EXPOSE 3001
 

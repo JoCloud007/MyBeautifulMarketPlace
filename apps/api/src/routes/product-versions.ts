@@ -49,6 +49,7 @@ router.get('/', async (req, res, next) => {
 
 // POST /api/products/:productId/versions
 // Geo associations: region, zones, availabilityZones
+// Fixed: empty array guards and transaction wrapping
 router.post('/', async (req, res, next) => {
   try {
     const productId = (req.params as any).productId as string;
@@ -106,8 +107,8 @@ router.post('/', async (req, res, next) => {
         ...versionData,
         product: { connect: { id: productId } },
         region: regionId ? { connect: { id: regionId } } : undefined,
-        zones: zoneIds ? { create: zoneIds.map((zid: string) => ({ zone: { connect: { id: zid } } })) } : undefined,
-        availabilityZones: availabilityZoneIds ? { create: availabilityZoneIds.map((azId: string) => ({ availabilityZone: { connect: { id: azId } } })) } : undefined,
+        zones: zoneIds?.length ? { create: zoneIds.map((zid: string) => ({ zone: { connect: { id: zid } } })) } : undefined,
+        availabilityZones: availabilityZoneIds?.length ? { create: availabilityZoneIds.map((azId: string) => ({ availabilityZone: { connect: { id: azId } } })) } : undefined,
       },
       include: {
         region: true,
@@ -176,28 +177,31 @@ router.patch('/:id', async (req, res, next) => {
       }
     }
 
-    // Handle zone links update
-    if (zoneIds) {
-      await prisma.productVersionZone.deleteMany({ where: { productVersionId: id } });
+    // Handle zone links update in a transaction
+    const ops: any[] = [];
+    if (zoneIds?.length) {
+      ops.push(prisma.productVersionZone.deleteMany({ where: { productVersionId: id } }));
     }
-    if (availabilityZoneIds) {
-      await prisma.productVersionAvailabilityZone.deleteMany({ where: { productVersionId: id } });
+    if (availabilityZoneIds?.length) {
+      ops.push(prisma.productVersionAvailabilityZone.deleteMany({ where: { productVersionId: id } }));
     }
-
-    const version = await prisma.productVersion.update({
+    ops.push(prisma.productVersion.update({
       where: { id },
       data: {
         ...versionData,
         region: regionId !== undefined ? (regionId ? { connect: { id: regionId } } : { disconnect: true }) : undefined,
-        zones: zoneIds ? { create: zoneIds.map((zid: string) => ({ zone: { connect: { id: zid } } })) } : undefined,
-        availabilityZones: availabilityZoneIds ? { create: availabilityZoneIds.map((azId: string) => ({ availabilityZone: { connect: { id: azId } } })) } : undefined,
+        zones: zoneIds?.length ? { create: zoneIds.map((zid: string) => ({ zone: { connect: { id: zid } } })) } : undefined,
+        availabilityZones: availabilityZoneIds?.length ? { create: availabilityZoneIds.map((azId: string) => ({ availabilityZone: { connect: { id: azId } } })) } : undefined,
       },
       include: {
         region: true,
         zones: { include: { zone: true } },
         availabilityZones: { include: { availabilityZone: true } },
       },
-    });
+    }));
+
+    const result = await prisma.$transaction(ops);
+    const version = result[result.length - 1];
 
     res.json(version);
   } catch (err) {
