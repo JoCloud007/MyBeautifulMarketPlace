@@ -179,10 +179,10 @@ router.patch('/:id', async (req, res, next) => {
 
     // Handle zone links update in a transaction
     const ops: any[] = [];
-    if (zoneIds?.length) {
+    if (zoneIds !== undefined) {
       ops.push(prisma.productVersionZone.deleteMany({ where: { productVersionId: id } }));
     }
-    if (availabilityZoneIds?.length) {
+    if (availabilityZoneIds !== undefined) {
       ops.push(prisma.productVersionAvailabilityZone.deleteMany({ where: { productVersionId: id } }));
     }
     ops.push(prisma.productVersion.update({
