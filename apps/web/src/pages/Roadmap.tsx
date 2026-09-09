@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { useProducts, useFlavors } from '@/hooks/useApi';
+import { useProducts } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -8,7 +8,7 @@ import {
   Filter, ChevronDown, ChevronRight, BarChart3, Table,
   Crosshair, Eye, EyeOff, ZoomIn, ZoomOut
 } from 'lucide-react';
-import type { Product, ProductVariant, ProductVersion, Flavor } from '@cloudmarket/shared-types';
+import type { Product, ProductVariant, ProductVersion } from '@cloudmarket/shared-types';
 import { LifecyclePhase } from '@cloudmarket/shared-types';
 
 /* ── Phase config ──────────────────────────────────────────────── */
@@ -39,20 +39,10 @@ function getPhaseConfig(phase: LifecyclePhase | string | undefined) {
   return phaseConfig[phase as LifecyclePhase] ?? defaultPhaseConfig;
 }
 
-function deriveFlavorPhase(flavor: Flavor): LifecyclePhase {
-  const now = new Date();
-  const release = flavor.releaseDate ? new Date(flavor.releaseDate) : null;
-  const deprecation = flavor.deprecationDate ? new Date(flavor.deprecationDate) : null;
-  const eol = flavor.eolDate ? new Date(flavor.eolDate) : null;
-  if (eol && now >= eol) return LifecyclePhase.EOL;
-  if (deprecation && now >= deprecation) return LifecyclePhase.NO_SUPPORT;
-  if (release && now >= release) return LifecyclePhase.RELEASED;
-  return LifecyclePhase.RELEASED;
-}
-
 /* ── Axis config ───────────────────────────────────────────────── */
 
-type Axis = 'FAMILY' | 'OS' | 'PHASE' | 'VERSION' | 'CATEGORY' | 'PRODUCT' | 'FLAVOR' | 'REGION' | 'COUNTRY' | 'AZ' | 'PRODUCT_VERSION';
+type Axis = 'FAMILY' | 'OS' | 'PHASE' | 'VERSION' | 'CATEGORY' | 'PRODUCT' | 'FLAVOR' | 'REGION' | 'COUNTRY' | 'AZ' | 'ZONE' | 'PRODUCT_VERSION' | 'OS_VERSION';
+type RoadmapPerspective = 'product' | 'compute';
 type Scale = 'month' | 'quarter' | 'year';
 type ViewMode = 'grouped' | 'flat';
 type EntityType = 'product' | 'flavor' | 'os';
@@ -68,7 +58,9 @@ const axisLabels: Record<Axis, string> = {
   REGION: 'Region',
   COUNTRY: 'Country',
   AZ: 'AZ',
+  ZONE: 'Zone',
   PRODUCT_VERSION: 'Product Version',
+  OS_VERSION: 'OS Version',
 };
 
 /* ── Unified Roadmap Version ───────────────────────────────────── */
@@ -144,45 +136,28 @@ function productVersionToRoadmap(product: Product, pv: ProductVersion): RoadmapV
   };
 }
 
-function flavorToRoadmap(flavor: Flavor): RoadmapVersion {
-  const azList = flavor.zones?.flatMap((fz) => fz.zone?.availabilityZones?.map((zaz) => zaz.availabilityZone) || []) || [];
-  const releaseDate = flavor.releaseDate || new Date().toISOString();
-  const deprecationDate = flavor.deprecationDate || flavor.eolDate || releaseDate;
-  const eolDate = flavor.eolDate || releaseDate;
-  return {
-    id: flavor.id,
-    name: flavor.name,
-    osVersionName: '—',
-    releaseDate,
-    normalSupportEnd: deprecationDate,
-    extendedSupportEnd: deprecationDate,
-    eolDate,
-    phase: deriveFlavorPhase(flavor),
-    family: 'OTHER',
-    os: '—',
-    category: '—',
-    product: '—',
-    flavor: flavor.name,
-    type: 'flavor',
-    regions: [...new Set(azList.map((az) => az.region).filter(Boolean))],
-    countries: [...new Set(azList.map((az) => az.country).filter(Boolean))],
-    azs: [...new Set(azList.map((az) => az.code).filter(Boolean))],
-    zones: [...new Set((flavor.zones || []).map((fz) => fz.zone?.name).filter(Boolean))],
-  };
-}
-
-const axisOptions: { value: Axis; label: string }[] = [
-  { value: 'FAMILY', label: 'Family' },
-  { value: 'OS', label: 'OS' },
-  { value: 'PHASE', label: 'Phase' },
-  { value: 'VERSION', label: 'Version' },
-  { value: 'CATEGORY', label: 'Category' },
+const axisOptionsProduct: { value: Axis; label: string }[] = [
   { value: 'PRODUCT', label: 'Product' },
-  { value: 'FLAVOR', label: 'Flavor' },
+  { value: 'PRODUCT_VERSION', label: 'Product Version' },
+  { value: 'PHASE', label: 'Phase' },
+  { value: 'CATEGORY', label: 'Category' },
   { value: 'REGION', label: 'Region' },
   { value: 'COUNTRY', label: 'Country' },
   { value: 'AZ', label: 'AZ' },
-  { value: 'PRODUCT_VERSION', label: 'Product Version' },
+  { value: 'ZONE', label: 'Zone' },
+];
+
+const axisOptionsCompute: { value: Axis; label: string }[] = [
+  { value: 'PRODUCT', label: 'Product' },
+  { value: 'OS', label: 'OS' },
+  { value: 'OS_VERSION', label: 'OS Version' },
+  { value: 'FLAVOR', label: 'Flavor' },
+  { value: 'FAMILY', label: 'Family' },
+  { value: 'PHASE', label: 'Phase' },
+  { value: 'REGION', label: 'Region' },
+  { value: 'COUNTRY', label: 'Country' },
+  { value: 'AZ', label: 'AZ' },
+  { value: 'ZONE', label: 'Zone' },
 ];
 
 const scaleOptions: { value: Scale; label: string }[] = [
@@ -434,6 +409,8 @@ function getAxisValue(version: RoadmapVersion, axis: Axis): { id: string; label:
       return { id: version.phase, label: getPhaseConfig(version.phase).label };
     case 'VERSION':
       return { id: version.osVersionName, label: version.osVersionName };
+    case 'OS_VERSION':
+      return { id: version.osVersionName, label: version.osVersionName };
     case 'CATEGORY':
       return { id: version.category, label: version.category };
     case 'PRODUCT':
@@ -452,6 +429,10 @@ function getAxisValue(version: RoadmapVersion, axis: Axis): { id: string; label:
     }
     case 'AZ': {
       const val = version.azs.join(', ') || '—';
+      return { id: val, label: val };
+    }
+    case 'ZONE': {
+      const val = version.zones.join(', ') || '—';
       return { id: val, label: val };
     }
   }
@@ -667,15 +648,67 @@ interface FlatRow {
   labels: { axis: Axis; label: string }[];
 }
 
+function cartesianProduct<T>(arrays: T[][]): T[][] {
+  if (arrays.length === 0) return [[]];
+  return arrays.reduce((acc, curr) => {
+    return acc.flatMap(a => curr.map(c => [...a, c]));
+  }, [[]] as T[][]);
+}
+
 function buildFlatRows(versions: RoadmapVersion[], axes: Axis[]): FlatRow[] {
-  return versions
-    .map((version) => ({
-      version,
-      labels: axes.map((axis) => ({
-        axis,
-        label: getAxisValue(version, axis).label,
-      })),
-    }))
+  const arrayAxisMap: Record<string, keyof RoadmapVersion> = {
+    REGION: 'regions',
+    COUNTRY: 'countries',
+    AZ: 'azs',
+    ZONE: 'zones',
+  };
+
+  // Step 1: Explode versions by array axes
+  const exploded: FlatRow[] = [];
+  for (const version of versions) {
+    const arrayAxes = axes.filter(axis => arrayAxisMap[axis]);
+    if (arrayAxes.length === 0) {
+      exploded.push({
+        version,
+        labels: axes.map((axis) => ({
+          axis,
+          label: getAxisValue(version, axis).label,
+        })),
+      });
+      continue;
+    }
+
+    const arrayValues = arrayAxes.map(axis => {
+      const key = arrayAxisMap[axis]!;
+      const vals = (version[key] as string[]).filter(Boolean);
+      return vals.length > 0 ? vals : ['—'];
+    });
+
+    const combinations = cartesianProduct(arrayValues);
+    for (const combo of combinations) {
+      const labels = axes.map((axis) => {
+        const arrayIdx = arrayAxes.indexOf(axis);
+        if (arrayIdx >= 0) {
+          return { axis, label: combo[arrayIdx] };
+        }
+        return { axis, label: getAxisValue(version, axis).label };
+      });
+      exploded.push({ version, labels });
+    }
+  }
+
+  // Step 2: Merge rows with same labels and same dates
+  const merged = new Map<string, FlatRow>();
+  for (const row of exploded) {
+    const dateKey = `${row.version.releaseDate}|${row.version.normalSupportEnd}|${row.version.extendedSupportEnd}|${row.version.eolDate}`;
+    const labelKey = row.labels.map(l => `${l.axis}:${l.label}`).join('|');
+    const key = `${labelKey}|${dateKey}`;
+    if (!merged.has(key)) {
+      merged.set(key, row);
+    }
+  }
+
+  return Array.from(merged.values())
     .sort((a, b) => new Date(a.version.releaseDate).getTime() - new Date(b.version.releaseDate).getTime());
 }
 
@@ -793,7 +826,9 @@ function FlatTable({
                         <div className="flex items-center gap-2 px-1" style={{ width: 130, minWidth: 130 }}>
                           <span className={`inline-block w-1.5 h-1.5 rounded-full ${getPhaseConfig(row.version.phase).bg}`} />
                           <span className="text-xs text-slate-300 font-medium truncate">{row.version.name}</span>
-                          <span className="text-[10px] text-slate-500">({row.version.flavor})</span>
+                          <span className="text-[10px] text-slate-500">
+                            ({row.version.flavor}{row.version.name && row.version.name !== '—' ? ` · ${row.version.name}` : ''})
+                          </span>
                         </div>
                       ) : (
                         <>
@@ -802,7 +837,9 @@ function FlatTable({
                               {label.label}
                             </div>
                           ))}
-                          <div className="px-1 text-[10px] text-slate-500">({row.version.flavor})</div>
+                          <div className="px-1 text-[10px] text-slate-500">
+                            ({row.version.flavor}{row.version.name && row.version.name !== '—' ? ` · ${row.version.name}` : ''})
+                          </div>
                         </>
                       )}
                       <div className="flex-1">
@@ -825,7 +862,6 @@ function FlatTable({
 
 export default function Roadmap() {
   const { data: products, isLoading: productsLoading, isError: productsError, refetch: refetchProducts } = useProducts();
-  const { data: flavors, isLoading: flavorsLoading, isError: flavorsError, refetch: refetchFlavors } = useFlavors();
   const [selectedFamily, setSelectedFamily] = useState('');
   const [selectedPhase, setSelectedPhase] = useState<LifecyclePhase | ''>('');
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -836,7 +872,7 @@ export default function Roadmap() {
   const [selectedEntityType, setSelectedEntityType] = useState<'' | EntityType>('');
   const [timeSpan, setTimeSpan] = useState(5);
   const [viewMode, setViewMode] = useState<ViewMode>('grouped');
-  const [rowAxes, setRowAxes] = useState<Axis[]>(['PRODUCT', 'OS', 'VERSION']);
+  const [rowAxes, setRowAxes] = useState<Axis[]>(['PRODUCT', 'PRODUCT_VERSION', 'PHASE']);
   const [scale, setScale] = useState<Scale>('year');
   const [showTodayBar, setShowTodayBar] = useState(true);
   const [timelineStart, setTimelineStart] = useState(() => {
@@ -947,33 +983,33 @@ export default function Roadmap() {
     window.addEventListener('mouseup', handleUp);
   };
 
+  const [perspective, setPerspective] = useState<RoadmapPerspective>('product');
+
   const allVersions = useMemo(() => {
     const versions: RoadmapVersion[] = [];
     if (products) {
       for (const product of products) {
-        // Product variants
-        for (const variant of product.variants || []) {
-          if (variant.releaseDate) {
-            versions.push(productVariantToRoadmap(product, variant));
+        if (perspective === 'compute') {
+          // Compute view: only compute product variants
+          if (product.computeType) {
+            for (const variant of product.variants || []) {
+              if (variant.releaseDate) {
+                versions.push(productVariantToRoadmap(product, variant));
+              }
+            }
           }
-        }
-        // Product versions
-        for (const pv of product.productVersions || []) {
-          if (pv.releaseDate) {
-            versions.push(productVersionToRoadmap(product, pv));
+        } else {
+          // Product view: only product versions
+          for (const pv of product.productVersions || []) {
+            if (pv.releaseDate) {
+              versions.push(productVersionToRoadmap(product, pv));
+            }
           }
-        }
-      }
-    }
-    if (flavors) {
-      for (const flavor of flavors) {
-        if (flavor.releaseDate || flavor.eolDate) {
-          versions.push(flavorToRoadmap(flavor));
         }
       }
     }
     return versions;
-  }, [products, flavors]);
+  }, [products, perspective]);
 
   const allFamilies = useMemo(() => {
     return Array.from(new Set(allVersions.map((v) => v.family).filter(Boolean)));
@@ -1036,6 +1072,21 @@ export default function Roadmap() {
   const tree = useMemo(() => buildTree(filtered, rowAxes), [filtered, rowAxes]);
   const flatRows = useMemo(() => buildFlatRows(filtered, rowAxes), [filtered, rowAxes]);
 
+  const axisOptions = perspective === 'product' ? axisOptionsProduct : axisOptionsCompute;
+
+  const handlePerspectiveChange = (newPerspective: RoadmapPerspective) => {
+    setPerspective(newPerspective);
+    setRowAxes(newPerspective === 'product' ? ['PRODUCT', 'PRODUCT_VERSION', 'PHASE'] : ['PRODUCT', 'OS', 'OS_VERSION']);
+    setSelectedFamily('');
+    setSelectedCategory('');
+    setSelectedPhase('');
+    setSelectedRegion('');
+    setSelectedCountry('');
+    setSelectedAZ('');
+    setSelectedZone('');
+    setSelectedEntityType('');
+  };
+
   const addAxis = () => {
     const used = new Set(rowAxes);
     const next = axisOptions.find((a) => !used.has(a.value));
@@ -1052,9 +1103,9 @@ export default function Roadmap() {
     setRowAxes(next);
   };
 
-  const isLoading = productsLoading || flavorsLoading;
-  const isError = productsError || flavorsError;
-  const refetch = () => { refetchProducts(); refetchFlavors(); };
+  const isLoading = productsLoading;
+  const isError = productsError;
+  const refetch = () => { refetchProducts(); };
 
   if (isLoading) {
     return (
@@ -1095,19 +1146,27 @@ export default function Roadmap() {
             onChange={(v) => setSelectedEntityType(v as '' | EntityType)}
           />
 
-          <span className="text-xs text-slate-500">Family:</span>
-          <PickUpList
-            options={[{ value: '', label: 'All' }, ...allFamilies.map((f) => ({ value: f, label: f }))]}
-            value={selectedFamily}
-            onChange={(v) => setSelectedFamily(v)}
-          />
+          {perspective === 'compute' && (
+            <>
+              <span className="text-xs text-slate-500">Family:</span>
+              <PickUpList
+                options={[{ value: '', label: 'All' }, ...allFamilies.map((f) => ({ value: f, label: f }))]}
+                value={selectedFamily}
+                onChange={(v) => setSelectedFamily(v)}
+              />
+            </>
+          )}
 
-          <span className="text-xs text-slate-500">Category:</span>
-          <PickUpList
-            options={[{ value: '', label: 'All' }, ...allCategories.map((c) => ({ value: c, label: c }))]}
-            value={selectedCategory}
-            onChange={(v) => setSelectedCategory(v)}
-          />
+          {perspective === 'product' && (
+            <>
+              <span className="text-xs text-slate-500">Category:</span>
+              <PickUpList
+                options={[{ value: '', label: 'All' }, ...allCategories.map((c) => ({ value: c, label: c }))]}
+                value={selectedCategory}
+                onChange={(v) => setSelectedCategory(v)}
+              />
+            </>
+          )}
 
           <span className="text-xs text-slate-500">Phase:</span>
           <PickUpList
@@ -1238,6 +1297,32 @@ export default function Roadmap() {
       {/* View Mode + Axes */}
       <AnimatedSection delay={150} className="relative z-50">
         <div className="flex flex-wrap items-center gap-3 mb-4">
+          {/* Perspective toggle */}
+          <div className="flex rounded-md border border-slate-700 overflow-hidden">
+            <button
+              onClick={() => handlePerspectiveChange('product')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                perspective === 'product'
+                  ? 'bg-purple-500/10 text-purple-400'
+                  : 'text-slate-400 hover:bg-slate-800'
+              }`}
+            >
+              Product
+            </button>
+            <button
+              onClick={() => handlePerspectiveChange('compute')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                perspective === 'compute'
+                  ? 'bg-purple-500/10 text-purple-400'
+                  : 'text-slate-400 hover:bg-slate-800'
+              }`}
+            >
+              Compute
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-slate-700" />
+
           {/* View mode toggle */}
           <div className="flex rounded-md border border-slate-700 overflow-hidden">
             <button
