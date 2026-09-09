@@ -99,7 +99,6 @@ function OSModal({
   const [form, setForm] = useState({
     family: editing?.family || '',
     name: editing?.name || '',
-    slug: editing?.slug || '',
     isActive: editing?.isActive ?? true,
   });
 
@@ -142,15 +141,7 @@ function OSModal({
               className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
             />
           </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-300">Slug</label>
-            <Input
-              value={form.slug}
-              onChange={(e) => setForm({ ...form, slug: e.target.value })}
-              required
-              className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
-            />
-          </div>
+
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -375,13 +366,13 @@ export default function AdminOS() {
 
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Family', 'Name', 'Slug', 'Versions', 'Active']} isLoading={isLoading} emptyMessage="No operating systems">
+          <ResponsiveTable headers={['Family', 'Name', 'Versions', 'Active']} isLoading={isLoading} emptyMessage="No operating systems">
             {osList?.map((os) => (
               <React.Fragment key={os.id}>
                 <tr className="hover:bg-slate-800/50 transition-colors">
                   <td className="py-3 font-medium text-white">{os.family}</td>
                   <td className="py-3 text-slate-400">{os.name}</td>
-                  <td className="py-3 text-slate-400">{os.slug}</td>
+                  
                   <td className="py-3 text-slate-400">
                     <Badge variant="outline" className="border-slate-700 text-slate-400">
                       {(os as any)._count?.versions ?? os.versions?.length ?? 0}

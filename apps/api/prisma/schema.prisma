@@ -35,13 +35,41 @@ model Product {
   upgradeTo         UpgradePath[]  @relation("UpgradeTo")
   instances         Instance[]
   zones             ProductZone[]
+  regionId          String?
+  region            Region?        @relation(fields: [regionId], references: [id])
+  productVersions   ProductVersion[]
   performanceProfiles PerformanceProfile[]
   documentation     String?
   roadmap           String?
   os                String?
+  initialReleaseDate DateTime?
+  productEOLDate    DateTime?
   isActive          Boolean        @default(true)
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
+}
+
+model ProductVersion {
+  id                 String         @id @default(uuid())
+  productId          String
+  product            Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  version            String
+  releaseDate        DateTime?
+  normalSupportEnd   DateTime?
+  extendedSupportEnd DateTime?
+  eolDate            DateTime?
+  phase              LifecyclePhase @default(RELEASED)
+  isActive           Boolean        @default(true)
+  changelog          String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  regionId           String?
+  region             Region?        @relation(fields: [regionId], references: [id])
+  zones              ProductVersionZone[]
+  availabilityZones  ProductVersionAvailabilityZone[]
+  variants           ProductVariant[]
+
+  @@unique([productId, version])
 }
 
 model OperatingSystem {
@@ -91,6 +119,8 @@ model ProductVariant {
   zones             ProductVariantZone[]
   continuityLevelId String?
   continuityLevel   ContinuityLevel?                 @relation(fields: [continuityLevelId], references: [id])
+  productVersionId  String?
+  productVersion    ProductVersion?                  @relation(fields: [productVersionId], references: [id])
   instances         Instance[]
   forecastLines     ForecastLine[]
   releaseDate        DateTime?
@@ -135,6 +165,9 @@ model Flavor {
   vcpu          Int
   ramGb         Int
   description   String?
+  releaseDate   DateTime?
+  deprecationDate DateTime?
+  eolDate       DateTime?
   variants      ProductVariant[]
   forecastLines ForecastLine[]
   instances     Instance[]
@@ -221,6 +254,27 @@ model ForecastLine {
   resiliency ResiliencyLevel  @default(STANDARD)
 }
 
+model Country {
+  id        String   @id @default(uuid())
+  code      String   @unique // ISO 3166-1 alpha-2
+  name      String   @unique
+  flagEmoji String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Region {
+  id            String           @id @default(uuid())
+  name          String           @unique
+  slug          String           @unique
+  description   String?
+  isActive      Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  products        Product[]
+  productVersions ProductVersion[]
+}
+
 model AvailabilityZone {
   id            String                           @id @default(uuid())
   code          String                           @unique
@@ -235,6 +289,7 @@ model AvailabilityZone {
   zones         ZoneAvailabilityZone[]
   forecastLines ForecastLine[]
   instances     Instance[]
+  productVersions ProductVersionAvailabilityZone[]
   createdAt     DateTime                         @default(now())
   updatedAt     DateTime                         @updatedAt
 }
@@ -250,6 +305,7 @@ model Zone {
   products            ProductZone[]
   flavors             FlavorZone[]
   operatingSystems    OperatingSystemZone[]
+  productVersions     ProductVersionZone[]
   createdAt           DateTime               @default(now())
   updatedAt           DateTime               @updatedAt
 }
@@ -297,6 +353,24 @@ model OperatingSystemZone {
   zone              Zone            @relation(fields: [zoneId], references: [id], onDelete: Cascade)
 
   @@id([operatingSystemId, zoneId])
+}
+
+model ProductVersionZone {
+  productVersionId String
+  productVersion   ProductVersion @relation(fields: [productVersionId], references: [id], onDelete: Cascade)
+  zoneId           String
+  zone             Zone           @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@id([productVersionId, zoneId])
+}
+
+model ProductVersionAvailabilityZone {
+  productVersionId   String
+  productVersion     ProductVersion   @relation(fields: [productVersionId], references: [id], onDelete: Cascade)
+  availabilityZoneId String
+  availabilityZone   AvailabilityZone @relation(fields: [availabilityZoneId], references: [id], onDelete: Cascade)
+
+  @@id([productVersionId, availabilityZoneId])
 }
 
 model User {

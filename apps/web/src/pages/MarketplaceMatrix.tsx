@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import QueryError from '@/components/QueryError';
-import type { Product, ProductVariant, AvailabilityZone } from '@cloudmarket/shared-types';
+import type { Product, ProductVariant, AvailabilityZone, LifecyclePhase } from '@cloudmarket/shared-types';
 
 /* ── Region name helper ────────────────────────────────────────── */
 
@@ -27,7 +27,7 @@ function getRegionDisplayName(code: string): string {
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
-type Axis = 'PRODUCT' | 'FLAVOR' | 'OS' | 'OS_VERSION' | 'ZONE' | 'AZ' | 'REGION' | 'COUNTRIES' | 'NONE';
+type Axis = 'PRODUCT' | 'FLAVOR' | 'OS' | 'OS_VERSION' | 'PRODUCT_VERSION' | 'ZONE' | 'AZ' | 'REGION' | 'COUNTRIES' | 'NONE';
 type RowAxis = Axis;
 type ColAxis = Axis;
 type ViewMode = 'grouped' | 'flat';
@@ -37,6 +37,16 @@ interface MatrixCell {
   status: CellStatus;
   releaseDate?: string;
   variantName?: string;
+  productVersion?: {
+    version: string;
+    phase: LifecyclePhase;
+    releaseDate: string | null;
+    normalSupportEnd: string | null;
+    extendedSupportEnd: string | null;
+    eolDate: string | null;
+    changelog: string | null;
+  };
+  isEolImminent?: boolean;
 }
 
 interface MatrixRow {
@@ -237,6 +247,58 @@ function getStatusBadge(status: CellStatus, releaseDate?: string, compact = fals
   }
 }
 
+function getPhaseBadgeClass(phase: LifecyclePhase): string {
+  switch (phase) {
+    case 'EOL':
+      return 'bg-red-500/20 text-red-300';
+    case 'NO_SUPPORT':
+      return 'bg-orange-500/20 text-orange-300';
+    case 'EXTENDED_SUPPORT':
+      return 'bg-blue-500/20 text-blue-300';
+    case 'NORMAL_SUPPORT':
+      return 'bg-emerald-500/20 text-emerald-300';
+    case 'RELEASED':
+      return 'bg-purple-500/20 text-purple-300';
+    default:
+      return 'bg-slate-700 text-slate-400';
+  }
+}
+
+function buildTooltip(cell: MatrixCell): string | undefined {
+  if (!cell.productVersion) return undefined;
+  const pv = cell.productVersion;
+  const parts: string[] = [];
+  parts.push(`Version: ${pv.version}`);
+  parts.push(`Phase: ${pv.phase.replace('_', ' ')}`);
+  if (pv.releaseDate) parts.push(`Release: ${pv.releaseDate}`);
+  if (pv.normalSupportEnd) parts.push(`Normal Support End: ${pv.normalSupportEnd}`);
+  if (pv.extendedSupportEnd) parts.push(`Extended Support End: ${pv.extendedSupportEnd}`);
+  if (pv.eolDate) parts.push(`EOL: ${pv.eolDate}`);
+  if (pv.changelog) parts.push(`Changelog: ${pv.changelog}`);
+  return parts.join('\n');
+}
+
+function MatrixCellContent({ cell, compact }: { cell?: MatrixCell; compact: boolean }) {
+  if (!cell) {
+    return <div className="text-slate-600 text-center text-sm">—</div>;
+  }
+  const tooltip = buildTooltip(cell);
+  const pv = cell.productVersion;
+  return (
+    <div title={tooltip} className="relative">
+      {getStatusBadge(cell.status, cell.releaseDate, compact)}
+      {pv && (
+        <div className="mt-0.5 text-[9px] text-slate-400 leading-tight flex items-center justify-center gap-1">
+          <span className="font-medium text-slate-300">{pv.version}</span>
+          <span className={`px-1 rounded text-[8px] ${getPhaseBadgeClass(pv.phase)}`}>
+            {pv.phase.replace('_', ' ')}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Axis matching helpers ─────────────────────────────────────── */
 
 function matchesAxis(
@@ -267,6 +329,8 @@ function matchesAxis(
       return variant.osId === id || variant.os?.id === id;
     case 'OS_VERSION':
       return variant.osVersionId === id || variant.osVersion?.id === id;
+    case 'PRODUCT_VERSION':
+      return variant.productVersionId === id || variant.productVersion?.id === id;
     case 'NONE':
     default:
       return true;
@@ -309,6 +373,8 @@ function getAxisItems(axis: ColAxis, zones?: any[], azs?: AvailabilityZone[], pr
     }
     case 'OS_VERSION':
       return getOsVersionItems(products);
+    case 'PRODUCT_VERSION':
+      return getProductVersionItems(products);
     default:
       return [];
   }
@@ -323,6 +389,21 @@ function getOsVersionItems(products?: Product[]): { id: string; label: string }[
       if (ver && !seen.has(ver.id)) {
         seen.add(ver.id);
         items.push({ id: ver.id, label: ver.version.replace(/\s*\(.*\)$/, '') });
+      }
+    }
+  }
+  return items;
+}
+
+function getProductVersionItems(products?: Product[]): { id: string; label: string }[] {
+  const seen = new Set<string>();
+  const items: { id: string; label: string }[] = [];
+  for (const p of products ?? []) {
+    for (const v of p.variants || []) {
+      const pv = v.productVersion;
+      if (pv && !seen.has(pv.id)) {
+        seen.add(pv.id);
+        items.push({ id: pv.id, label: pv.version });
       }
     }
   }
@@ -530,6 +611,17 @@ export default function MarketplaceMatrix() {
             const ver = v.osVersion;
             const key = ver?.version.replace(/\s*\(.*\)$/, '') || 'Unknown';
             const id = ver?.id || key;
+            if (!groups.has(key)) {
+              groups.set(key, { id, label: key, variants: [] });
+            }
+            groups.get(key)!.variants.push(v);
+          }
+          break;
+        case 'PRODUCT_VERSION':
+          for (const v of variants) {
+            const pv = v.productVersion;
+            const key = pv?.version || 'Unknown';
+            const id = pv?.id || key;
             if (!groups.has(key)) {
               groups.set(key, { id, label: key, variants: [] });
             }
@@ -821,6 +913,7 @@ export default function MarketplaceMatrix() {
                     { value: 'FLAVOR', label: 'Flavors' },
                     { value: 'OS', label: 'OS' },
                     { value: 'OS_VERSION', label: 'OS Version' },
+                    { value: 'PRODUCT_VERSION', label: 'Product Version' },
                     { value: 'ZONE', label: 'Zones' },
                     { value: 'AZ', label: 'AZs' },
                     { value: 'REGION', label: 'Regions' },
@@ -860,6 +953,7 @@ export default function MarketplaceMatrix() {
                     { value: 'FLAVOR', label: 'Flavors' },
                     { value: 'OS', label: 'OS' },
                     { value: 'OS_VERSION', label: 'OS Version' },
+                    { value: 'PRODUCT_VERSION', label: 'Product Version' },
                     { value: 'ZONE', label: 'Zones' },
                     { value: 'AZ', label: 'AZs' },
                     { value: 'REGION', label: 'Regions' },
@@ -1023,7 +1117,7 @@ export default function MarketplaceMatrix() {
                         className="text-left p-3 text-blue-400 font-semibold border-b border-r border-slate-800 sticky bg-slate-950 z-20 min-w-[140px] relative"
                         style={{ left: flatRowLefts[i], width: colWidths[`row-header-${i}`] || 140 }}
                       >
-                        {axis === 'OS_VERSION' ? 'Version' : axis === 'PRODUCT' ? 'Product' : axis === 'FLAVOR' ? 'Flavor' : axis === 'OS' ? 'OS' : axis === 'ZONE' ? 'Zone' : axis === 'AZ' ? 'AZ' : axis === 'REGION' ? 'Region' : axis === 'COUNTRIES' ? 'Country' : axis}
+                        {axis === 'OS_VERSION' ? 'Version' : axis === 'PRODUCT' ? 'Product' : axis === 'FLAVOR' ? 'Flavor' : axis === 'OS' ? 'OS' : axis === 'PRODUCT_VERSION' ? 'Product Version' : axis === 'ZONE' ? 'Zone' : axis === 'AZ' ? 'AZ' : axis === 'REGION' ? 'Region' : axis === 'COUNTRIES' ? 'Country' : axis}
                         <div
                           className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize bg-slate-600/40 hover:bg-blue-400 active:bg-blue-400 transition-colors"
                           title="Drag to resize"
@@ -1040,7 +1134,7 @@ export default function MarketplaceMatrix() {
                       className="text-left p-3 text-slate-500 font-semibold border-b border-r border-slate-800 sticky left-0 bg-slate-950 z-20 min-w-[180px] relative"
                       style={{ width: colWidths['row-header'] || 180 }}
                     >
-                      {activeRowAxes.map((a) => a === 'OS_VERSION' ? 'Version' : a === 'PRODUCT' ? 'Product' : a === 'FLAVOR' ? 'Flavor' : a === 'OS' ? 'OS' : a === 'ZONE' ? 'Zone' : a === 'AZ' ? 'AZ' : a === 'REGION' ? 'Region' : a === 'COUNTRIES' ? 'Country' : a).join(' / ')}
+                      {activeRowAxes.map((a) => a === 'OS_VERSION' ? 'Version' : a === 'PRODUCT' ? 'Product' : a === 'FLAVOR' ? 'Flavor' : a === 'OS' ? 'OS' : a === 'PRODUCT_VERSION' ? 'Product Version' : a === 'ZONE' ? 'Zone' : a === 'AZ' ? 'AZ' : a === 'REGION' ? 'Region' : a === 'COUNTRIES' ? 'Country' : a).join(' / ')}
                       <div
                         className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize bg-slate-600/40 hover:bg-blue-400 active:bg-blue-400 transition-colors"
                         title="Drag to resize"
@@ -1094,15 +1188,18 @@ export default function MarketplaceMatrix() {
                             <td className="p-3 pl-8 text-slate-300 sticky left-0 bg-slate-900 z-10 border-r border-slate-800">
                               {row.labels[row.labels.length - 1]?.label || ''}
                             </td>
-                            {columns.map((col) => (
-                              <td
-                                key={col.id}
-                                className="p-2 text-center border-r border-slate-800/50"
-                                style={{ width: colWidths[col.id] || undefined }}
-                              >
-                                {getStatusBadge(row.cells[col.id]?.status, row.cells[col.id]?.releaseDate, compactView)}
-                              </td>
-                            ))}
+                            {columns.map((col) => {
+                              const cell = row.cells[col.id];
+                              return (
+                                <td
+                                  key={col.id}
+                                  className={`p-2 text-center border-r border-slate-800/50 ${cell?.isEolImminent ? 'bg-red-500/10 border-red-400/40' : ''}`}
+                                  style={{ width: colWidths[col.id] || undefined }}
+                                >
+                                  <MatrixCellContent cell={cell} compact={compactView} />
+                                </td>
+                              );
+                            })}
                           </tr>
                         ))}
                       </>
@@ -1118,15 +1215,18 @@ export default function MarketplaceMatrix() {
                             {lab.label}
                           </td>
                         ))}
-                        {columns.map((col) => (
-                          <td
-                            key={col.id}
-                            className="p-2 text-center border-r border-slate-800/50"
-                            style={{ width: colWidths[col.id] || undefined }}
-                          >
-                            {getStatusBadge(row.cells[col.id]?.status, row.cells[col.id]?.releaseDate, compactView)}
-                          </td>
-                        ))}
+                        {columns.map((col) => {
+                          const cell = row.cells[col.id];
+                          return (
+                            <td
+                              key={col.id}
+                              className={`p-2 text-center border-r border-slate-800/50 ${cell?.isEolImminent ? 'bg-red-500/10 border-red-400/40' : ''}`}
+                              style={{ width: colWidths[col.id] || undefined }}
+                            >
+                              <MatrixCellContent cell={cell} compact={compactView} />
+                            </td>
+                          );
+                        })}
                       </tr>
                     ))}
               </tbody>
@@ -1151,6 +1251,9 @@ export default function MarketplaceMatrix() {
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-slate-700" /> No data (-)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-red-400 border border-red-500" /> EOL &lt; 180d
         </span>
       </div>
 
@@ -1201,6 +1304,11 @@ function computeCell(
   zones?: any[],
   azs?: AvailabilityZone[]
 ): MatrixCell {
+  // Flavor EOL automatically restricts cell status when past EOL
+  if (variant.flavor?.eolDate && new Date(variant.flavor.eolDate) < new Date()) {
+    return { status: 'UNAVAILABLE', variantName: variant.name };
+  }
+
   for (let i = 0; i < colAxes.length; i++) {
     const axis = colAxes[i];
     const segment = col.path[i];
@@ -1208,9 +1316,27 @@ function computeCell(
       return { status: 'NONE' };
     }
   }
+
+  const pv = variant.productVersion;
+  const isEolImminent = pv?.eolDate
+    ? (new Date(pv.eolDate).getTime() - Date.now()) < 180 * 24 * 60 * 60 * 1000
+    : false;
+
   return {
     status: getStatusFromVariant(variant),
     releaseDate: variant.availabilityType === 'RESTRICTED' ? formatReleaseDate(variant.osVersion?.releaseDate) : undefined,
     variantName: variant.name,
+    productVersion: pv
+      ? {
+          version: pv.version,
+          phase: pv.phase,
+          releaseDate: pv.releaseDate,
+          normalSupportEnd: pv.normalSupportEnd,
+          extendedSupportEnd: pv.extendedSupportEnd,
+          eolDate: pv.eolDate,
+          changelog: pv.changelog,
+        }
+      : undefined,
+    isEolImminent,
   };
 }

@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { useProducts } from '@/hooks/useApi';
+import { useProducts, useFlavors } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -8,7 +8,8 @@ import {
   Filter, ChevronDown, ChevronRight, BarChart3, Table,
   Crosshair, Eye, EyeOff, ZoomIn, ZoomOut
 } from 'lucide-react';
-import type { LifecyclePhase, Product, ProductVariant } from '@cloudmarket/shared-types';
+import type { Product, ProductVariant, ProductVersion, Flavor } from '@cloudmarket/shared-types';
+import { LifecyclePhase } from '@cloudmarket/shared-types';
 
 /* ── Phase config ──────────────────────────────────────────────── */
 
@@ -38,11 +39,23 @@ function getPhaseConfig(phase: LifecyclePhase | string | undefined) {
   return phaseConfig[phase as LifecyclePhase] ?? defaultPhaseConfig;
 }
 
+function deriveFlavorPhase(flavor: Flavor): LifecyclePhase {
+  const now = new Date();
+  const release = flavor.releaseDate ? new Date(flavor.releaseDate) : null;
+  const deprecation = flavor.deprecationDate ? new Date(flavor.deprecationDate) : null;
+  const eol = flavor.eolDate ? new Date(flavor.eolDate) : null;
+  if (eol && now >= eol) return LifecyclePhase.EOL;
+  if (deprecation && now >= deprecation) return LifecyclePhase.NO_SUPPORT;
+  if (release && now >= release) return LifecyclePhase.RELEASED;
+  return LifecyclePhase.RELEASED;
+}
+
 /* ── Axis config ───────────────────────────────────────────────── */
 
-type Axis = 'FAMILY' | 'OS' | 'PHASE' | 'VERSION' | 'CATEGORY' | 'PRODUCT' | 'FLAVOR' | 'REGION' | 'COUNTRY' | 'AZ';
+type Axis = 'FAMILY' | 'OS' | 'PHASE' | 'VERSION' | 'CATEGORY' | 'PRODUCT' | 'FLAVOR' | 'REGION' | 'COUNTRY' | 'AZ' | 'PRODUCT_VERSION';
 type Scale = 'month' | 'quarter' | 'year';
 type ViewMode = 'grouped' | 'flat';
+type EntityType = 'product' | 'flavor' | 'os';
 
 const axisLabels: Record<Axis, string> = {
   FAMILY: 'Family',
@@ -55,6 +68,7 @@ const axisLabels: Record<Axis, string> = {
   REGION: 'Region',
   COUNTRY: 'Country',
   AZ: 'AZ',
+  PRODUCT_VERSION: 'Product Version',
 };
 
 /* ── Unified Roadmap Version ───────────────────────────────────── */
@@ -73,14 +87,16 @@ interface RoadmapVersion {
   category: string;
   product: string;
   flavor: string;
-  type: 'os' | 'product';
+  type: 'os' | 'product' | 'product-version' | 'flavor';
   regions: string[];
   countries: string[];
   azs: string[];
+  zones: string[];
 }
 
 function productVariantToRoadmap(product: Product, variant: ProductVariant): RoadmapVersion {
   const azList = variant.availabilityZones?.map((z) => z.availabilityZone) || [];
+  const zoneList = variant.zones?.map((z) => z.zone) || [];
   return {
     id: variant.id,
     name: variant.name,
@@ -99,6 +115,59 @@ function productVariantToRoadmap(product: Product, variant: ProductVariant): Roa
     regions: [...new Set(azList.map((az) => az.region).filter(Boolean))],
     countries: [...new Set(azList.map((az) => az.country).filter(Boolean))],
     azs: [...new Set(azList.map((az) => az.code).filter(Boolean))],
+    zones: [...new Set(zoneList.map((z) => z.name).filter(Boolean))],
+  };
+}
+
+function productVersionToRoadmap(product: Product, pv: ProductVersion): RoadmapVersion {
+  const azList = pv.variants?.flatMap((v) => v.availabilityZones?.map((z) => z.availabilityZone) || []) || [];
+  const zoneList = pv.variants?.flatMap((v) => v.zones?.map((z) => z.zone) || []) || [];
+  return {
+    id: pv.id,
+    name: pv.version,
+    osVersionName: pv.version,
+    releaseDate: pv.releaseDate || product.createdAt,
+    normalSupportEnd: pv.normalSupportEnd || pv.eolDate || product.createdAt,
+    extendedSupportEnd: pv.extendedSupportEnd || pv.eolDate || product.createdAt,
+    eolDate: pv.eolDate || product.createdAt,
+    phase: pv.phase,
+    family: pv.variants?.[0]?.os?.family || product.variants?.[0]?.os?.family || 'OTHER',
+    os: pv.variants?.[0]?.os?.name || product.variants?.[0]?.os?.name || '—',
+    category: product.category?.name || 'OTHER',
+    product: product.name,
+    flavor: '—',
+    type: 'product-version',
+    regions: [...new Set(azList.map((az) => az.region).filter(Boolean))],
+    countries: [...new Set(azList.map((az) => az.country).filter(Boolean))],
+    azs: [...new Set(azList.map((az) => az.code).filter(Boolean))],
+    zones: [...new Set(zoneList.map((z) => z.name).filter(Boolean))],
+  };
+}
+
+function flavorToRoadmap(flavor: Flavor): RoadmapVersion {
+  const azList = flavor.zones?.flatMap((fz) => fz.zone?.availabilityZones?.map((zaz) => zaz.availabilityZone) || []) || [];
+  const releaseDate = flavor.releaseDate || new Date().toISOString();
+  const deprecationDate = flavor.deprecationDate || flavor.eolDate || releaseDate;
+  const eolDate = flavor.eolDate || releaseDate;
+  return {
+    id: flavor.id,
+    name: flavor.name,
+    osVersionName: '—',
+    releaseDate,
+    normalSupportEnd: deprecationDate,
+    extendedSupportEnd: deprecationDate,
+    eolDate,
+    phase: deriveFlavorPhase(flavor),
+    family: 'OTHER',
+    os: '—',
+    category: '—',
+    product: '—',
+    flavor: flavor.name,
+    type: 'flavor',
+    regions: [...new Set(azList.map((az) => az.region).filter(Boolean))],
+    countries: [...new Set(azList.map((az) => az.country).filter(Boolean))],
+    azs: [...new Set(azList.map((az) => az.code).filter(Boolean))],
+    zones: [...new Set((flavor.zones || []).map((fz) => fz.zone?.name).filter(Boolean))],
   };
 }
 
@@ -113,12 +182,20 @@ const axisOptions: { value: Axis; label: string }[] = [
   { value: 'REGION', label: 'Region' },
   { value: 'COUNTRY', label: 'Country' },
   { value: 'AZ', label: 'AZ' },
+  { value: 'PRODUCT_VERSION', label: 'Product Version' },
 ];
 
 const scaleOptions: { value: Scale; label: string }[] = [
   { value: 'year', label: 'Year' },
   { value: 'quarter', label: 'Quarter' },
   { value: 'month', label: 'Month' },
+];
+
+const entityTypeOptions: { value: '' | EntityType; label: string }[] = [
+  { value: '', label: 'All' },
+  { value: 'product', label: 'Product' },
+  { value: 'flavor', label: 'Flavor' },
+  { value: 'os', label: 'OS' },
 ];
 
 /* ── AnimatedSection ───────────────────────────────────────────── */
@@ -363,6 +440,8 @@ function getAxisValue(version: RoadmapVersion, axis: Axis): { id: string; label:
       return { id: version.product, label: version.product };
     case 'FLAVOR':
       return { id: version.flavor, label: version.flavor };
+    case 'PRODUCT_VERSION':
+      return { id: version.osVersionName, label: version.osVersionName };
     case 'REGION': {
       const val = version.regions.join(', ') || '—';
       return { id: val, label: val };
@@ -746,11 +825,15 @@ function FlatTable({
 
 export default function Roadmap() {
   const { data: products, isLoading: productsLoading, isError: productsError, refetch: refetchProducts } = useProducts();
+  const { data: flavors, isLoading: flavorsLoading, isError: flavorsError, refetch: refetchFlavors } = useFlavors();
   const [selectedFamily, setSelectedFamily] = useState('');
   const [selectedPhase, setSelectedPhase] = useState<LifecyclePhase | ''>('');
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedRegion, setSelectedRegion] = useState('');
   const [selectedCountry, setSelectedCountry] = useState('');
   const [selectedAZ, setSelectedAZ] = useState('');
+  const [selectedZone, setSelectedZone] = useState('');
+  const [selectedEntityType, setSelectedEntityType] = useState<'' | EntityType>('');
   const [timeSpan, setTimeSpan] = useState(5);
   const [viewMode, setViewMode] = useState<ViewMode>('grouped');
   const [rowAxes, setRowAxes] = useState<Axis[]>(['PRODUCT', 'OS', 'VERSION']);
@@ -868,18 +951,36 @@ export default function Roadmap() {
     const versions: RoadmapVersion[] = [];
     if (products) {
       for (const product of products) {
+        // Product variants
         for (const variant of product.variants || []) {
           if (variant.releaseDate) {
             versions.push(productVariantToRoadmap(product, variant));
           }
         }
+        // Product versions
+        for (const pv of product.productVersions || []) {
+          if (pv.releaseDate) {
+            versions.push(productVersionToRoadmap(product, pv));
+          }
+        }
+      }
+    }
+    if (flavors) {
+      for (const flavor of flavors) {
+        if (flavor.releaseDate || flavor.eolDate) {
+          versions.push(flavorToRoadmap(flavor));
+        }
       }
     }
     return versions;
-  }, [products]);
+  }, [products, flavors]);
 
   const allFamilies = useMemo(() => {
     return Array.from(new Set(allVersions.map((v) => v.family).filter(Boolean)));
+  }, [allVersions]);
+
+  const allCategories = useMemo(() => {
+    return Array.from(new Set(allVersions.map((v) => v.category).filter(Boolean)));
   }, [allVersions]);
 
   const allRegions = useMemo(() => {
@@ -894,6 +995,10 @@ export default function Roadmap() {
     return Array.from(new Set(allVersions.flatMap((v) => v.azs)));
   }, [allVersions]);
 
+  const allZones = useMemo(() => {
+    return Array.from(new Set(allVersions.flatMap((v) => v.zones)));
+  }, [allVersions]);
+
   const filtered = useMemo(() => {
     let result = [...allVersions];
     if (selectedFamily) {
@@ -901,6 +1006,9 @@ export default function Roadmap() {
     }
     if (selectedPhase) {
       result = result.filter((v) => v.phase === selectedPhase);
+    }
+    if (selectedCategory) {
+      result = result.filter((v) => v.category === selectedCategory);
     }
     if (selectedRegion) {
       result = result.filter((v) => v.regions.includes(selectedRegion));
@@ -911,8 +1019,19 @@ export default function Roadmap() {
     if (selectedAZ) {
       result = result.filter((v) => v.azs.includes(selectedAZ));
     }
+    if (selectedZone) {
+      result = result.filter((v) => v.zones.includes(selectedZone));
+    }
+    if (selectedEntityType) {
+      result = result.filter((v) => {
+        if (selectedEntityType === 'product') return v.type === 'product' || v.type === 'product-version';
+        if (selectedEntityType === 'flavor') return v.type === 'flavor';
+        if (selectedEntityType === 'os') return v.type === 'os';
+        return true;
+      });
+    }
     return result;
-  }, [allVersions, selectedFamily, selectedPhase, selectedRegion, selectedCountry, selectedAZ]);
+  }, [allVersions, selectedFamily, selectedPhase, selectedCategory, selectedRegion, selectedCountry, selectedAZ, selectedZone, selectedEntityType]);
 
   const tree = useMemo(() => buildTree(filtered, rowAxes), [filtered, rowAxes]);
   const flatRows = useMemo(() => buildFlatRows(filtered, rowAxes), [filtered, rowAxes]);
@@ -933,9 +1052,9 @@ export default function Roadmap() {
     setRowAxes(next);
   };
 
-  const isLoading = productsLoading;
-  const isError = productsError;
-  const refetch = () => { refetchProducts(); };
+  const isLoading = productsLoading || flavorsLoading;
+  const isError = productsError || flavorsError;
+  const refetch = () => { refetchProducts(); refetchFlavors(); };
 
   if (isLoading) {
     return (
@@ -969,11 +1088,25 @@ export default function Roadmap() {
             <span className="text-xs font-medium text-slate-400">FILTERS</span>
           </div>
 
+          <span className="text-xs text-slate-500">Type:</span>
+          <PickUpList
+            options={entityTypeOptions}
+            value={selectedEntityType}
+            onChange={(v) => setSelectedEntityType(v as '' | EntityType)}
+          />
+
           <span className="text-xs text-slate-500">Family:</span>
           <PickUpList
             options={[{ value: '', label: 'All' }, ...allFamilies.map((f) => ({ value: f, label: f }))]}
             value={selectedFamily}
             onChange={(v) => setSelectedFamily(v)}
+          />
+
+          <span className="text-xs text-slate-500">Category:</span>
+          <PickUpList
+            options={[{ value: '', label: 'All' }, ...allCategories.map((c) => ({ value: c, label: c }))]}
+            value={selectedCategory}
+            onChange={(v) => setSelectedCategory(v)}
           />
 
           <span className="text-xs text-slate-500">Phase:</span>
@@ -985,6 +1118,17 @@ export default function Roadmap() {
             value={selectedPhase}
             onChange={(v) => setSelectedPhase(v)}
           />
+
+          {allZones.length > 0 && (
+            <>
+              <span className="text-xs text-slate-500">Zone:</span>
+              <PickUpList
+                options={[{ value: '', label: 'All' }, ...allZones.map((z) => ({ value: z, label: z }))]}
+                value={selectedZone}
+                onChange={(v) => setSelectedZone(v)}
+              />
+            </>
+          )}
 
           {allRegions.length > 0 && (
             <>
@@ -1071,7 +1215,7 @@ export default function Roadmap() {
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border ${
               showTodayBar
                 ? 'bg-blue-500/10 text-blue-400 border-blue-500/30'
-                : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
+                : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
             }`}
             title="Toggle today bar"
           >

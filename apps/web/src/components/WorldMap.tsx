@@ -15,27 +15,35 @@ const MAP_W = 800;
 const MAP_H = 420;
 
 const regionColors: Record<string, string> = {
-  Europe: '#3b82f6',
-  'North America': '#10b981',
-  'Asia-Pacific': '#f59e0b',
+  EMEA: '#3b82f6',
+  AMER: '#10b981',
+  APAC: '#f59e0b',
 };
 
 const regionFill: Record<string, string> = {
-  Europe: 'rgba(59, 130, 246, 0.30)',
-  'North America': 'rgba(16, 185, 129, 0.30)',
-  'Asia-Pacific': 'rgba(245, 158, 11, 0.30)',
+  EMEA: 'rgba(59, 130, 246, 0.30)',
+  AMER: 'rgba(16, 185, 129, 0.30)',
+  APAC: 'rgba(245, 158, 11, 0.30)',
 };
 
 const regionFillHover: Record<string, string> = {
-  Europe: 'rgba(59, 130, 246, 0.50)',
-  'North America': 'rgba(16, 185, 129, 0.50)',
-  'Asia-Pacific': 'rgba(245, 158, 11, 0.50)',
+  EMEA: 'rgba(59, 130, 246, 0.50)',
+  AMER: 'rgba(16, 185, 129, 0.50)',
+  APAC: 'rgba(245, 158, 11, 0.50)',
 };
 
 const apiRegionToDisplay: Record<string, string> = {
-  'eu-west': 'Europe',
-  'us-east': 'North America',
-  'ap-south': 'Asia-Pacific',
+  EMEA: 'EMEA',
+  AMER: 'AMER',
+  APAC: 'APAC',
+  'eu-west': 'EMEA',
+  'us-east': 'AMER',
+  'ap-south': 'APAC',
+  'us-west': 'AMER',
+  'sa-east': 'AMER',
+  'me-south': 'EMEA',
+  'af-south': 'EMEA',
+  'ca-central': 'AMER',
 };
 
 const countryNameMapping: Record<string, string> = {

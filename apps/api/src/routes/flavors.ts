@@ -12,6 +12,9 @@ const createFlavorSchema = z.object({
   ramGb: z.number().int().min(0, 'RAM must be a non-negative integer'),
   description: z.string().optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
+  releaseDate: z.string().datetime().or(z.date()).optional(),
+  deprecationDate: z.string().datetime().or(z.date()).optional(),
+  eolDate: z.string().datetime().or(z.date()).optional(),
 });
 
 const updateFlavorSchema = z.object({
@@ -20,6 +23,9 @@ const updateFlavorSchema = z.object({
   ramGb: z.number().int().min(0).optional(),
   description: z.string().optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
+  releaseDate: z.string().datetime().or(z.date()).optional(),
+  deprecationDate: z.string().datetime().or(z.date()).optional(),
+  eolDate: z.string().datetime().or(z.date()).optional(),
 });
 
 // GET /api/flavors

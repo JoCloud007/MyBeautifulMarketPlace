@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
+import { generateSlug } from '../lib/slugify';
 
 const router = Router();
 
 const createCategorySchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  slug: z.string().min(1, 'Slug is required').regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+  slug: z.string().min(1).regex(/^[a-z0-9-]+$/).optional(),
   description: z.string().optional(),
   icon: z.string().optional(),
 });
@@ -37,10 +38,11 @@ router.get('/', async (_req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const data = createCategorySchema.parse(req.body);
+    const slug = data.slug || generateSlug('category', data.name);
 
     try {
       const category = await prisma.category.create({
-        data,
+        data: { ...data, slug },
         include: {
           _count: { select: { products: true } },
         },
@@ -91,12 +93,22 @@ router.patch('/:id', async (req, res, next) => {
     idParamSchema.parse(id);
     const data = updateCategorySchema.parse(req.body);
 
-    // Check for duplicate slug if updating slug
-    if (data.slug) {
+    const updateData: any = { ...data };
+
+    // Regenerate slug when name changes
+    if (data.name) {
+      const newSlug = generateSlug('category', data.name);
+      const existing = await prisma.category.findUnique({ where: { slug: newSlug } });
+      if (existing && existing.id !== id) {
+        return res.status(409).json({ error: 'A category with this slug already exists' });
+      }
+      updateData.slug = newSlug;
+    } else if (data.slug) {
       const existing = await prisma.category.findUnique({ where: { slug: data.slug } });
       if (existing && existing.id !== id) {
         return res.status(409).json({ error: 'A category with this slug already exists' });
       }
+      updateData.slug = data.slug;
     }
 
     // Check for duplicate name if updating name
@@ -109,7 +121,7 @@ router.patch('/:id', async (req, res, next) => {
 
     const category = await prisma.category.update({
       where: { id },
-      data,
+      data: updateData,
       include: {
         _count: { select: { products: true } },
       },

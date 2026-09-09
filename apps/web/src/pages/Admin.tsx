@@ -21,6 +21,11 @@ import {
   useCreateAvailabilityZone,
   useUpdateAvailabilityZone,
   useDeleteAvailabilityZone,
+  useCountries,
+  useRegions,
+  useCreateRegion,
+  useUpdateRegion,
+  useDeleteRegion,
   useZones,
   useCreateZone,
   useUpdateZone,
@@ -41,6 +46,9 @@ import {
   useDeleteOS,
   useCreateOSVersion,
   useUpdateOSVersion,
+  useCreateProductVersion,
+  useUpdateProductVersion,
+  useDeleteProductVersion,
   useProductVariants,
   useCreateVariant,
   useUpdateVariant,
@@ -101,8 +109,11 @@ import {
   Box,
   LayoutList,
   Globe,
+  Clock,
+  AlertTriangle,
 } from 'lucide-react';
-import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType } from '@cloudmarket/shared-types';
+import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType, ProductVersion, Region } from '@cloudmarket/shared-types';
+import { LifecyclePhase } from '@cloudmarket/shared-types';
 import { PerformanceTargetType, VisibilityType } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ApprovalStatus, { label: string; color: string }> = {
@@ -200,6 +211,8 @@ function ResponsiveTable({
 // ============ DASHBOARD SECTION ============
 function DashboardSection({ onNavigate }: { onNavigate: (tab: string) => void }) {
   const { data: dashboard, isLoading, isError, refetch } = useAdminDashboard();
+  const { data: products } = useAdminProducts();
+  const { data: flavors } = useAdminFlavors();
 
   const counts = (dashboard as any)?.counts ?? {};
   const countCards = [
@@ -211,6 +224,56 @@ function DashboardSection({ onNavigate }: { onNavigate: (tab: string) => void })
     { label: 'Continuity Levels', value: counts.continuityLevels ?? 0, icon: CheckCircle, color: 'text-rose-400', tab: 'continuity-levels' },
     { label: 'Zones', value: counts.zones ?? 0, icon: Box, color: 'text-indigo-400', tab: 'zones' },
   ];
+
+  const versionsEndingSoon = useMemo(() => {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+    const list: { id: string; productName: string; version: string; normalSupportEnd: string; daysLeft: number }[] = [];
+    products?.forEach((p) => {
+      p.productVersions?.forEach((v) => {
+        if (v.normalSupportEnd) {
+          const end = new Date(v.normalSupportEnd);
+          if (end > now && end < cutoff) {
+            const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            list.push({ id: v.id, productName: p.name, version: v.version, normalSupportEnd: v.normalSupportEnd, daysLeft });
+          }
+        }
+      });
+    });
+    return list.sort((a, b) => a.daysLeft - b.daysLeft);
+  }, [products]);
+
+  const flavorsRetiringSoon = useMemo(() => {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+    const list: { id: string; name: string; eolDate: string; daysLeft: number }[] = [];
+    flavors?.forEach((f) => {
+      if (f.eolDate) {
+        const end = new Date(f.eolDate);
+        if (end > now && end < cutoff) {
+          const daysLeft = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          list.push({ id: f.id, name: f.name, eolDate: f.eolDate, daysLeft });
+        }
+      }
+    });
+    return list.sort((a, b) => a.daysLeft - b.daysLeft);
+  }, [flavors]);
+
+  const phaseCounters = useMemo(() => {
+    const counts: Record<LifecyclePhase, number> = {
+      RELEASED: 0,
+      NORMAL_SUPPORT: 0,
+      EXTENDED_SUPPORT: 0,
+      NO_SUPPORT: 0,
+      EOL: 0,
+    };
+    products?.forEach((p) => {
+      p.productVersions?.forEach((v) => {
+        counts[v.phase] = (counts[v.phase] || 0) + 1;
+      });
+    });
+    return counts;
+  }, [products]);
 
   if (isError) {
     return <QueryError message="Unable to load dashboard." onRetry={refetch} />;
@@ -247,6 +310,83 @@ function DashboardSection({ onNavigate }: { onNavigate: (tab: string) => void })
           })}
         </div>
       )}
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Card className="bg-slate-900 border-slate-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-white">
+              <Clock className="h-5 w-5 text-amber-500" />
+              Versions ending support soon
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {versionsEndingSoon.length === 0 ? (
+              <p className="text-sm text-slate-500">No versions ending support in the next 90 days.</p>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {versionsEndingSoon.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between rounded-md bg-slate-800/50 px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium text-white">{v.productName} — {v.version}</p>
+                      <p className="text-xs text-slate-400">Ends {new Date(v.normalSupportEnd).toLocaleDateString()}</p>
+                    </div>
+                    <Badge variant="outline" className="border-amber-500/20 text-amber-500">
+                      {v.daysLeft} days
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-slate-900 border-slate-800">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-white">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Flavors retiring soon
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {flavorsRetiringSoon.length === 0 ? (
+              <p className="text-sm text-slate-500">No flavors retiring in the next 90 days.</p>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {flavorsRetiringSoon.map((f) => (
+                  <div key={f.id} className="flex items-center justify-between rounded-md bg-slate-800/50 px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium text-white">{f.name}</p>
+                      <p className="text-xs text-slate-400">EOL {new Date(f.eolDate).toLocaleDateString()}</p>
+                    </div>
+                    <Badge variant="outline" className="border-red-500/20 text-red-500">
+                      {f.daysLeft} days
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="bg-slate-900 border-slate-800">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-white">
+            <Activity className="h-5 w-5 text-blue-500" />
+            Lifecycle Phase Distribution
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            {Object.entries(phaseCounters).map(([phase, count]) => (
+              <div key={phase} className="rounded-lg bg-slate-800/50 p-3 text-center">
+                <div className="text-2xl font-bold text-white">{count}</div>
+                <div className="text-xs text-slate-400 mt-1">{phase.replace(/_/g, ' ')}</div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="bg-slate-900 border-slate-800">
         <CardHeader>
@@ -314,7 +454,7 @@ function OSSection() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<OperatingSystem | null>(null);
-  const [form, setForm] = useState({ family: '', name: '', slug: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType, zoneIds: [] as string[] });
+  const [form, setForm] = useState({ family: '', name: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType, zoneIds: [] as string[] });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const [versionOpen, setVersionOpen] = useState(false);
@@ -324,11 +464,11 @@ function OSSection() {
     version: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: 'RELEASED', isActive: true,
   });
 
-  const resetForm = () => { setForm({ family: '', name: '', slug: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType, zoneIds: [] }); setEditing(null); };
+  const resetForm = () => { setForm({ family: '', name: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType, zoneIds: [] }); setEditing(null); };
   const openCreate = () => { resetForm(); setIsOpen(true); };
   const openEdit = (os: OperatingSystem) => {
     setEditing(os);
-    setForm({ family: os.family, name: os.name, slug: os.slug, isActive: os.isActive, availabilityType: os.availabilityType || 'STANDARD', zoneIds: os.zones?.map((z: any) => z.zoneId) ?? [] });
+    setForm({ family: os.family, name: os.name, isActive: os.isActive, availabilityType: os.availabilityType || 'STANDARD', zoneIds: os.zones?.map((z: any) => z.zoneId) ?? [] });
     setIsOpen(true);
   };
 
@@ -428,12 +568,11 @@ function OSSection() {
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Name', 'Family', 'Slug', 'Versions', 'Availability', 'Zones', 'Active']} isLoading={isLoading} emptyMessage="No operating systems" mobileCards={mobileCards}>
+          <ResponsiveTable headers={['Name', 'Family', 'Versions', 'Availability', 'Zones', 'Active']} isLoading={isLoading} emptyMessage="No operating systems" mobileCards={mobileCards}>
             {osList?.map((os) => (
               <tr key={os.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{os.name}</td>
                 <td className="py-3 text-slate-400">{os.family}</td>
-                <td className="py-3 text-slate-400">{os.slug}</td>
                 <td className="py-3 text-slate-400">
                   <div className="flex items-center gap-2">
                     <span>{os.versions?.length ?? 0}</span>
@@ -488,7 +627,6 @@ function OSSection() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Family</label><Input value={form.family} onChange={(e) => setForm({ ...form, family: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Slug</label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-300">Availability</label>
               <Select value={form.availabilityType} onChange={(e) => setForm({ ...form, availabilityType: e.target.value as AvailabilityType })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
@@ -567,12 +705,12 @@ function ProductsSection() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const [form, setForm] = useState({
-    name: '', slug: '', description: '', categoryId: '', computeType: '', os: '', documentation: '', roadmap: '', isActive: true, zoneIds: [] as string[],
+    name: '', description: '', categoryId: '', computeType: '', os: '', documentation: '', roadmap: '', isActive: true, zoneIds: [] as string[],
   });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const resetForm = () => {
-    setForm({ name: '', slug: '', description: '', categoryId: '', computeType: '', os: '', documentation: '', roadmap: '', isActive: true, zoneIds: [] });
+    setForm({ name: '', description: '', categoryId: '', computeType: '', os: '', documentation: '', roadmap: '', isActive: true, zoneIds: [] });
     setEditing(null);
   };
 
@@ -580,7 +718,7 @@ function ProductsSection() {
   const openEdit = (product: Product) => {
     setEditing(product);
     setForm({
-      name: product.name, slug: product.slug, description: product.description || '',
+      name: product.name, description: product.description || '',
       categoryId: product.categoryId, computeType: product.computeType || '', os: product.os || '',
       documentation: product.documentation || '', roadmap: product.roadmap || '', isActive: product.isActive,
       zoneIds: product.zones?.map((z: any) => z.zoneId) ?? [],
@@ -591,7 +729,7 @@ function ProductsSection() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload: any = { ...form, slug: form.slug || form.name.toLowerCase().replace(/\s+/g, '-') };
+      const payload: any = { ...form };
       if (!payload.computeType) delete payload.computeType;
       if (editing) await updateProduct.mutateAsync({ id: editing.id, ...payload });
       else await createProduct.mutateAsync(payload);
@@ -617,7 +755,7 @@ function ProductsSection() {
 
   if (isError) return <QueryError message="Unable to load products." onRetry={refetch} />;
 
-  const isCompute = (p: Product) => p.category?.slug === 'compute';
+  const isCompute = (p: Product) => p.category?.name.toLowerCase() === 'compute';
 
   const mobileCards = products?.map((product) => (
     <MobileCard key={product.id}>
@@ -736,17 +874,13 @@ function ProductsSection() {
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Slug</label>
-              <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="auto-generated if empty" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
-            </div>
-            <div className="space-y-2">
               <label className="text-sm font-medium text-slate-300">Category</label>
               <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value, computeType: '' })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                 <option value="">Choose...</option>
                 {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
             </div>
-            {categories?.find(c => c.id === form.categoryId)?.slug === 'compute' && (
+            {categories?.find(c => c.id === form.categoryId)?.name.toLowerCase() === 'compute' && (
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300">Compute Type</label>
                 <Select value={form.computeType} onChange={(e) => setForm({ ...form, computeType: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
@@ -809,7 +943,7 @@ function ProductsSection() {
 }
 
 function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product; onClose: () => void }) {
-  const isCompute = product.category?.slug === 'compute';
+  const isCompute = product.category?.name.toLowerCase() === 'compute';
   const { data: variants, isLoading: variantsLoading } = useProductVariants(product.id);
   const { data: allFlavors } = useFlavors();
   const { data: allOS } = useOperatingSystems();
@@ -868,7 +1002,6 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
       <div className="grid grid-cols-2 gap-4 text-sm">
         <div><span className="text-slate-500">Category:</span> <span className="text-white">{product.category?.name}</span></div>
         {isCompute && <div><span className="text-slate-500">Compute Type:</span> <span className="text-white">{product.computeType || '—'}</span></div>}
-        <div><span className="text-slate-500">Slug:</span> <span className="text-white">{product.slug}</span></div>
         <div><span className="text-slate-500">Status:</span> <Badge variant="outline" className={product.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>{product.isActive ? 'Active' : 'Inactive'}</Badge></div>
       </div>
       {product.description && <p className="text-sm text-slate-400">{product.description}</p>}
@@ -909,7 +1042,7 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {v.availabilityZones?.map((az: any) => (
-                      <Badge key={az.id} variant="secondary" className="text-[10px] bg-slate-900 text-slate-400 border-slate-800">{az.availabilityZone?.code}</Badge>
+                      <Badge key={az.id} variant="secondary" className="text-[10px] bg-slate-900 text-slate-400 border-slate-800">{az.availabilityZone?.name}</Badge>
                     ))}
                   </div>
                 </div>
@@ -1009,7 +1142,7 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
                       }}
                       className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600"
                     />
-                    {az.code}
+                    {az.name}
                   </label>
                 ))}
               </div>
@@ -1064,17 +1197,17 @@ function CategoriesSection() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
-  const [form, setForm] = useState({ name: '', slug: '', description: '', icon: '' });
+  const [form, setForm] = useState({ name: '', description: '', icon: '' });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
-  const resetForm = () => { setForm({ name: '', slug: '', description: '', icon: '' }); setEditing(null); };
+  const resetForm = () => { setForm({ name: '', description: '', icon: '' }); setEditing(null); };
   const openCreate = () => { resetForm(); setIsOpen(true); };
-  const openEdit = (c: Category) => { setEditing(c); setForm({ name: c.name, slug: c.slug, description: c.description || '', icon: c.icon || '' }); setIsOpen(true); };
+  const openEdit = (c: Category) => { setEditing(c); setForm({ name: c.name, description: c.description || '', icon: c.icon || '' }); setIsOpen(true); };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload = { ...form, slug: form.slug || form.name.toLowerCase().replace(/\s+/g, '-'), icon: form.icon || undefined };
+      const payload = { ...form, icon: form.icon || undefined };
       if (editing) await updateCategory.mutateAsync({ id: editing.id, ...payload });
       else await createCategory.mutateAsync(payload);
       setIsOpen(false); resetForm();
@@ -1104,7 +1237,6 @@ function CategoriesSection() {
       <div className="flex items-start justify-between">
         <div>
           <p className="font-medium text-white">{cat.name}</p>
-          <p className="text-sm text-slate-400">{cat.slug}</p>
         </div>
         <span className="text-sm text-slate-500">{(cat as any)._count?.products ?? 0} products</span>
       </div>
@@ -1122,11 +1254,10 @@ function CategoriesSection() {
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Name', 'Slug', 'Description', 'Products']} isLoading={isLoading} emptyMessage="No categories" mobileCards={mobileCards}>
+          <ResponsiveTable headers={['Name', 'Description', 'Products']} isLoading={isLoading} emptyMessage="No categories" mobileCards={mobileCards}>
             {categories?.map((cat) => (
               <tr key={cat.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{cat.name}</td>
-                <td className="py-3 text-slate-400">{cat.slug}</td>
                 <td className="py-3 text-slate-400 max-w-xs truncate">{cat.description || '—'}</td>
                 <td className="py-3 text-slate-400">{(cat as any)._count?.products ?? 0}</td>
                 <td className="py-3 text-right">
@@ -1146,7 +1277,6 @@ function CategoriesSection() {
           <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit category' : 'New category'}</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Slug</label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="auto-generated if empty" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white" /></div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Icon (Cpu, Database, Server, Monitor)</label><Input value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
@@ -1339,17 +1469,24 @@ function FlavorsSection() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Flavor | null>(null);
-  const [form, setForm] = useState({ name: '', vcpu: 0, ramGb: 0, description: '', zoneIds: [] as string[] });
+  const [form, setForm] = useState({ name: '', vcpu: 0, ramGb: 0, description: '', zoneIds: [] as string[], releaseDate: '', deprecationDate: '', eolDate: '' });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
-  const resetForm = () => { setForm({ name: '', vcpu: 0, ramGb: 0, description: '', zoneIds: [] }); setEditing(null); };
+  const resetForm = () => { setForm({ name: '', vcpu: 0, ramGb: 0, description: '', zoneIds: [], releaseDate: '', deprecationDate: '', eolDate: '' }); setEditing(null); };
   const openCreate = () => { resetForm(); setIsOpen(true); };
-  const openEdit = (f: Flavor) => { setEditing(f); setForm({ name: f.name, vcpu: f.vcpu, ramGb: f.ramGb, description: f.description || '', zoneIds: f.zones?.map((z: any) => z.zoneId) ?? [] }); setIsOpen(true); };
+  const openEdit = (f: Flavor) => { setEditing(f); setForm({ name: f.name, vcpu: f.vcpu, ramGb: f.ramGb, description: f.description || '', zoneIds: f.zones?.map((z: any) => z.zoneId) ?? [], releaseDate: f.releaseDate ? f.releaseDate.slice(0, 10) : '', deprecationDate: f.deprecationDate ? f.deprecationDate.slice(0, 10) : '', eolDate: f.eolDate ? f.eolDate.slice(0, 10) : '' }); setIsOpen(true); };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editing) await updateFlavor.mutateAsync({ id: editing.id, ...form });
-    else await createFlavor.mutateAsync(form);
+    const payload: any = { ...form };
+    if (payload.releaseDate) payload.releaseDate = new Date(payload.releaseDate).toISOString();
+    else delete payload.releaseDate;
+    if (payload.deprecationDate) payload.deprecationDate = new Date(payload.deprecationDate).toISOString();
+    else delete payload.deprecationDate;
+    if (payload.eolDate) payload.eolDate = new Date(payload.eolDate).toISOString();
+    else delete payload.eolDate;
+    if (editing) await updateFlavor.mutateAsync({ id: editing.id, ...payload });
+    else await createFlavor.mutateAsync(payload);
     setIsOpen(false); resetForm();
   };
 
@@ -1432,6 +1569,11 @@ function FlavorsSection() {
               <div className="space-y-2"><label className="text-sm font-medium text-slate-300">RAM (GB)</label><Input type="number" value={form.ramGb} onChange={(e) => setForm({ ...form, ramGb: parseInt(e.target.value) || 0 })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             </div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white" /></div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Release Date</label><Input type="date" value={form.releaseDate} onChange={(e) => setForm({ ...form, releaseDate: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Deprecation Date</label><Input type="date" value={form.deprecationDate} onChange={(e) => setForm({ ...form, deprecationDate: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">EOL Date</label><Input type="date" value={form.eolDate} onChange={(e) => setForm({ ...form, eolDate: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            </div>
             <MultiPickupInput
               label="Zones"
               values={form.zoneIds}
@@ -1451,6 +1593,251 @@ function FlavorsSection() {
         onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
         title="Delete Flavor"
         description="Are you sure you want to delete this flavor? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
+    </div>
+  );
+}
+
+// ============ PRODUCT VERSIONS SECTION ============
+function ProductVersionsSection() {
+  const { data: products, isLoading, isError, refetch } = useAdminProducts();
+  const { data: allZones } = useZones();
+  const { data: allAzs } = useAvailabilityZones();
+  const { data: allRegions } = useRegions();
+  const createVersion = useCreateProductVersion();
+  const updateVersion = useUpdateProductVersion();
+  const deleteVersion = useDeleteProductVersion();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<ProductVersion | null>(null);
+  const [form, setForm] = useState({ productId: '', version: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: 'RELEASED' as LifecyclePhase, isActive: true, changelog: '', regionId: '', zoneIds: [] as string[], availabilityZoneIds: [] as string[] });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+
+  const allVersions = useMemo(() => {
+    const list: (ProductVersion & { productName: string })[] = [];
+    products?.forEach((p) => {
+      p.productVersions?.forEach((v) => {
+        list.push({ ...v, productName: p.name });
+      });
+    });
+    return list;
+  }, [products]);
+
+  const resetForm = () => { setForm({ productId: '', version: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: LifecyclePhase.RELEASED, isActive: true, changelog: '', regionId: '', zoneIds: [], availabilityZoneIds: [] }); setEditing(null); };
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (v: ProductVersion & { productName: string }) => {
+    setEditing(v);
+    setForm({
+      productId: v.productId,
+      version: v.version,
+      releaseDate: v.releaseDate ? v.releaseDate.slice(0, 10) : '',
+      normalSupportEnd: v.normalSupportEnd ? v.normalSupportEnd.slice(0, 10) : '',
+      extendedSupportEnd: v.extendedSupportEnd ? v.extendedSupportEnd.slice(0, 10) : '',
+      eolDate: v.eolDate ? v.eolDate.slice(0, 10) : '',
+      phase: v.phase,
+      isActive: v.isActive,
+      changelog: v.changelog || '',
+      regionId: v.regionId || '',
+      zoneIds: v.zones?.map((z: any) => z.zoneId) ?? [],
+      availabilityZoneIds: v.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [],
+    });
+    setIsOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        version: form.version,
+        releaseDate: form.releaseDate ? new Date(form.releaseDate).toISOString() : undefined,
+        normalSupportEnd: form.normalSupportEnd ? new Date(form.normalSupportEnd).toISOString() : undefined,
+        extendedSupportEnd: form.extendedSupportEnd ? new Date(form.extendedSupportEnd).toISOString() : undefined,
+        eolDate: form.eolDate ? new Date(form.eolDate).toISOString() : undefined,
+        phase: form.phase,
+        isActive: form.isActive,
+        changelog: form.changelog || undefined,
+        regionId: form.regionId || undefined,
+        zoneIds: form.zoneIds.length > 0 ? form.zoneIds : undefined,
+        availabilityZoneIds: form.availabilityZoneIds.length > 0 ? form.availabilityZoneIds : undefined,
+      };
+      if (editing) {
+        await updateVersion.mutateAsync({ id: editing.id, ...payload });
+      } else {
+        await createVersion.mutateAsync({ productId: form.productId, ...payload });
+      }
+      setIsOpen(false);
+      resetForm();
+    } catch { /* handled by hook */ }
+  };
+
+  const handleDelete = (id: string) => { setConfirmDelete({ open: true, id }); };
+  const handleConfirmDelete = async () => {
+    try { if (confirmDelete.id) await deleteVersion.mutateAsync(confirmDelete.id); } catch { }
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  if (isError) return <QueryError message="Unable to load product versions." onRetry={refetch} />;
+
+  const mobileCards = allVersions?.map((v) => (
+    <MobileCard key={v.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{v.productName}</p>
+          <p className="text-sm text-slate-400">{v.version}</p>
+        </div>
+        <Badge variant="outline" className={v.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+          {v.isActive ? 'Active' : 'Inactive'}
+        </Badge>
+      </div>
+      <div className="mt-2 text-sm text-slate-500">Phase: {v.phase.replace(/_/g, ' ')}</div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openEdit(v)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => handleDelete(v.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add Version</Button>
+      </div>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable headers={['Product', 'Version', 'Release Date', 'Normal Support End', 'Extended Support End', 'EOL Date', 'Phase', 'Active', 'Region', 'Zones', 'AZ']} isLoading={isLoading} emptyMessage="No product versions" mobileCards={mobileCards}>
+            {allVersions?.map((v) => (
+              <tr key={v.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{v.productName}</td>
+                <td className="py-3 text-slate-400">{v.version}</td>
+                <td className="py-3 text-slate-400">{v.releaseDate ? new Date(v.releaseDate).toLocaleDateString() : '—'}</td>
+                <td className="py-3 text-slate-400">{v.normalSupportEnd ? new Date(v.normalSupportEnd).toLocaleDateString() : '—'}</td>
+                <td className="py-3 text-slate-400">{v.extendedSupportEnd ? new Date(v.extendedSupportEnd).toLocaleDateString() : '—'}</td>
+                <td className="py-3 text-slate-400">{v.eolDate ? new Date(v.eolDate).toLocaleDateString() : '—'}</td>
+                <td className="py-3">
+                  <Badge variant="outline" className="border-blue-500/20 text-blue-400">
+                    {v.phase.replace(/_/g, ' ')}
+                  </Badge>
+                </td>
+                <td className="py-3">
+                  <Badge variant="outline" className={v.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+                    {v.isActive ? 'Active' : 'Inactive'}
+                  </Badge>
+                </td>
+                <td className="py-3">
+                  {v.region ? <Badge variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{v.region.name}</Badge> : <span className="text-slate-600">—</span>}
+                </td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {v.zones?.map((z: any) => (
+                      <Badge key={z.zoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{z.zone?.name}</Badge>
+                    )) ?? <span className="text-slate-600">—</span>}
+                  </div>
+                </td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {v.availabilityZones?.map((az: any) => (
+                      <Badge key={az.availabilityZoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{az.availabilityZone?.name}</Badge>
+                    )) ?? <span className="text-slate-600">—</span>}
+                  </div>
+                </td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(v)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(v.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit Product Version' : 'New Product Version'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {!editing && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Product</label>
+                <select
+                  value={form.productId}
+                  onChange={(e) => setForm({ ...form, productId: e.target.value })}
+                  required
+                  className="w-full h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
+                >
+                  <option value="">Select Product...</option>
+                  {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Version</label><Input value={form.version} onChange={(e) => setForm({ ...form, version: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Release Date</label><Input type="date" value={form.releaseDate} onChange={(e) => setForm({ ...form, releaseDate: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Normal Support End</label><Input type="date" value={form.normalSupportEnd} onChange={(e) => setForm({ ...form, normalSupportEnd: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Extended Support End</label><Input type="date" value={form.extendedSupportEnd} onChange={(e) => setForm({ ...form, extendedSupportEnd: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">EOL Date</label><Input type="date" value={form.eolDate} onChange={(e) => setForm({ ...form, eolDate: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Phase</label>
+              <select
+                value={form.phase}
+                onChange={(e) => setForm({ ...form, phase: e.target.value as LifecyclePhase })}
+                className="w-full h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
+              >
+                <option value="RELEASED">Released</option>
+                <option value="NORMAL_SUPPORT">Normal Support</option>
+                <option value="EXTENDED_SUPPORT">Extended Support</option>
+                <option value="NO_SUPPORT">No Support</option>
+                <option value="EOL">EOL</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="pv-active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="rounded border-slate-700 bg-slate-950" />
+              <label htmlFor="pv-active" className="text-sm text-slate-300">Active</label>
+            </div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Changelog</label><Textarea value={form.changelog} onChange={(e) => setForm({ ...form, changelog: e.target.value })} rows={3} className="bg-slate-950 border-slate-700 text-white" /></div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Region</label>
+              <select
+                value={form.regionId}
+                onChange={(e) => setForm({ ...form, regionId: e.target.value })}
+                className="w-full h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
+              >
+                <option value="">Select Region...</option>
+                {allRegions?.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+            </div>
+            <MultiPickupInput
+              label="Zones"
+              values={form.zoneIds}
+              onChange={(ids) => setForm({ ...form, zoneIds: ids })}
+              options={allZones?.map((z) => ({ id: z.id, label: z.name })) ?? []}
+            />
+            <MultiPickupInput
+              label="Availability Zones"
+              values={form.availabilityZoneIds}
+              onChange={(ids) => setForm({ ...form, availabilityZoneIds: ids })}
+              options={allAzs?.map((az) => ({ id: az.id, label: az.name })) ?? []}
+            />
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete Product Version"
+        description="Are you sure you want to delete this product version? This action cannot be undone."
         onConfirm={handleConfirmDelete}
         confirmLabel="Delete"
         cancelLabel="Cancel"
@@ -1864,26 +2251,32 @@ function AvailabilityZonesSection() {
   const createZone = useCreateAvailabilityZone();
   const updateZone = useUpdateAvailabilityZone();
   const deleteZone = useDeleteAvailabilityZone();
+  const { data: countries } = useCountries();
+  const { data: regions } = useRegions();
 
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<AvailabilityZone | null>(null);
   const [form, setForm] = useState({
-    code: '', name: '', city: '', country: '', region: '', latitude: '', longitude: '', isActive: true,
+    name: '', city: '', country: '', region: '', latitude: '', longitude: '', isActive: true,
   });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [searchQuery, setSearchQuery] = useState('');
+  const [countryQuery, setCountryQuery] = useState('');
+  const [showCountryDropdown, setShowCountryDropdown] = useState(false);
 
   const resetForm = () => {
-    setForm({ code: '', name: '', city: '', country: '', region: '', latitude: '', longitude: '', isActive: true });
+    setForm({ name: '', city: '', country: '', region: '', latitude: '', longitude: '', isActive: true });
+    setCountryQuery('');
     setEditing(null);
   };
   const openCreate = () => { resetForm(); setIsOpen(true); };
   const openEdit = (z: AvailabilityZone) => {
     setEditing(z);
     setForm({
-      code: z.code, name: z.name, city: z.city, country: z.country, region: z.region,
+      name: z.name, city: z.city, country: z.country, region: z.region,
       latitude: String(z.latitude), longitude: String(z.longitude), isActive: z.isActive,
     });
+    setCountryQuery(z.country);
     setIsOpen(true);
   };
 
@@ -1910,7 +2303,6 @@ function AvailabilityZonesSection() {
   };
 
   const filtered = zones?.filter((z) =>
-    z.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
     z.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -1921,15 +2313,14 @@ function AvailabilityZonesSection() {
       <div className="flex items-start justify-between">
         <div>
           <p className="font-medium text-white">{z.name}</p>
-          <p className="text-sm text-slate-400">{z.code}</p>
         </div>
         <Badge variant="outline" className={z.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
           {z.isActive ? 'Active' : 'Inactive'}
         </Badge>
       </div>
       <div className="mt-2 text-sm text-slate-500">
-        <p>{z.city}, {z.country}</p>
-        <p>Region: {z.region}</p>
+        <p>{z.city}, {countries?.find((c) => c.name === z.country)?.flagEmoji || ''} {z.country}</p>
+        <p>Region: {regions?.find((r) => r.name === z.region)?.name || z.region}</p>
       </div>
       <div className="mt-3 flex justify-end gap-1">
         <Button size="sm" variant="ghost" onClick={() => openEdit(z)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
@@ -1943,20 +2334,19 @@ function AvailabilityZonesSection() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-          <Input placeholder="Search by code or name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]" />
+          <Input placeholder="Search by name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]" />
         </div>
         <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add</Button>
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Code', 'Name', 'City', 'Country', 'Region', 'Status']} isLoading={isLoading} emptyMessage="No availability zones" mobileCards={mobileCards}>
+          <ResponsiveTable headers={['Name', 'City', 'Country', 'Region', 'Status']} isLoading={isLoading} emptyMessage="No availability zones" mobileCards={mobileCards}>
             {filtered?.map((z) => (
               <tr key={z.id} className="hover:bg-slate-800/50 transition-colors">
-                <td className="py-3 font-medium text-white">{z.code}</td>
-                <td className="py-3 text-slate-400">{z.name}</td>
+                <td className="py-3 font-medium text-white">{z.name}</td>
                 <td className="py-3 text-slate-400">{z.city}</td>
-                <td className="py-3 text-slate-400">{z.country}</td>
-                <td className="py-3 text-slate-400">{z.region}</td>
+                <td className="py-3 text-slate-400">{countries?.find((c) => c.name === z.country)?.flagEmoji || ''} {z.country}</td>
+                <td className="py-3 text-slate-400">{regions?.find((r) => r.name === z.region)?.name || z.region}</td>
                 <td className="py-3">
                   <Badge variant="outline" className={z.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
                     {z.isActive ? 'Active' : 'Inactive'}
@@ -1979,11 +2369,57 @@ function AvailabilityZonesSection() {
           <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit availability zone' : 'New availability zone'}</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Code</label><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              
               <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
               <div className="space-y-2"><label className="text-sm font-medium text-slate-300">City</label><Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
-              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Country</label><Input value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
-              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Region</label><Input value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2 relative">
+                <label className="text-sm font-medium text-slate-300">Country</label>
+                <Input
+                  value={countryQuery}
+                  onChange={(e) => { setCountryQuery(e.target.value); setShowCountryDropdown(true); setForm({ ...form, country: e.target.value }); }}
+                  onFocus={() => setShowCountryDropdown(true)}
+                  placeholder="Search country..."
+                  required
+                  className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+                />
+                {showCountryDropdown && countries && (
+                  <div className="absolute z-50 mt-1 w-full max-h-48 overflow-auto bg-slate-900 border border-slate-700 rounded-md shadow-lg">
+                    {countries
+                      .filter((c) => c.name.toLowerCase().includes(countryQuery.toLowerCase()))
+                      .map((c) => (
+                        <div
+                          key={c.code}
+                          className="px-3 py-2 cursor-pointer hover:bg-slate-800 text-white text-sm flex items-center gap-2"
+                          onClick={() => {
+                            setForm({ ...form, country: c.name });
+                            setCountryQuery(c.name);
+                            setShowCountryDropdown(false);
+                          }}
+                        >
+                          <span className="text-base">{c.flagEmoji}</span>
+                          <span>{c.name}</span>
+                        </div>
+                      ))}
+                    {countries.filter((c) => c.name.toLowerCase().includes(countryQuery.toLowerCase())).length === 0 && (
+                      <div className="px-3 py-2 text-slate-500 text-sm">No countries found</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Region</label>
+                <select
+                  value={form.region}
+                  onChange={(e) => setForm({ ...form, region: e.target.value })}
+                  required
+                  className="w-full h-[44px] px-3 bg-slate-950 border border-slate-700 rounded-md text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select a region</option>
+                  {regions?.map((r) => (
+                    <option key={r.id} value={r.name}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
               <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Latitude</label><Input type="number" step="any" min="-90" max="90" value={form.latitude} onChange={(e) => setForm({ ...form, latitude: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
               <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Longitude</label><Input type="number" step="any" min="-180" max="180" value={form.longitude} onChange={(e) => setForm({ ...form, longitude: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
               <div className="space-y-2 flex items-center gap-2 pt-6">
@@ -2015,77 +2451,45 @@ function AvailabilityZonesSection() {
 
 // ============ ZONES SECTION ============
 function RegionsSection() {
-  const { data: azs, isLoading, isError, refetch } = useAvailabilityZones();
+  const { data: azs } = useAvailabilityZones();
+  const { data: regionsList, isLoading, isError, refetch } = useRegions();
+  const createRegion = useCreateRegion();
+  const updateRegion = useUpdateRegion();
+  const deleteRegion = useDeleteRegion();
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedRegion, setExpandedRegion] = useState<string | null>(null);
-  const [editOpen, setEditOpen] = useState(false);
-  const [editingRegion, setEditingRegion] = useState<string>('');
-  const [editName, setEditName] = useState('');
-  const [editSlug, setEditSlug] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<Region | null>(null);
+  const [form, setForm] = useState({ name: '', description: '', isActive: true });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
-  const [customNames, setCustomNames] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem('cloudmarket_region_names') || '{}'); }
-    catch { return {}; }
-  });
-
-  const [customSlugs, setCustomSlugs] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem('cloudmarket_region_slugs') || '{}'); }
-    catch { return {}; }
-  });
-
-  const saveCustomName = (code: string, name: string) => {
-    const next = { ...customNames, [code]: name };
-    setCustomNames(next);
-    localStorage.setItem('cloudmarket_region_names', JSON.stringify(next));
+  const resetForm = () => { setForm({ name: '', description: '', isActive: true }); setEditing(null); };
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (region: Region) => {
+    setEditing(region);
+    setForm({ name: region.name, description: region.description || '', isActive: region.isActive });
+    setIsOpen(true);
   };
 
-  const saveCustomSlug = (code: string, slug: string) => {
-    const next = { ...customSlugs, [code]: slug };
-    setCustomSlugs(next);
-    localStorage.setItem('cloudmarket_region_slugs', JSON.stringify(next));
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editing) await updateRegion.mutateAsync({ id: editing.id, ...form });
+      else await createRegion.mutateAsync(form);
+      setIsOpen(false); resetForm();
+    } catch { /* handled by hook */ }
   };
 
-  const getRegionCode = (az: AvailabilityZone) => az.region || 'unknown';
-
-  const apiRegionToDisplay: Record<string, string> = {
-    'eu-west': 'Europe',
-    'us-east': 'North America',
-    'ap-south': 'Asia-Pacific',
+  const handleDelete = async () => {
+    try {
+      if (confirmDelete.id) await deleteRegion.mutateAsync(confirmDelete.id);
+    } catch { /* handled by hook */ }
+    setConfirmDelete({ open: false, id: null });
   };
 
-  const getDisplayName = (code: string) => customNames[code] || apiRegionToDisplay[code] || code;
-
-  const regions = useMemo(() => {
-    const map = new Map<string, { code: string; azs: AvailabilityZone[] }>();
-    azs?.forEach((az) => {
-      const code = getRegionCode(az);
-      const name = getDisplayName(code);
-      if (!map.has(name)) map.set(name, { code, azs: [] });
-      map.get(name)!.azs.push(az);
-    });
-    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [azs, customNames]);
-
-  const filtered = regions.filter(([name]) =>
-    name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const openEdit = (name: string, code: string) => {
-    setEditingRegion(code);
-    setEditName(customNames[code] || name || apiRegionToDisplay[code] || code);
-    setEditSlug(customSlugs[code] || code);
-    setEditOpen(true);
-  };
-
-  const handleSaveEdit = () => {
-    if (editingRegion && editName.trim()) {
-      saveCustomName(editingRegion, editName.trim());
-    }
-    if (editingRegion && editSlug.trim()) {
-      saveCustomSlug(editingRegion, editSlug.trim());
-    }
-    setEditOpen(false);
-  };
+  const filtered = regionsList?.filter((r) =>
+    r.name.toLowerCase().includes(searchQuery.toLowerCase())
+  ) ?? [];
 
   if (isError) return <QueryError message="Unable to load regions." onRetry={refetch} />;
 
@@ -2096,6 +2500,7 @@ function RegionsSection() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <Input placeholder="Search region..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]" />
         </div>
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add</Button>
       </div>
 
       {isLoading ? (
@@ -2112,38 +2517,42 @@ function RegionsSection() {
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map(([regionName, { code, azs: regionAZs }]) => (
-            <Card key={regionName} className="bg-slate-900 border-slate-800 transition-all hover:border-slate-700">
+          {filtered.map((region) => {
+            const regionAZs = azs?.filter((az) => az.region === region.name) ?? [];
+            return (
+            <Card key={region.id} className="bg-slate-900 border-slate-800 transition-all hover:border-slate-700">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-white flex items-center gap-2">
                     <Globe className="h-4 w-4 text-blue-400" />
-                    {regionName}
-                    <span className="text-xs text-slate-500 font-normal">({customSlugs[code] || code})</span>
+                    {region.name}
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="border-blue-500/20 text-blue-400">
                       {regionAZs.length} AZ{regionAZs.length > 1 ? 's' : ''}
                     </Badge>
-                    <Button size="sm" variant="ghost" onClick={() => openEdit(regionName, code)} className="h-7 w-7 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(region)} className="h-7 w-7 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10">
                       <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ open: true, id: region.id })} className="h-7 w-7 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10">
+                      <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
                 <button
-                  onClick={() => setExpandedRegion(expandedRegion === regionName ? null : regionName)}
+                  onClick={() => setExpandedRegion(expandedRegion === region.id ? null : region.id)}
                   className="text-xs text-slate-400 hover:text-blue-400 transition-colors flex items-center gap-1"
                 >
-                  <ChevronRight className={`h-3 w-3 transition-transform ${expandedRegion === regionName ? 'rotate-90' : ''}`} />
-                  {expandedRegion === regionName ? 'Hide AZs' : 'Show AZs'}
+                  <ChevronRight className={`h-3 w-3 transition-transform ${expandedRegion === region.id ? 'rotate-90' : ''}`} />
+                  {expandedRegion === region.id ? 'Hide AZs' : 'Show AZs'}
                 </button>
-                {expandedRegion === regionName && (
+                {expandedRegion === region.id && (
                   <div className="mt-3 space-y-1.5">
                     {regionAZs.map((az) => (
                       <div key={az.id} className="flex items-center justify-between text-sm">
-                        <span className="text-slate-300">{az.name} <span className="text-slate-500">({az.code})</span></span>
+                        <span className="text-slate-300">{az.name}</span>
                         <Badge variant="outline" className={az.isActive ? 'border-emerald-500/20 text-emerald-500 text-[10px]' : 'border-slate-600 text-slate-500 text-[10px]'}>
                           {az.isActive ? 'Active' : 'Inactive'}
                         </Badge>
@@ -2153,34 +2562,32 @@ function RegionsSection() {
                 )}
               </CardContent>
             </Card>
-          ))}
+          );})}
         </div>
       )}
 
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-sm">
-          <DialogHeader><DialogTitle className="text-white">Edit Region Name</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Display Name</label>
-              <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit Region' : 'New Region'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="regionActive" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
+              <label htmlFor="regionActive" className="text-sm text-slate-300">Active</label>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Slug</label>
-              <Input value={editSlug} onChange={(e) => setEditSlug(e.target.value)} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
-            </div>
-            <p className="text-xs text-slate-500">API Code: {editingRegion}</p>
-          </div>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button type="button" variant="outline" onClick={() => setEditOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
-            <Button type="button" onClick={handleSaveEdit} className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">Save</Button>
-          </DialogFooter>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog open={confirmDelete.open} onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })} title="Delete Region" description="Are you sure you want to delete this region?" onConfirm={handleDelete} confirmLabel="Delete" cancelLabel="Cancel" variant="destructive" />
     </div>
   );
 }
-
 function ZonesSection() {
   const { data: zones, isLoading, isError, refetch } = useZones();
   const { data: allAZs } = useAvailabilityZones();
@@ -2191,13 +2598,13 @@ function ZonesSection() {
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Zone | null>(null);
   const [form, setForm] = useState({
-    name: '', slug: '', description: '', isActive: true, availabilityZoneIds: [] as string[],
+    name: '', description: '', isActive: true, availabilityZoneIds: [] as string[],
   });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [searchQuery, setSearchQuery] = useState('');
 
   const resetForm = () => {
-    setForm({ name: '', slug: '', description: '', isActive: true, availabilityZoneIds: [] });
+    setForm({ name: '', description: '', isActive: true, availabilityZoneIds: [] });
     setEditing(null);
   };
   const openCreate = () => { resetForm(); setIsOpen(true); };
@@ -2205,7 +2612,6 @@ function ZonesSection() {
     setEditing(z);
     setForm({
       name: z.name,
-      slug: z.slug,
       description: z.description || '',
       isActive: z.isActive,
       availabilityZoneIds: z.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [],
@@ -2233,8 +2639,7 @@ function ZonesSection() {
   };
 
   const filtered = zones?.filter((z) =>
-    z.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    z.slug.toLowerCase().includes(searchQuery.toLowerCase())
+    z.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (isError) return <QueryError message="Unable to load zones." onRetry={refetch} />;
@@ -2244,7 +2649,6 @@ function ZonesSection() {
       <div className="flex items-start justify-between">
         <div>
           <p className="font-medium text-white">{z.name}</p>
-          <p className="text-sm text-slate-400">{z.slug}</p>
         </div>
         <Badge variant="outline" className={z.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
           {z.isActive ? 'Active' : 'Inactive'}
@@ -2265,17 +2669,16 @@ function ZonesSection() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-          <Input placeholder="Search by name or slug..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]" />
+          <Input placeholder="Search by name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]" />
         </div>
         <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add</Button>
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Name', 'Slug', 'AZs', 'Active']} isLoading={isLoading} emptyMessage="No zones" mobileCards={mobileCards}>
+          <ResponsiveTable headers={['Name', 'AZs', 'Active']} isLoading={isLoading} emptyMessage="No zones" mobileCards={mobileCards}>
             {filtered?.map((z) => (
               <tr key={z.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{z.name}</td>
-                <td className="py-3 text-slate-400">{z.slug}</td>
                 <td className="py-3 text-slate-400">{z.availabilityZones?.length ?? 0}</td>
                 <td className="py-3">
                   <Badge variant="outline" className={z.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
@@ -2300,7 +2703,6 @@ function ZonesSection() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
-              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Slug</label><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             </div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             <div className="space-y-2">
@@ -2319,7 +2721,7 @@ function ZonesSection() {
                       }}
                       className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600"
                     />
-                    {az.code}
+                    {az.name}
                   </label>
                 ))}
               </div>
@@ -2399,7 +2801,7 @@ export function _InstancesSection() {
   };
 
   const selectedProduct = products?.find((p) => p.id === form.productId);
-  const isComputeProduct = selectedProduct?.category?.slug === 'compute';
+  const isComputeProduct = selectedProduct?.category?.name.toLowerCase() === 'compute';
   const { data: productVariants } = useProductVariants(form.productId || '');
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -2441,7 +2843,7 @@ export function _InstancesSection() {
       </div>
       <div className="mt-2 text-sm text-slate-500">
         <p>{instance.application?.name}</p>
-        <p>{instance.az?.code} · {instance.environment}</p>
+        <p>{instance.az?.name} · {instance.environment}</p>
       </div>
       <div className="mt-3 flex justify-end gap-1">
         <Button size="sm" variant="ghost" onClick={() => openEdit(instance)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
@@ -2469,7 +2871,7 @@ export function _InstancesSection() {
                 <td className="py-3 text-slate-400">{instance.product?.name}</td>
                 <td className="py-3 text-slate-400">{instance.variant?.name || '—'}</td>
                 <td className="py-3 text-slate-400">{instance.flavor?.name}</td>
-                <td className="py-3 text-slate-400">{instance.az?.code}</td>
+                <td className="py-3 text-slate-400">{instance.az?.name}</td>
                 <td className="py-3">
                   <Badge variant="outline" className={instanceStatusConfig[instance.status].color}>
                     {instanceStatusConfig[instance.status].label}
@@ -2800,8 +3202,9 @@ export default function Admin() {
 
   const tabs = [
     { value: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-    { value: 'os', label: 'OS', icon: Monitor },
     { value: 'products', label: 'Products', icon: Package },
+    { value: 'product-versions', label: 'Product Versions', icon: Box },
+    { value: 'os', label: 'OS', icon: Monitor },
     { value: 'categories', label: 'Categories', icon: Layers },
     { value: 'flavors', label: 'Flavors', icon: Cpu },
     { value: 'dependencies', label: 'Dependencies', icon: Link2 },
@@ -2846,6 +3249,7 @@ export default function Admin() {
         <TabsContent value="os" className="animate-fade-in"><OSSection /></TabsContent>
         <TabsContent value="categories" className="animate-fade-in"><CategoriesSection /></TabsContent>
         <TabsContent value="flavors" className="animate-fade-in"><FlavorsSection /></TabsContent>
+        <TabsContent value="product-versions" className="animate-fade-in"><ProductVersionsSection /></TabsContent>
         <TabsContent value="dependencies" className="animate-fade-in"><DependenciesSection /></TabsContent>
         <TabsContent value="applications" className="animate-fade-in"><ApplicationsSection /></TabsContent>
         <TabsContent value="continuity-levels" className="animate-fade-in"><ContinuityLevelsSection /></TabsContent>

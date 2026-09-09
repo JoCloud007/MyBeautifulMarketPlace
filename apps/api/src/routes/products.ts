@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
+import { generateSlug } from '../lib/slugify';
 
 const router = Router();
 
@@ -12,15 +13,18 @@ const productQuerySchema = z.object({
 
 const createProductSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  slug: z.string().min(1, 'Slug is required').regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+  slug: z.string().min(1).regex(/^[a-z0-9-]+$/).optional(),
   description: z.string().optional(),
   categoryId: z.string().uuid('Invalid category ID'),
   computeType: z.enum(['PHYSICAL', 'VIRTUAL']).optional(),
   documentation: z.string().optional().nullable(),
   roadmap: z.string().optional().nullable(),
   os: z.string().optional(),
+  initialReleaseDate: z.string().datetime().or(z.date()).optional(),
+  productEOLDate: z.string().datetime().or(z.date()).optional(),
   isActive: z.boolean().optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
+  regionId: z.string().uuid().optional(),
 });
 
 const idParamSchema = z.string().uuid();
@@ -33,6 +37,7 @@ const createVariantSchema = z.object({
   availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
   continuityLevelId: z.string().uuid().optional().nullable(),
+  productVersionId: z.string().uuid().optional().nullable(),
   isActive: z.boolean().optional(),
   availabilityType: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
 });
@@ -46,8 +51,11 @@ const updateProductSchema = z.object({
   documentation: z.string().optional().nullable(),
   roadmap: z.string().optional().nullable(),
   os: z.string().optional().nullable(),
+  initialReleaseDate: z.string().datetime().or(z.date()).optional(),
+  productEOLDate: z.string().datetime().or(z.date()).optional(),
   isActive: z.boolean().optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
+  regionId: z.string().uuid().optional().nullable(),
 });
 
 // GET /api/products
@@ -101,6 +109,7 @@ router.get('/', async (req, res, next) => {
         upgradeFrom: { include: { toProduct: { select: { id: true, name: true, slug: true } } } },
         upgradeTo: { include: { fromProduct: { select: { id: true, name: true, slug: true } } } },
         zones: { include: { zone: true } },
+        productVersions: true,
         performanceProfiles: { include: { metrics: true } },
         _count: { select: { variants: { where: { isActive: true } }, instances: true } },
       },
@@ -125,10 +134,10 @@ router.post('/', async (req, res, next) => {
     }
 
     // Validate computeType: required for Compute category, disallowed for others
-    if (category.slug === 'compute' && !data.computeType) {
+    if (category.name.toLowerCase() === 'compute' && !data.computeType) {
       return res.status(400).json({ error: 'computeType is required for Compute category products' });
     }
-    if (data.computeType && category.slug !== 'compute') {
+    if (data.computeType && category.name.toLowerCase() !== 'compute') {
       return res.status(400).json({ error: 'computeType can only be set for Compute category products' });
     }
 
@@ -146,13 +155,24 @@ router.post('/', async (req, res, next) => {
       }
     }
 
-    const { zoneIds, ...productData } = data;
+    // Validate regionId if provided
+    if (data.regionId) {
+      const region = await prisma.region.findUnique({ where: { id: data.regionId } });
+      if (!region) {
+        return res.status(400).json({ error: 'Region not found' });
+      }
+    }
+
+    const { zoneIds, regionId, ...productData } = data;
+    const slug = data.slug || generateSlug('product', data.name);
 
     try {
       const product = await prisma.product.create({
         data: {
           ...productData,
+          slug,
           zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+          regionId: regionId || undefined,
         },
         include: {
           category: true,
@@ -174,6 +194,8 @@ router.post('/', async (req, res, next) => {
             include: { product: { include: { category: true } } },
           },
           zones: { include: { zone: true } },
+          region: true,
+          productVersions: true,
           _count: { select: { variants: { where: { isActive: true } } } },
         },
       });
@@ -235,7 +257,7 @@ router.post('/:id/variants', async (req, res, next) => {
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
-    if (product.category.slug !== 'compute') {
+    if (product.category.name.toLowerCase() !== 'compute') {
       return res.status(400).json({ error: 'Variants can only be created for Compute products' });
     }
 
@@ -260,6 +282,13 @@ router.post('/:id/variants', async (req, res, next) => {
       const cl = await prisma.continuityLevel.findUnique({ where: { id: data.continuityLevelId } });
       if (!cl) {
         return res.status(404).json({ error: 'Continuity level not found' });
+      }
+    }
+
+    if (data.productVersionId) {
+      const pv = await prisma.productVersion.findUnique({ where: { id: data.productVersionId } });
+      if (!pv) {
+        return res.status(404).json({ error: 'Product version not found' });
       }
     }
 
@@ -297,6 +326,7 @@ router.post('/:id/variants', async (req, res, next) => {
         osVersionId: data.osVersionId,
         flavorId: data.flavorId,
         continuityLevelId: data.continuityLevelId,
+        productVersionId: data.productVersionId,
         isActive: data.isActive,
         availabilityType: data.availabilityType,
         availabilityZones: data.availabilityZoneIds
@@ -351,6 +381,7 @@ router.get('/:slug', async (req, res, next) => {
         upgradeFrom: { include: { toProduct: { select: { id: true, name: true, slug: true } } } },
         upgradeTo: { include: { fromProduct: { select: { id: true, name: true, slug: true } } } },
         zones: { include: { zone: true } },
+        productVersions: true,
         performanceProfiles: { include: { metrics: true } },
         _count: { select: { variants: { where: { isActive: true } }, instances: true } },
       },
@@ -381,11 +412,21 @@ router.patch('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    if (data.slug) {
+    const updateData: any = { ...data };
+
+    if (data.name) {
+      const newSlug = generateSlug('product', data.name);
+      const existing = await prisma.product.findUnique({ where: { slug: newSlug } });
+      if (existing && existing.id !== id) {
+        return res.status(409).json({ error: 'A product with this slug already exists' });
+      }
+      updateData.slug = newSlug;
+    } else if (data.slug) {
       const existing = await prisma.product.findUnique({ where: { slug: data.slug } });
       if (existing && existing.id !== id) {
         return res.status(409).json({ error: 'A product with this slug already exists' });
       }
+      updateData.slug = data.slug;
     }
 
     // Validate categoryId exists when provided
@@ -398,12 +439,12 @@ router.patch('/:id', async (req, res, next) => {
     }
 
     // Validate computeType: required for Compute category, clear when switching to non-compute
-    if (targetCategory.slug === 'compute') {
+    if (targetCategory.name.toLowerCase() === 'compute') {
       if (data.computeType === undefined && !existingProduct.computeType) {
         return res.status(400).json({ error: 'computeType is required for Compute category products' });
       }
     } else {
-      data.computeType = null;
+      updateData.computeType = null;
     }
 
     // Validate zoneIds if provided
@@ -420,7 +461,15 @@ router.patch('/:id', async (req, res, next) => {
       }
     }
 
-    const { zoneIds, ...productData } = data;
+    // Validate regionId if provided
+    if (data.regionId) {
+      const region = await prisma.region.findUnique({ where: { id: data.regionId } });
+      if (!region) {
+        return res.status(400).json({ error: 'Region not found' });
+      }
+    }
+
+    const { zoneIds, regionId, ...productData } = data;
 
     // Handle zone links update
     if (zoneIds) {
@@ -432,6 +481,7 @@ router.patch('/:id', async (req, res, next) => {
       data: {
         ...productData,
         zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+        regionId: regionId !== undefined ? regionId : undefined,
       },
       include: {
         category: true,
@@ -453,6 +503,8 @@ router.patch('/:id', async (req, res, next) => {
           include: { product: { include: { category: true } } },
         },
         zones: { include: { zone: true } },
+        region: true,
+        productVersions: true,
         _count: { select: { variants: { where: { isActive: true } } } },
       },
     });
@@ -545,7 +597,7 @@ router.post('/:id/variants', async (req, res, next) => {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    if (product.category?.slug !== 'compute') {
+    if (product.category?.name.toLowerCase() !== 'compute') {
       return res.status(400).json({ error: 'Variants can only be created for Compute products' });
     }
 

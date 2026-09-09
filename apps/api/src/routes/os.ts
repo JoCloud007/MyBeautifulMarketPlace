@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
+import { generateSlug } from '../lib/slugify';
 
 const router = Router();
 
@@ -9,7 +10,7 @@ const idParamSchema = z.string().uuid();
 const createOsSchema = z.object({
   family: z.string().min(1, 'Family is required'),
   name: z.string().min(1, 'Name is required'),
-  slug: z.string().min(1, 'Slug is required').regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+  slug: z.string().min(1).regex(/^[a-z0-9-]+$/).optional(),
   isActive: z.boolean().optional(),
   availabilityType: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
@@ -89,12 +90,17 @@ router.post('/', async (req, res, next) => {
     }
 
     const { zoneIds, ...osData } = data;
+    const slug = data.slug || generateSlug('operatingSystem', data.name);
 
     try {
       const os = await prisma.operatingSystem.create({
         data: {
-          ...osData,
-          zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+          family: osData.family,
+          name: osData.name,
+          slug,
+          isActive: osData.isActive,
+          availabilityType: osData.availabilityType,
+          zones: zoneIds ? { create: zoneIds.map((zid: string) => ({ zoneId: zid })) } : undefined,
         },
         include: { versions: true, zones: { include: { zone: true } } },
       });
@@ -147,11 +153,21 @@ router.put('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'OS not found' });
     }
 
-    if (data.slug) {
+    const updateData: any = { ...data };
+
+    if (data.name) {
+      const newSlug = generateSlug('operatingSystem', data.name);
+      const dup = await prisma.operatingSystem.findUnique({ where: { slug: newSlug } });
+      if (dup && dup.id !== id) {
+        return res.status(409).json({ error: 'An OS with this slug already exists' });
+      }
+      updateData.slug = newSlug;
+    } else if (data.slug) {
       const dup = await prisma.operatingSystem.findUnique({ where: { slug: data.slug } });
       if (dup && dup.id !== id) {
         return res.status(409).json({ error: 'An OS with this slug already exists' });
       }
+      updateData.slug = data.slug;
     }
 
     // Validate zoneIds if provided
@@ -168,7 +184,7 @@ router.put('/:id', async (req, res, next) => {
       }
     }
 
-    const { zoneIds, ...osData } = data;
+    const { zoneIds, ...osData } = updateData;
 
     // Handle zone links update
     if (zoneIds) {
@@ -179,7 +195,7 @@ router.put('/:id', async (req, res, next) => {
       where: { id },
       data: {
         ...osData,
-        zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+        zones: zoneIds ? { create: zoneIds.map((zid: string) => ({ zoneId: zid })) } : undefined,
       },
       include: { versions: true, zones: { include: { zone: true } } },
     });

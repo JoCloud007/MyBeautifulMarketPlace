@@ -6,7 +6,7 @@ import { getCapitalCoordinates } from '../lib/countryCapitals';
 const router = Router();
 
 const createAZSchema = z.object({
-  code: z.string().min(1, 'Code is required').max(100),
+  code: z.string().min(1).max(100).optional(),
   name: z.string().min(1, 'Name is required').max(100),
   city: z.string().min(1, 'City is required').max(100),
   country: z.string().min(1, 'Country is required').max(100),
@@ -66,13 +66,16 @@ router.post('/', async (req, res, next) => {
   try {
     const data = createAZSchema.parse(req.body);
 
-    const existing = await prisma.availabilityZone.findUnique({ where: { code: data.code } });
+    let code = data.code || data.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    if (!code) code = `az-${Date.now()}`;
+    const existing = await prisma.availabilityZone.findUnique({ where: { code } });
     if (existing) {
       return res.status(409).json({ error: 'An availability zone with this code already exists' });
     }
 
+    const { code: _code, ...rest } = data;
     const zone = await prisma.availabilityZone.create({
-      data,
+      data: { ...rest, code },
     });
 
     res.status(201).json(zone);
@@ -88,16 +91,12 @@ router.patch('/:id', async (req, res, next) => {
     idParamSchema.parse(id);
     const data = updateAZSchema.parse(req.body);
 
-    if (data.code) {
-      const existing = await prisma.availabilityZone.findUnique({ where: { code: data.code } });
-      if (existing && existing.id !== id) {
-        return res.status(409).json({ error: 'An availability zone with this code already exists' });
-      }
-    }
+    // Prevent updating code to preserve referential integrity with instances
+    const { code: _code, ...safeData } = data;
 
     const zone = await prisma.availabilityZone.update({
       where: { id },
-      data,
+      data: safeData,
     });
 
     res.json(zone);

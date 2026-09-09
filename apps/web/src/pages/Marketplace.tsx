@@ -181,7 +181,7 @@ export default function Marketplace() {
 
   const renderProductCard = (product: any, index: number) => {
     const Icon = iconMap[product.category?.icon || ''] || Server;
-    const isCompute = product.category?.slug === 'compute';
+    const isCompute = product.category?.name.toLowerCase() === 'compute';
     const variantCount = product.variants?.length ?? 0;
     return (
       <AnimatedCard key={product.id} delay={Math.min(index * 80, 400)}>

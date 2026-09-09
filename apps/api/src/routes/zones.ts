@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
+import { generateSlug } from '../lib/slugify';
 
 const router = Router();
 
 const createZoneSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
-  slug: z.string().min(1, 'Slug is required').max(100).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+  slug: z.string().min(1).max(100).regex(/^[a-z0-9-]+$/).optional(),
   description: z.string().optional(),
   isActive: z.boolean().optional(),
   availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
@@ -63,7 +64,8 @@ router.post('/', async (req, res, next) => {
       return res.status(409).json({ error: 'A zone with this name already exists' });
     }
 
-    const existingSlug = await prisma.zone.findUnique({ where: { slug: data.slug } });
+    const slug = data.slug || generateSlug('zone', data.name);
+    const existingSlug = await prisma.zone.findUnique({ where: { slug } });
     if (existingSlug) {
       return res.status(409).json({ error: 'A zone with this slug already exists' });
     }
@@ -84,7 +86,7 @@ router.post('/', async (req, res, next) => {
     const zone = await prisma.zone.create({
       data: {
         name: data.name,
-        slug: data.slug,
+        slug,
         description: data.description,
         isActive: data.isActive,
         availabilityZones: data.availabilityZoneIds
@@ -116,11 +118,21 @@ router.put('/:id', async (req, res, next) => {
       }
     }
 
-    if (data.slug) {
+    const updateData: any = { ...data };
+
+    if (data.name) {
+      const newSlug = generateSlug('zone', data.name);
+      const existing = await prisma.zone.findUnique({ where: { slug: newSlug } });
+      if (existing && existing.id !== id) {
+        return res.status(409).json({ error: 'A zone with this slug already exists' });
+      }
+      updateData.slug = newSlug;
+    } else if (data.slug) {
       const existing = await prisma.zone.findUnique({ where: { slug: data.slug } });
       if (existing && existing.id !== id) {
         return res.status(409).json({ error: 'A zone with this slug already exists' });
       }
+      updateData.slug = data.slug;
     }
 
     if (data.availabilityZoneIds) {
@@ -145,10 +157,10 @@ router.put('/:id', async (req, res, next) => {
       return tx.zone.update({
         where: { id },
         data: {
-          name: data.name,
-          slug: data.slug,
-          description: data.description,
-          isActive: data.isActive,
+          name: updateData.name,
+          slug: updateData.slug,
+          description: updateData.description,
+          isActive: updateData.isActive,
           availabilityZones: data.availabilityZoneIds
             ? { create: data.availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) }
             : undefined,

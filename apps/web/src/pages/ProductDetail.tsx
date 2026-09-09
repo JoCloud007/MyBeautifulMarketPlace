@@ -6,6 +6,7 @@ import { useProduct, useProducts, usePerformanceProfiles } from '@/hooks/useApi'
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import PerformanceGauge from '@/components/PerformanceGauge';
+import LifecycleTimeline from '@/components/LifecycleTimeline';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -489,7 +490,7 @@ export default function ProductDetail() {
     );
   }
 
-  const isCompute = product.category?.slug === 'compute';
+  const isCompute = product.category?.name.toLowerCase() === 'compute';
   const Icon = iconMap[product.category?.icon || ''] || Server;
   const variants: ProductVariant[] = product.variants || [];
 
@@ -729,6 +730,7 @@ export default function ProductDetail() {
             {isCompute && (
               <TabsTrigger value="variants" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Variants</TabsTrigger>
             )}
+            <TabsTrigger value="versions-lifecycle" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Versions &amp; Lifecycle</TabsTrigger>
             <TabsTrigger value="documentation" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Documentation</TabsTrigger>
             <TabsTrigger value="roadmap" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Roadmap</TabsTrigger>
             {isCompute && (
@@ -1207,6 +1209,11 @@ export default function ProductDetail() {
               </div>
             )}
           </TabsContent>
+
+          {/* Versions & Lifecycle */}
+          <TabsContent value="versions-lifecycle" className="mt-4 space-y-6 animate-fade-in">
+            <LifecycleTimeline product={product} />
+          </TabsContent>
         </Tabs>
       </AnimatedSection>
 
@@ -1218,7 +1225,7 @@ export default function ProductDetail() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {related.map((rel: Product) => {
                 const RelIcon = iconMap[rel.category?.icon || ''] || Server;
-                const relIsCompute = rel.category?.slug === 'compute';
+                const relIsCompute = rel.category?.name.toLowerCase() === 'compute';
                 const relVariantCount = rel.variants?.length ?? 0;
                 return (
                   <Link key={rel.id} to={`/products/${rel.slug}`} className="group">

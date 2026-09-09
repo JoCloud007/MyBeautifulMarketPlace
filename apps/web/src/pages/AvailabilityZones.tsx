@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react';
 
 import {
   useAvailabilityZones,
+  useRegions,
+  useZones,
 } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
@@ -18,34 +20,18 @@ import {
   X,
   Radio,
   RadioTower,
+  Box,
 } from 'lucide-react';
 import type { AvailabilityZone } from '@cloudmarket/shared-types';
 
-const defaultRegionNames: Record<string, string> = {
-  'eu-west': 'Europe',
-  'us-east': 'North America',
-  'ap-south': 'Asia-Pacific',
+const regionColors: Record<string, string> = {
+  'AMER': '#10b981',
+  'EMEA': '#3b82f6',
+  'APAC': '#f59e0b',
 };
 
-function getRegionNames(): Record<string, string> {
-  try {
-    const saved = JSON.parse(localStorage.getItem('cloudmarket_region_names') || '{}');
-    return { ...defaultRegionNames, ...saved };
-  } catch {
-    return defaultRegionNames;
-  }
-}
-
-const defaultColors: Record<string, string> = {
-  'eu-west': '#3b82f6',
-  'us-east': '#10b981',
-  'ap-south': '#f59e0b',
-};
-
-function getRegionColor(name: string, regionNames: Record<string, string>): string {
-  const entry = Object.entries(regionNames).find(([, n]) => n === name);
-  if (entry) return defaultColors[entry[0]] || '#64748b';
-  return '#64748b';
+function getRegionColor(name: string): string {
+  return regionColors[name] || '#64748b';
 }
 
 function AnimatedSection({ children, className, delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
@@ -62,26 +48,32 @@ function AnimatedSection({ children, className, delay = 0 }: { children: React.R
 }
 
 export default function AvailabilityZonesPage() {
-  const { data: zones, isLoading, isError, refetch } = useAvailabilityZones();
+  const { data: zones, isLoading: zonesLoading, isError: zonesError, refetch: refetchZones } = useAvailabilityZones();
+  const { data: regionsList, isLoading: regionsLoading, isError: regionsError, refetch: refetchRegions } = useRegions();
+  const { data: allZones } = useZones();
   const [selectedRegion, setSelectedRegion] = useState('All');
   const [selectedZone, setSelectedZone] = useState<AvailabilityZone | null>(null);
 
-  const regionNames = useMemo(() => getRegionNames(), []);
-  const regions = useMemo(() => ['All', ...Object.values(regionNames)], [regionNames]);
-  const displayRegionToApi = useMemo(() =>
-    Object.fromEntries(Object.entries(regionNames).map(([code, name]) => [name, [code]])),
-    [regionNames]
-  );
+  const isLoading = zonesLoading || regionsLoading;
+  const isError = zonesError || regionsError;
+  const refetch = () => { refetchZones(); refetchRegions(); };
+
+  const regions = useMemo(() => ['All', ...(regionsList?.map((r) => r.name) ?? [])], [regionsList]);
 
   const filteredZones = useMemo(() => {
     if (!zones) return [];
     if (selectedRegion === 'All') return zones;
-    const apiRegions = displayRegionToApi[selectedRegion];
-    if (!apiRegions) return [];
-    return zones.filter((z) => apiRegions.includes(z.region));
-  }, [zones, selectedRegion, displayRegionToApi]);
+    return zones.filter((z) => z.region === selectedRegion);
+  }, [zones, selectedRegion]);
 
   const activeCount = useMemo(() => filteredZones.filter((z) => z.isActive).length, [filteredZones]);
+
+  const linkedZones = useMemo(() => {
+    if (!selectedZone || !allZones) return [];
+    return allZones.filter((z) =>
+      z.availabilityZones?.some((az: any) => az.availabilityZoneId === selectedZone.id)
+    );
+  }, [selectedZone, allZones]);
 
   if (isError) {
     return (
@@ -245,12 +237,12 @@ export default function AvailabilityZonesPage() {
               </CardContent>
             </Card>
 
-            {/* Zone Details */}
+            {/* Availability Zone Details */}
             <Card className="bg-slate-900 border-slate-800">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-white text-base">
                   <Server className="h-5 w-5 text-blue-500" />
-                  {selectedZone ? selectedZone.name : 'Zone Details'}
+                  {selectedZone ? selectedZone.name : 'Availability Zone Details'}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -267,7 +259,7 @@ export default function AvailabilityZonesPage() {
                         <Badge
                           variant="outline"
                           className="text-xs"
-                          style={{ borderColor: getRegionColor(regionNames[selectedZone.region] || selectedZone.region, regionNames), color: getRegionColor(regionNames[selectedZone.region] || selectedZone.region, regionNames) }}
+                          style={{ borderColor: getRegionColor(selectedZone.region), color: getRegionColor(selectedZone.region) }}
                         >
                           {selectedZone.region}
                         </Badge>
@@ -283,7 +275,7 @@ export default function AvailabilityZonesPage() {
                       <p className="text-sm text-slate-400">
                         {selectedZone.city}, {selectedZone.country}
                       </p>
-                      <p className="text-xs font-mono text-slate-500">{selectedZone.code}</p>
+                      <p className="text-xs font-mono text-slate-500">{selectedZone.name}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-xs">
@@ -298,22 +290,54 @@ export default function AvailabilityZonesPage() {
                     </div>
 
                     <div>
-                      <p className="text-xs font-medium text-slate-400 mb-2">Zone Info</p>
+                      <p className="text-xs font-medium text-slate-400 mb-2">Availability Zone Info</p>
                       <p className="text-xs text-slate-600">
                         {selectedZone.isActive ? 'Active zone' : 'Inactive zone'}
                       </p>
                     </div>
+
                   </div>
                 ) : (
                   <div className="text-center py-12">
                     <MapPin className="mx-auto h-10 w-10 text-slate-700" />
                     <p className="mt-3 text-sm text-slate-500">
-                      Select a zone from the list above to view details.
+                      Select an availability zone from the list to view details.
                     </p>
                   </div>
                 )}
               </CardContent>
             </Card>
+
+            {/* Linked Zones */}
+            {selectedZone && (
+              <Card className="bg-slate-900 border-slate-800">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-white text-base">
+                    <Box className="h-5 w-5 text-blue-500" />
+                    Linked Zones
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {linkedZones.length === 0 ? (
+                    <div className="text-center py-4">
+                      <Box className="mx-auto h-6 w-6 text-slate-700" />
+                      <p className="mt-2 text-xs text-slate-500">No zones linked to this availability zone.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {linkedZones.map((z) => (
+                        <div key={z.id} className="flex items-center justify-between text-sm">
+                          <span className="text-slate-300">{z.name}</span>
+                          <Badge variant="outline" className={z.isActive ? 'border-emerald-500/20 text-emerald-500 text-[10px]' : 'border-slate-600 text-slate-500 text-[10px]'}>
+                          {z.isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </AnimatedSection>
@@ -348,13 +372,13 @@ export default function AvailabilityZonesPage() {
                       <Badge
                         variant="outline"
                         className="text-[10px]"
-                        style={{ borderColor: getRegionColor(regionNames[zone.region] || zone.region, regionNames), color: getRegionColor(regionNames[zone.region] || zone.region, regionNames) }}
+                        style={{ borderColor: getRegionColor(zone.region), color: getRegionColor(zone.region) }}
                       >
                         {zone.region}
                       </Badge>
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
-                      {zone.city}, {zone.country} · {zone.code}
+                      {zone.city}, {zone.country} · {zone.name}
                     </p>
                   </button>
                 ))}

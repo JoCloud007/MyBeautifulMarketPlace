@@ -1,20 +1,24 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
+import { generateSlug } from '../lib/slugify';
 
 const router = Router();
 
 const productSchema = z.object({
   name: z.string().min(1),
-  slug: z.string().min(1).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+  slug: z.string().min(1).regex(/^[a-z0-9-]+$/).optional(),
   description: z.string().optional(),
   categoryId: z.string().uuid(),
   computeType: z.enum(['PHYSICAL', 'VIRTUAL']).optional().nullable(),
   os: z.string().optional(),
   documentation: z.string().optional(),
   roadmap: z.string().optional(),
+  initialReleaseDate: z.string().datetime().or(z.date()).optional(),
+  productEOLDate: z.string().datetime().or(z.date()).optional(),
   isActive: z.boolean().optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
+  regionId: z.string().uuid().optional(),
 });
 
 const flavorSchema = z.object({
@@ -23,11 +27,14 @@ const flavorSchema = z.object({
   ramGb: z.number().int().min(0),
   description: z.string().optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
+  releaseDate: z.string().datetime().or(z.date()).optional(),
+  deprecationDate: z.string().datetime().or(z.date()).optional(),
+  eolDate: z.string().datetime().or(z.date()).optional(),
 });
 
 const categorySchema = z.object({
   name: z.string().min(1),
-  slug: z.string().min(1).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
+  slug: z.string().min(1).regex(/^[a-z0-9-]+$/).optional(),
   description: z.string().optional(),
   icon: z.string().optional(),
 });
@@ -53,7 +60,7 @@ async function validateComputeType(categoryId: string, computeType: string | und
   if (!category) {
     return { valid: false, message: 'Category not found' };
   }
-  if (computeType && category.slug !== 'compute') {
+  if (computeType && category.name.toLowerCase() !== 'compute') {
     return { valid: false, message: 'computeType can only be set for Compute category products' };
   }
   return { valid: true, category };
@@ -100,6 +107,8 @@ router.get('/products', async (_req, res, next) => {
         category: true,
         variants: { include: { os: true, osVersion: true, flavor: true, availabilityZones: { include: { availabilityZone: true } }, zones: { include: { zone: true } }, continuityLevel: true } },
         zones: { include: { zone: true } },
+        region: true,
+        productVersions: { include: { region: true, zones: { include: { zone: true } }, availabilityZones: { include: { availabilityZone: true } } } },
         _count: { select: { forecastLines: true, variants: true, instances: true } },
       },
       orderBy: { updatedAt: 'desc' },
@@ -115,7 +124,8 @@ router.post('/products', async (req, res, next) => {
   try {
     const data = productSchema.parse(req.body);
 
-    const existing = await prisma.product.findUnique({ where: { slug: data.slug } });
+    const slug = data.slug || generateSlug('product', data.name);
+    const existing = await prisma.product.findUnique({ where: { slug } });
     if (existing) {
       return res.status(409).json({ error: 'A product with this slug already exists' });
     }
@@ -125,10 +135,10 @@ router.post('/products', async (req, res, next) => {
     if (!category) {
       return res.status(404).json({ error: 'Category not found' });
     }
-    if (category.slug === 'compute' && !data.computeType) {
+    if (category.name.toLowerCase() === 'compute' && !data.computeType) {
       return res.status(400).json({ error: 'computeType is required for Compute category products' });
     }
-    if (data.computeType && category.slug !== 'compute') {
+    if (data.computeType && category.name.toLowerCase() !== 'compute') {
       return res.status(400).json({ error: 'computeType can only be set for Compute category products' });
     }
 
@@ -146,15 +156,25 @@ router.post('/products', async (req, res, next) => {
       }
     }
 
-    const { zoneIds, ...productData } = data;
+    // Validate regionId if provided
+    if (data.regionId) {
+      const region = await prisma.region.findUnique({ where: { id: data.regionId } });
+      if (!region) {
+        return res.status(400).json({ error: 'Region not found' });
+      }
+    }
+
+    const { zoneIds, regionId, ...productData } = data;
 
     try {
       const product = await prisma.product.create({
         data: {
           ...productData,
+          slug,
           zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+          regionId: regionId || undefined,
         },
-        include: { category: true, variants: { include: { os: true, flavor: true } }, zones: { include: { zone: true } } },
+        include: { category: true, variants: { include: { os: true, flavor: true } }, zones: { include: { zone: true } }, region: true, productVersions: { include: { region: true, zones: { include: { zone: true } }, availabilityZones: { include: { availabilityZone: true } } } } },
       });
       res.status(201).json(product);
     } catch (err: any) {
@@ -180,11 +200,15 @@ router.patch('/products/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    if (data.slug) {
-      const existing = await prisma.product.findUnique({ where: { slug: data.slug } });
+    const updateData: any = { ...data };
+
+    if (data.name) {
+      const newSlug = generateSlug('product', data.name);
+      const existing = await prisma.product.findUnique({ where: { slug: newSlug } });
       if (existing && existing.id !== id) {
         return res.status(409).json({ error: 'A product with this slug already exists' });
       }
+      updateData.slug = newSlug;
     }
 
     // Validate computeType constraint and clear when category changes to non-compute
@@ -195,12 +219,12 @@ router.patch('/products/:id', async (req, res, next) => {
         return res.status(400).json({ error: 'Category not found' });
       }
     }
-    if (targetCategory.slug === 'compute') {
+    if (targetCategory.name.toLowerCase() === 'compute') {
       if ((data.computeType === undefined ? existingProduct.computeType : data.computeType) == null) {
         return res.status(400).json({ error: 'computeType is required for Compute category products' });
       }
     } else {
-      data.computeType = null;
+      updateData.computeType = null;
     }
 
     // Validate zoneIds if provided
@@ -217,16 +241,25 @@ router.patch('/products/:id', async (req, res, next) => {
       }
     }
 
-    const { zoneIds, ...productData } = data;
+    // Validate regionId if provided
+    if (data.regionId) {
+      const region = await prisma.region.findUnique({ where: { id: data.regionId } });
+      if (!region) {
+        return res.status(400).json({ error: 'Region not found' });
+      }
+    }
+
+    const { zoneIds, regionId, ...productData } = updateData;
 
     try {
       const product = await prisma.product.update({
         where: { id },
         data: {
           ...productData,
-          zones: zoneIds ? { deleteMany: {}, create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+          zones: zoneIds ? { deleteMany: {}, create: zoneIds.map((zid: string) => ({ zoneId: zid })) } : undefined,
+          regionId: regionId !== undefined ? regionId : undefined,
         },
-        include: { category: true, variants: { include: { os: { include: { zones: { include: { zone: true } } } }, osVersion: true, flavor: { include: { zones: { include: { zone: true } } } }, availabilityZones: { include: { availabilityZone: true } }, zones: { include: { zone: true } }, continuityLevel: true } }, zones: { include: { zone: true } } },
+        include: { category: true, variants: { include: { os: { include: { zones: { include: { zone: true } } } }, osVersion: true, flavor: { include: { zones: { include: { zone: true } } } }, availabilityZones: { include: { availabilityZone: true } }, zones: { include: { zone: true } }, continuityLevel: true } }, zones: { include: { zone: true } }, region: true, productVersions: { include: { region: true, zones: { include: { zone: true } }, availabilityZones: { include: { availabilityZone: true } } } } },
       });
       res.json(product);
     } catch (err: any) {
@@ -309,7 +342,8 @@ router.post('/categories', async (req, res, next) => {
   try {
     const data = categorySchema.parse(req.body);
 
-    const existingSlug = await prisma.category.findUnique({ where: { slug: data.slug } });
+    const slug = generateSlug('category', data.name);
+    const existingSlug = await prisma.category.findUnique({ where: { slug } });
     if (existingSlug) {
       return res.status(409).json({ error: 'A category with this slug already exists' });
     }
@@ -320,7 +354,7 @@ router.post('/categories', async (req, res, next) => {
     }
 
     const category = await prisma.category.create({
-      data,
+      data: { ...data, slug },
       include: { _count: { select: { products: true } } },
     });
     res.status(201).json(category);
@@ -335,9 +369,20 @@ router.patch('/categories/:id', async (req, res, next) => {
     const { id } = req.params;
     idParamSchema.parse(id);
     const data = categorySchema.partial().parse(req.body);
+
+    const updateData: any = { ...data };
+    if (data.name) {
+      const newSlug = generateSlug('category', data.name);
+      const existing = await prisma.category.findUnique({ where: { slug: newSlug } });
+      if (existing && existing.id !== id) {
+        return res.status(409).json({ error: 'A category with this slug already exists' });
+      }
+      updateData.slug = newSlug;
+    }
+
     const category = await prisma.category.update({
       where: { id },
-      data,
+      data: updateData,
       include: { _count: { select: { products: true } } },
     });
     res.json(category);

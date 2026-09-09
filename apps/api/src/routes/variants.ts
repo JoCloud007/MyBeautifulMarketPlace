@@ -14,6 +14,7 @@ const createVariantSchema = z.object({
   flavorId: z.string().uuid('Invalid flavor ID'),
   availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
   continuityLevelId: z.string().uuid().optional().nullable(),
+  productVersionId: z.string().uuid().optional().nullable(),
   isActive: z.boolean().optional(),
   availabilityType: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
 });
@@ -26,6 +27,7 @@ const updateVariantSchema = z.object({
   availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
   zoneIds: z.array(z.string().uuid()).max(50).optional(),
   continuityLevelId: z.string().uuid().optional().nullable(),
+  productVersionId: z.string().uuid().optional().nullable(),
   isActive: z.boolean().optional(),
   availabilityType: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
 });
@@ -106,6 +108,14 @@ router.put('/:id', async (req, res, next) => {
       }
     }
 
+    // Verify product version if changing
+    if (data.productVersionId) {
+      const pv = await prisma.productVersion.findUnique({ where: { id: data.productVersionId } });
+      if (!pv) {
+        return res.status(404).json({ error: 'Product version not found' });
+      }
+    }
+
     // Verify AZs if changing
     if (data.availabilityZoneIds) {
       if (data.availabilityZoneIds.length > 0) {
@@ -153,6 +163,7 @@ router.put('/:id', async (req, res, next) => {
           osVersionId: data.osVersionId,
           flavorId: data.flavorId,
           continuityLevelId: data.continuityLevelId,
+          productVersionId: data.productVersionId,
           isActive: data.isActive,
           availabilityType: data.availabilityType,
           availabilityZones: data.availabilityZoneIds

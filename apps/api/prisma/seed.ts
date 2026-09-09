@@ -7,6 +7,8 @@ async function main() {
 
   // Clean existing data
   try {
+    await prisma.productVersionAvailabilityZone.deleteMany();
+    await prisma.productVersionZone.deleteMany();
     await prisma.productZone.deleteMany();
     await prisma.flavorZone.deleteMany();
     await prisma.operatingSystemZone.deleteMany();
@@ -34,6 +36,7 @@ async function main() {
     await prisma.user.deleteMany();
     await prisma.application.deleteMany();
     await prisma.continuityLevel.deleteMany();
+    await prisma.region.deleteMany();
   } catch (e: any) {
     if (e.code === 'P2021') {
       console.log('  Tables do not exist yet — make sure to run "npx prisma db push" first');
@@ -75,6 +78,17 @@ async function main() {
   // Link zones to AZs
   await prisma.zoneAvailabilityZone.create({ data: { zoneId: zoneToto.id, availabilityZoneId: parisAz1.id } });
   await prisma.zoneAvailabilityZone.create({ data: { zoneId: zoneProd.id, availabilityZoneId: parisAz2.id } });
+
+  // Create Regions
+  const regionEuWest = await prisma.region.create({
+    data: { name: 'Europe', slug: 'eu-west', description: 'European region', isActive: true },
+  });
+  const regionUsEast = await prisma.region.create({
+    data: { name: 'North America', slug: 'us-east', description: 'North American region', isActive: true },
+  });
+  const regionApSouth = await prisma.region.create({
+    data: { name: 'Asia-Pacific', slug: 'ap-south', description: 'Asia-Pacific region', isActive: true },
+  });
 
   // Create Continuity Levels
   const clLow = await prisma.continuityLevel.create({
@@ -236,6 +250,7 @@ async function main() {
       computeType: ComputeType.VIRTUAL,
       os: 'Linux',
       zones: { create: [{ zoneId: zoneToto.id }, { zoneId: zoneProd.id }] },
+      regionId: regionEuWest.id,
       documentation: '# Virtual Machine\n\n## Overview\nConfigurable virtual machine with selectable operating system.\n\n## Specifications\n- OS: selectable (Debian, Windows Server, RHEL)\n- vCPU: 2–16\n- RAM: 4–32 GB',
       roadmap: '## Roadmap\n- Q3 2024: ARM64 support\n- Q4 2024: GPU instance option\n- Q1 2025: Confidential computing',
     },
@@ -250,6 +265,7 @@ async function main() {
       computeType: ComputeType.PHYSICAL,
       os: 'Linux',
       zones: { create: [{ zoneId: zoneProd.id }] },
+      regionId: regionUsEast.id,
       documentation: '# Bare Metal HPC\n\n## Overview\nDedicated bare metal servers for HPC workloads.\n\n## Specifications\n- CPU: AMD EPYC / Intel Xeon\n- GPU: NVIDIA A100/H100 options\n- Network: InfiniBand HDR',
       roadmap: '## Roadmap\n- Q3 2024: NVIDIA H200 support\n- Q4 2024: Liquid cooling option',
     },
@@ -262,6 +278,7 @@ async function main() {
       description: 'S3-compatible object storage with 99.999999999% durability and global CDN integration.',
       categoryId: data.id,
       zones: { create: [{ zoneId: zoneToto.id }] },
+      regionId: regionApSouth.id,
       documentation: '# Object Storage\n\n## Overview\nScalable S3-compatible object storage service.\n\n## Features\n- S3 API compatible\n- Multi-region replication\n- Lifecycle policies\n- Versioning support',
       roadmap: '## Roadmap\n- Q3 2024: Glacier-like archive tier\n- Q4 2024: Object lock (WORM)',
     },
@@ -274,6 +291,7 @@ async function main() {
       description: 'Network Attached Storage with NFS, SMB, and iSCSI protocols.',
       categoryId: data.id,
       zones: { create: [{ zoneId: zoneProd.id }] },
+      regionId: regionEuWest.id,
       documentation: '# NAS Storage\n\n## Overview\nEnterprise NAS with multiple protocol support.\n\n## Features\n- NFS v4.2\n- SMB 3.1.1\n- iSCSI\n- Snapshots & replication',
       roadmap: '## Roadmap\n- Q3 2024: NVMe-oF support\n- Q4 2024: Automated tiering',
     },
@@ -287,6 +305,7 @@ async function main() {
       categoryId: hypervisor.id,
       os: 'ESXi',
       zones: { create: [{ zoneId: zoneToto.id }] },
+      regionId: regionUsEast.id,
       documentation: '# VMware vSphere\n\n## Overview\nEnterprise virtualization platform.\n\n## Specifications\n- Version: vSphere 8.0 U2\n- vCenter included\n- vSAN ready',
       roadmap: '## Roadmap\n- Q3 2024: vSphere 8.0 U3\n- Q4 2024: Confidential VMs',
     },
@@ -299,8 +318,91 @@ async function main() {
       description: 'Citrix Virtual Apps and Desktops service with HDX optimization.',
       categoryId: citrix.id,
       os: 'Windows',
+      regionId: regionApSouth.id,
       documentation: '# Citrix VDI\n\n## Overview\nVirtual desktop infrastructure powered by Citrix.\n\n## Features\n- HDX protocol\n- GPU acceleration\n- Multi-site brokering',
       roadmap: '## Roadmap\n- Q3 2024: Citrix DaaS integration\n- Q4 2024: WebRTC redirection',
+    },
+  });
+
+  // Create Product Versions
+  const vmV1 = await prisma.productVersion.create({
+    data: {
+      productId: vmProduct.id,
+      version: '1.0.0',
+      releaseDate: new Date('2023-01-15'),
+      normalSupportEnd: new Date('2025-01-15'),
+      extendedSupportEnd: new Date('2027-01-15'),
+      eolDate: new Date('2028-01-15'),
+      phase: LifecyclePhase.NORMAL_SUPPORT,
+      isActive: true,
+      changelog: '## 1.0.0\n- Initial release\n- Debian 12 and Windows Server 2022 support',
+      regionId: regionEuWest.id,
+      zones: { create: [{ zoneId: zoneToto.id }] },
+      availabilityZones: { create: [{ availabilityZoneId: parisAz1.id }, { availabilityZoneId: singapore.id }] },
+    },
+  });
+  const vmV2 = await prisma.productVersion.create({
+    data: {
+      productId: vmProduct.id,
+      version: '2.0.0',
+      releaseDate: new Date('2024-06-01'),
+      normalSupportEnd: new Date('2026-06-01'),
+      extendedSupportEnd: new Date('2028-06-01'),
+      eolDate: new Date('2029-06-01'),
+      phase: LifecyclePhase.RELEASED,
+      isActive: true,
+      changelog: '## 2.0.0\n- Added RHEL 9 support\n- Improved networking stack\n- GPU passthrough',
+      regionId: regionApSouth.id,
+      zones: { create: [{ zoneId: zoneToto.id }, { zoneId: zoneProd.id }] },
+      availabilityZones: { create: [{ availabilityZoneId: singapore.id }, { availabilityZoneId: hongKong.id }] },
+    },
+  });
+  const hpcV1 = await prisma.productVersion.create({
+    data: {
+      productId: bareMetalHpc.id,
+      version: '2024-R1',
+      releaseDate: new Date('2024-03-01'),
+      normalSupportEnd: new Date('2026-03-01'),
+      extendedSupportEnd: new Date('2028-03-01'),
+      eolDate: new Date('2029-03-01'),
+      phase: LifecyclePhase.RELEASED,
+      isActive: true,
+      changelog: '## 2024-R1\n- AMD EPYC Genoa support\n- NVIDIA H100 option\n- InfiniBand HDR',
+      regionId: regionUsEast.id,
+      zones: { create: [{ zoneId: zoneProd.id }] },
+      availabilityZones: { create: [{ availabilityZoneId: newYork.id }, { availabilityZoneId: parisAz2.id }] },
+    },
+  });
+  const storageV1 = await prisma.productVersion.create({
+    data: {
+      productId: objectStorage.id,
+      version: '3.2.1',
+      releaseDate: new Date('2024-01-01'),
+      normalSupportEnd: new Date('2025-01-01'),
+      extendedSupportEnd: new Date('2027-01-01'),
+      eolDate: new Date('2028-01-01'),
+      phase: LifecyclePhase.NORMAL_SUPPORT,
+      isActive: true,
+      changelog: '## 3.2.1\n- Multi-region replication\n- Object lock (WORM)\n- Improved durability',
+      regionId: regionApSouth.id,
+      zones: { create: [{ zoneId: zoneToto.id }] },
+      availabilityZones: { create: [{ availabilityZoneId: singapore.id }] },
+    },
+  });
+  const nasV1 = await prisma.productVersion.create({
+    data: {
+      productId: nas.id,
+      version: '2024.1',
+      releaseDate: new Date('2024-02-15'),
+      normalSupportEnd: new Date('2026-02-15'),
+      extendedSupportEnd: new Date('2028-02-15'),
+      eolDate: new Date('2029-02-15'),
+      phase: LifecyclePhase.RELEASED,
+      isActive: true,
+      changelog: '## 2024.1\n- NVMe-oF support\n- Automated tiering\n- SMB 3.1.1',
+      regionId: regionEuWest.id,
+      zones: { create: [{ zoneId: zoneProd.id }] },
+      availabilityZones: { create: [{ availabilityZoneId: parisAz1.id }, { availabilityZoneId: london.id }] },
     },
   });
 

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
-import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone, Zone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, UpgradePath, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats, PresentationOrder, PresentationStepType, PerformanceProfile } from '@cloudmarket/shared-types';
+import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone, Zone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, ProductVersion, UpgradePath, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats, PresentationOrder, PresentationStepType, PerformanceProfile, Country, Region } from '@cloudmarket/shared-types';
 
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
 
@@ -139,6 +139,79 @@ export function useDeleteProduct() {
     },
     onError: (err: any) => {
       addToast(err.response?.data?.message || 'Unable to delete this product', 'error');
+    },
+  });
+}
+
+// ========== PRODUCT VERSIONS ==========
+
+export function useProductVersions(productId: string) {
+  return useQuery<ProductVersion[]>({
+    queryKey: ['product-versions', productId],
+    queryFn: () => fetchJson(`/products/${productId}/versions`),
+    enabled: !!productId,
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreateProductVersion() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ productId, ...payload }: { productId: string } & Partial<ProductVersion>) => {
+      const { data } = await api.post(`/products/${productId}/versions`, payload);
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['product-versions', variables.productId] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-products'] });
+      queryClient.invalidateQueries({ queryKey: ['product', variables.productId] });
+      addToast('Product version created successfully', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error creating product version', 'error');
+    },
+  });
+}
+
+export function useUpdateProductVersion() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & Partial<ProductVersion>) => {
+      const { data } = await api.patch(`/product-versions/${id}`, payload);
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['product-versions'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-products'] });
+      queryClient.invalidateQueries({ queryKey: ['product', data.productId] });
+      addToast('Product version updated', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error updating product version', 'error');
+    },
+  });
+}
+
+export function useDeleteProductVersion() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/product-versions/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['product-versions'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-products'] });
+      addToast('Product version deleted', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Unable to delete this product version', 'error');
     },
   });
 }
@@ -1843,6 +1916,56 @@ export function useDeletePerformanceProfile() {
     onError: (err: any) => {
       addToast(err.response?.data?.message || 'Error deleting profile', 'error');
     },
+  });
+}
+
+export function useCountries() {
+  return useQuery<Country[]>({
+    queryKey: ['countries'],
+    queryFn: () => fetchJson('/countries'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useRegions() {
+  return useQuery<Region[]>({
+    queryKey: ['regions'],
+    queryFn: () => fetchJson('/regions'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreateRegion() {
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: (data: { name: string; description?: string; isActive?: boolean }) =>
+      fetchJson('/regions', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['regions'] }); addToast('Region created successfully', 'success'); },
+    onError: (err: any) => addToast(err.response?.data?.message || 'Failed to create region', 'error'),
+  });
+}
+
+export function useUpdateRegion() {
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: (data: { id: string; name?: string; description?: string; isActive?: boolean }) =>
+      fetchJson(`/regions/${data.id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['regions'] }); addToast('Region updated successfully', 'success'); },
+    onError: (err: any) => addToast(err.response?.data?.message || 'Failed to update region', 'error'),
+  });
+}
+
+export function useDeleteRegion() {
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: (id: string) => fetchJson(`/regions/${id}`, { method: 'DELETE' }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['regions'] }); addToast('Region deleted successfully', 'success'); },
+    onError: (err: any) => addToast(err.response?.data?.message || 'Failed to delete region', 'error'),
   });
 }
 

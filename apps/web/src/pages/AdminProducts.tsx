@@ -14,6 +14,7 @@ import {
   useFlavors,
   useContinuityLevels,
   useAvailabilityZones,
+  useProductVersions,
 } from '@/hooks/useApi';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent } from '@/components/ui/card';
@@ -103,17 +104,18 @@ function ProductModal({
   const updateProduct = useUpdateProduct();
   const [form, setForm] = useState({
     name: editing?.name || '',
-    slug: editing?.slug || '',
     description: editing?.description || '',
     categoryId: editing?.categoryId || '',
     computeType: editing?.computeType || '',
     documentation: editing?.documentation || '',
     roadmap: editing?.roadmap || '',
     isActive: editing?.isActive ?? true,
+    initialReleaseDate: editing?.initialReleaseDate ? editing.initialReleaseDate.slice(0, 10) : '',
+    productEOLDate: editing?.productEOLDate ? editing.productEOLDate.slice(0, 10) : '',
   });
 
   const selectedCategory = categories?.find((c) => c.id === form.categoryId);
-  const isCompute = selectedCategory?.slug === 'compute';
+  const isCompute = selectedCategory?.name.toLowerCase() === 'compute';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,6 +126,10 @@ function ProductModal({
       } else if (!payload.computeType) {
         payload.computeType = 'VIRTUAL';
       }
+      if (payload.initialReleaseDate) payload.initialReleaseDate = new Date(payload.initialReleaseDate).toISOString();
+      else delete payload.initialReleaseDate;
+      if (payload.productEOLDate) payload.productEOLDate = new Date(payload.productEOLDate).toISOString();
+      else delete payload.productEOLDate;
       if (editing) {
         await updateProduct.mutateAsync({ id: editing.id, ...payload });
       } else {
@@ -146,10 +152,7 @@ function ProductModal({
             <label className="text-sm font-medium text-slate-300">Name</label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
           </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-300">Slug</label>
-            <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
-          </div>
+
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-300">Category</label>
             <select
@@ -183,6 +186,16 @@ function ProductModal({
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-300">Description</label>
             <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="bg-slate-950 border-slate-700 text-white" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Initial Release Date</label>
+              <Input type="date" value={form.initialReleaseDate} onChange={(e) => setForm({ ...form, initialReleaseDate: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Product EOL Date</label>
+              <Input type="date" value={form.productEOLDate} onChange={(e) => setForm({ ...form, productEOLDate: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" id="prod-active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="rounded border-slate-700 bg-slate-950" />
@@ -224,10 +237,12 @@ function VariantModal({
     flavorId: editing?.flavorId || '',
     availabilityZoneIds: editing?.availabilityZones?.map((az) => az.availabilityZoneId) || [] as string[],
     continuityLevelId: editing?.continuityLevelId || '',
+    productVersionId: editing?.productVersionId || '',
     isActive: editing?.isActive ?? true,
   });
 
   const { data: versions } = useOsVersions(form.osId || undefined);
+  const { data: productVersions } = useProductVersions(productId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -235,6 +250,7 @@ function VariantModal({
       const payload = {
         ...form,
         continuityLevelId: form.continuityLevelId || null,
+        productVersionId: form.productVersionId || null,
       };
       if (editing) {
         await updateVariant.mutateAsync({ id: editing.id, ...payload });
@@ -332,6 +348,21 @@ function VariantModal({
             </select>
           </div>
           <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-300">Product Version</label>
+            <select
+              value={form.productVersionId}
+              onChange={(e) => setForm({ ...form, productVersionId: e.target.value })}
+              className="w-full h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
+            >
+              <option value="">None</option>
+              {productVersions?.map((pv) => (
+                <option key={pv.id} value={pv.id}>
+                  {pv.version}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
             <label className="text-sm font-medium text-slate-300">Availability Zones</label>
             <div className="flex flex-wrap gap-2">
               {azList?.map((az) => (
@@ -380,7 +411,7 @@ function ProductDrawer({
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
-  const isCompute = product.category?.slug === 'compute';
+  const isCompute = product.category?.name.toLowerCase() === 'compute';
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -478,10 +509,7 @@ function ProductDrawer({
                 <label className="text-sm font-medium text-slate-300">Description</label>
                 <p className="text-sm text-slate-400">{product.description || '—'}</p>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Slug</label>
-                <p className="text-sm text-slate-400">{product.slug}</p>
-              </div>
+
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300">Status</label>
                 <Badge variant="outline" className={product.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>

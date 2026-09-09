@@ -152,7 +152,7 @@ router.post('/', async (req, res, next) => {
       }
 
       // Validate variant for compute products
-      if (product.category.slug === 'compute') {
+      if (product.category.name.toLowerCase() === 'compute') {
         if (!data.variantId) {
           throw Object.assign(new Error('variantId is required for Compute products'), { status: 400 });
         }
@@ -212,11 +212,11 @@ router.patch('/:id', async (req, res, next) => {
     }
 
     if (data.variantId !== undefined) {
-      if (existing.product.category.slug === 'compute' && !data.variantId) {
+      if (existing.product.category.name.toLowerCase() === 'compute' && !data.variantId) {
         return res.status(400).json({ error: 'variantId is required for Compute products' });
       }
       if (data.variantId) {
-        if (existing.product.category.slug !== 'compute') {
+        if (existing.product.category.name.toLowerCase() !== 'compute') {
           return res.status(400).json({ error: 'variantId can only be set for Compute products' });
         }
         const variant = await prisma.productVariant.findFirst({

@@ -122,6 +122,8 @@ export interface ProductVariant {
   zones: ProductVariantZone[];
   continuityLevelId: string | null;
   continuityLevel: ContinuityLevel | null;
+  productVersionId: string | null;
+  productVersion: ProductVersion | null;
   instances: Instance[];
   releaseDate: string | null;
   normalSupportEnd: string | null;
@@ -215,9 +217,47 @@ export interface Product {
   documentation: string | null;
   roadmap: string | null;
   os: string | null;
+  initialReleaseDate: string | null;
+  productEOLDate: string | null;
+  productVersions: ProductVersion[];
+  regionId?: string | null;
+  region?: Region | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProductVersion {
+  id: string;
+  productId: string;
+  product: Product;
+  version: string;
+  releaseDate: string | null;
+  normalSupportEnd: string | null;
+  extendedSupportEnd: string | null;
+  eolDate: string | null;
+  phase: LifecyclePhase;
+  isActive: boolean;
+  changelog: string | null;
+  regionId?: string | null;
+  region?: Region | null;
+  zones?: ProductVersionZone[];
+  availabilityZones?: ProductVersionAvailabilityZone[];
+  createdAt: string;
+  updatedAt: string;
+  variants: ProductVariant[];
+}
+
+export interface ProductVersionZone {
+  productVersionId: string;
+  zoneId: string;
+  zone?: Zone;
+}
+
+export interface ProductVersionAvailabilityZone {
+  productVersionId: string;
+  availabilityZoneId: string;
+  availabilityZone?: AvailabilityZone;
 }
 
 export interface Flavor {
@@ -226,6 +266,9 @@ export interface Flavor {
   vcpu: number;
   ramGb: number;
   description: string | null;
+  releaseDate: string | null;
+  deprecationDate: string | null;
+  eolDate: string | null;
   zones: FlavorZone[];
   createdAt: string;
   updatedAt: string;
@@ -626,6 +669,25 @@ export interface PerformanceMetric {
   unit: string | null;
   comparison: string | null;
   displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Country {
+  id: string;
+  code: string;
+  name: string;
+  flagEmoji: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Region {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
