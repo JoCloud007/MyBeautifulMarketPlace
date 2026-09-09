@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, Children } from 'react';
 import {
   useAdminDashboard,
   useAdminProducts,
@@ -176,7 +176,7 @@ function ResponsiveTable({
     );
   }
 
-  if (!children || (Array.isArray(children) && children.length === 0)) {
+  if (Children.count(children) === 0) {
     return (
       <div className="text-center py-12">
         <p className="text-lg font-medium text-slate-400">{emptyMessage}</p>

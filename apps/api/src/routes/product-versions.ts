@@ -15,7 +15,7 @@ const createVersionSchema = z.object({
   phase: z.enum(['RELEASED', 'NORMAL_SUPPORT', 'EXTENDED_SUPPORT', 'NO_SUPPORT', 'EOL']).optional(),
   isActive: z.boolean().optional(),
   changelog: z.string().optional(),
-  regionId: z.string().uuid().optional(),
+  regionId: z.string().uuid().optional().nullable(),
   zoneIds: z.array(z.string().uuid()).optional(),
   availabilityZoneIds: z.array(z.string().uuid()).optional(),
 });
