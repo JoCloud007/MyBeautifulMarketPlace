@@ -242,7 +242,7 @@ async function main() {
 
   for (const p of perfSeedData) {
     const existing = await prisma.performanceProfile.findFirst({
-      where: { targetType: p.targetType, targetId: p.targetId },
+      where: { targetType: p.targetType, targetId: p.targetId, name: p.name },
     });
     if (existing) {
       await prisma.performanceProfile.update({
