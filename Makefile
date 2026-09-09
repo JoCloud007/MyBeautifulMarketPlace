@@ -2,7 +2,7 @@
 # Simplifies build, deploy, and run workflows for both online (build)
 # and air-gapped (deploy) environments.
 
-.PHONY: clean build deploy run help backfill-variants restart-api
+.PHONY: clean build deploy run help backfill-variants restart-api seed-incremental
 
 # Force bash — avoids POSIX/dash incompatibilities on Ubuntu
 SHELL := /bin/bash
@@ -95,3 +95,12 @@ restart-api:
 	docker compose restart api
 	@echo ""
 	@echo "✓ API restarted"
+
+## Incremental seed — adds new objects without wiping existing data.
+## Safe to run on a database that already contains production data.
+## Run after schema changes or when new seed data is added.
+seed-incremental:
+	@docker compose exec api npx tsx prisma/seed-incremental.ts
+	@echo ""
+	@echo "✓ Incremental seed completed"
+	@echo "  Restart the API to clear caches: make restart-api"
