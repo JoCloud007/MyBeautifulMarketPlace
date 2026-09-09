@@ -27,6 +27,6 @@
     "recharts": "^3.10.1"
   },
   "optionalDependencies": {
-    "@esbuild/linux-arm64": "^0.28.2"
+    "@esbuild/linux-arm64": "^0.28.1"
   }
 }
