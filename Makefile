@@ -62,6 +62,11 @@ build:
 deploy:
 	. "$(shell pwd)/.source.prisma" && \
 	rm -rf node_modules && npm install --force --legacy-peer-deps --no-package-lock $(NPM_PLATFORM_FLAGS) && \
+	ESBUILD_VERSION=$$(node -p "require('./node_modules/esbuild/package.json').version") && \
+	npm pack @esbuild/linux-arm64@$$ESBUILD_VERSION && \
+	mkdir -p node_modules/@esbuild/linux-arm64 && tar -xzf esbuild-linux-arm64-$$ESBUILD_VERSION.tgz -C node_modules/@esbuild/linux-arm64 --strip-components=1 && rm esbuild-linux-arm64-$$ESBUILD_VERSION.tgz && \
+	npm pack @esbuild/linux-x64@$$ESBUILD_VERSION && \
+	mkdir -p node_modules/@esbuild/linux-x64 && tar -xzf esbuild-linux-x64-$$ESBUILD_VERSION.tgz -C node_modules/@esbuild/linux-x64 --strip-components=1 && rm esbuild-linux-x64-$$ESBUILD_VERSION.tgz && \
 	npm run build -w packages/shared-types && \
 	npx prisma generate --schema=apps/api/prisma/schema.prisma && \
 	npm run build -w apps/web && \
