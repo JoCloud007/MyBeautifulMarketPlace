@@ -2471,15 +2471,6 @@ function RegionsSection() {
     setIsOpen(true);
   };
 
-  const handleSubmit = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    try {
-      if (editing) await updateRegion.mutateAsync({ id: editing.id, ...form });
-      else await createRegion.mutateAsync(form);
-      setIsOpen(false); resetForm();
-    } catch { /* handled by hook */ }
-  };
-
   const handleDelete = async () => {
     try {
       if (confirmDelete.id) await deleteRegion.mutateAsync(confirmDelete.id);
@@ -2569,8 +2560,8 @@ function RegionsSection() {
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
           <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit Region' : 'New Region'}</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+          <div className="space-y-4">
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             <div className="flex items-center gap-2">
               <input type="checkbox" id="regionActive" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
@@ -2578,9 +2569,23 @@ function RegionsSection() {
             </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
-              <Button type="button" onClick={() => handleSubmit()} className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+              <Button type="button" onClick={async () => {
+                console.log('CREATE CLICKED', form);
+                try {
+                  if (editing) {
+                    await updateRegion.mutateAsync({ id: editing.id, ...form });
+                  } else {
+                    await createRegion.mutateAsync(form);
+                  }
+                  console.log('SUCCESS');
+                  setIsOpen(false);
+                  resetForm();
+                } catch (err) {
+                  console.error('ERROR:', err);
+                }
+              }} className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
             </DialogFooter>
-          </form>
+          </div>
         </DialogContent>
       </Dialog>
 
