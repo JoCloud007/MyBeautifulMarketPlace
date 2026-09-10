@@ -55,13 +55,11 @@ async function fetchJson<T>(url: string, params?: Record<string, any>): Promise<
     }
     throw new Error(message);
   }
-  if (res.status === 204 || res.headers.get('content-length') === '0') {
-    return undefined as T;
-  }
   if (!contentType.includes('application/json')) {
     throw new Error(`Expected JSON response but received ${contentType || 'unknown content type'}`);
   }
-  return res.json();
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 // ========== PRODUCTS ==========

@@ -79,6 +79,21 @@ router.delete('/regions/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     idParamSchema.parse(id);
+    const region = await prisma.region.findUnique({
+      where: { id },
+      include: { products: true, productVersions: true },
+    });
+    if (!region) {
+      res.status(404).json({ error: 'Not Found', message: 'Record to delete does not exist.' });
+      return;
+    }
+    const attached: string[] = [];
+    if (region.products.length > 0) attached.push(`${region.products.length} product(s)`);
+    if (region.productVersions.length > 0) attached.push(`${region.productVersions.length} product version(s)`);
+    if (attached.length > 0) {
+      res.status(409).json({ error: 'Conflict', message: `Cannot delete region: ${attached.join(', ')} attached.` });
+      return;
+    }
     await prisma.region.delete({ where: { id } });
     res.status(204).send();
   } catch (err) {
