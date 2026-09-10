@@ -45,7 +45,7 @@ async function fetchJson<T>(url: string, params?: Record<string, any>): Promise<
     if (contentType.includes('application/json')) {
       try {
         const body = await res.json();
-        message = body?.error || body?.message || message;
+        message = body?.message || body?.error || message;
       } catch { /* ignore parse errors */ }
     } else {
       try {
@@ -54,9 +54,6 @@ async function fetchJson<T>(url: string, params?: Record<string, any>): Promise<
       } catch { /* ignore */ }
     }
     throw new Error(message);
-  }
-  if (!contentType.includes('application/json')) {
-    throw new Error(`Expected JSON response but received ${contentType || 'unknown content type'}`);
   }
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
@@ -1969,7 +1966,7 @@ export function useDeleteRegion() {
   return useMutation({
     mutationFn: (id: string) => fetchJson(`/regions/${id}`, { method: 'DELETE' }),
     onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['regions'] }); await qc.refetchQueries({ queryKey: ['regions'] }); addToast('Region deleted successfully', 'success'); },
-    onError: async (err: any) => { await qc.invalidateQueries({ queryKey: ['regions'] }); await qc.refetchQueries({ queryKey: ['regions'] }); addToast(err.response?.data?.message || 'Failed to delete region', 'error'); },
+    onError: async (err: any) => { await qc.invalidateQueries({ queryKey: ['regions'] }); await qc.refetchQueries({ queryKey: ['regions'] }); addToast(err.message || 'Failed to delete region', 'error'); },
   });
 }
 

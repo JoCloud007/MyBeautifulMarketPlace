@@ -64,6 +64,12 @@ router.patch('/regions/:id', async (req, res, next) => {
     idParamSchema.parse(id);
     const data = regionSchema.partial().parse(req.body);
 
+    const existing = await prisma.region.findUnique({ where: { id } });
+    if (!existing) {
+      res.status(404).json({ error: 'Not Found', message: 'Record to update does not exist.' });
+      return;
+    }
+
     const region = await prisma.region.update({
       where: { id },
       data,
@@ -87,11 +93,17 @@ router.delete('/regions/:id', async (req, res, next) => {
       res.status(404).json({ error: 'Not Found', message: 'Record to delete does not exist.' });
       return;
     }
-    const attached: string[] = [];
-    if (region.products.length > 0) attached.push(`${region.products.length} product(s)`);
-    if (region.productVersions.length > 0) attached.push(`${region.productVersions.length} product version(s)`);
-    if (attached.length > 0) {
-      res.status(409).json({ error: 'Conflict', message: `Cannot delete region: ${attached.join(', ')} attached.` });
+    const details: string[] = [];
+    if (region.products.length > 0) {
+      const names = region.products.map((p: any) => p.name).join(', ');
+      details.push(`${region.products.length} product(s): ${names}`);
+    }
+    if (region.productVersions.length > 0) {
+      const names = region.productVersions.map((v: any) => v.version).join(', ');
+      details.push(`${region.productVersions.length} version(s): ${names}`);
+    }
+    if (details.length > 0) {
+      res.status(409).json({ error: 'Conflict', message: `Cannot delete region — ${details.join('; ')}.` });
       return;
     }
     await prisma.region.delete({ where: { id } });
