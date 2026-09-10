@@ -28,14 +28,17 @@ api.interceptors.response.use(
 // Native fetch helper (replaces Axios for GET queries — fixes headless-browser loading issues)
 async function fetchJson<T>(url: string, params?: Record<string, any>): Promise<T> {
   let fullUrl = `${API_URL}/api${url}`;
-  if (params) {
+  const { method, body, headers, ...queryParams } = params || {};
+  if (Object.keys(queryParams).length > 0) {
     const searchParams = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
+    Object.entries(queryParams).forEach(([k, v]) => {
       if (v !== undefined) searchParams.append(k, String(v));
     });
     if (searchParams.toString()) fullUrl += '?' + searchParams.toString();
   }
-  const res = await fetch(fullUrl);
+  const fetchHeaders: Record<string, string> = { 'Content-Type': 'application/json', ...headers };
+  const fetchBody = body && typeof body === 'object' ? JSON.stringify(body) : body;
+  const res = await fetch(fullUrl, { method, body: fetchBody, headers: fetchHeaders });
   const contentType = res.headers.get('content-type') || '';
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
@@ -51,6 +54,9 @@ async function fetchJson<T>(url: string, params?: Record<string, any>): Promise<
       } catch { /* ignore */ }
     }
     throw new Error(message);
+  }
+  if (res.status === 204 || res.headers.get('content-length') === '0') {
+    return undefined as T;
   }
   if (!contentType.includes('application/json')) {
     throw new Error(`Expected JSON response but received ${contentType || 'unknown content type'}`);
@@ -1964,8 +1970,8 @@ export function useDeleteRegion() {
   const addToast = useToastStore((s) => s.addToast);
   return useMutation({
     mutationFn: (id: string) => fetchJson(`/regions/${id}`, { method: 'DELETE' }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['regions'] }); addToast('Region deleted successfully', 'success'); },
-    onError: (err: any) => addToast(err.response?.data?.message || 'Failed to delete region', 'error'),
+    onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['regions'] }); await qc.refetchQueries({ queryKey: ['regions'] }); addToast('Region deleted successfully', 'success'); },
+    onError: async (err: any) => { await qc.invalidateQueries({ queryKey: ['regions'] }); await qc.refetchQueries({ queryKey: ['regions'] }); addToast(err.response?.data?.message || 'Failed to delete region', 'error'); },
   });
 }
 

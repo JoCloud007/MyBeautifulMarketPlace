@@ -2568,22 +2568,20 @@ function RegionsSection() {
               <label htmlFor="regionActive" className="text-sm text-slate-300">Active</label>
             </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
-              <Button type="button" onClick={async () => {
-                console.log('CREATE CLICKED', form);
+              <button type="button" onClick={() => setIsOpen(false)} className="inline-flex items-center justify-center rounded-md border border-slate-700 bg-transparent px-4 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800 min-h-[44px]">Cancel</button>
+              <button type="button" onClick={async () => {
                 try {
                   if (editing) {
                     await updateRegion.mutateAsync({ id: editing.id, ...form });
                   } else {
                     await createRegion.mutateAsync(form);
                   }
-                  console.log('SUCCESS');
                   setIsOpen(false);
                   resetForm();
                 } catch (err) {
-                  console.error('ERROR:', err);
+                  console.error('Region mutation error:', err);
                 }
-              }} className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+              }} className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 min-h-[44px]">{editing ? 'Save' : 'Create'}</button>
             </DialogFooter>
           </div>
         </DialogContent>
