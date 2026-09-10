@@ -342,7 +342,7 @@ function getAxisItems(axis: ColAxis, zones?: any[], azs?: AvailabilityZone[], pr
     case 'ZONE':
       return zones?.map((z: any) => ({ id: z.id, label: z.name })) ?? [];
     case 'AZ':
-      return azs?.map((a: any) => ({ id: a.id, label: a.code })) ?? [];
+      return azs?.map((a: any) => ({ id: a.id, label: a.name })) ?? [];
     case 'REGION': {
       const seen = new Set<string>();
       const items: { id: string; label: string }[] = [];
@@ -644,7 +644,7 @@ export default function MarketplaceMatrix() {
           for (const v of variants) {
             for (const a of v.availabilityZones || []) {
               const azId = a.availabilityZoneId;
-              const azName = azs?.find((az: any) => az.id === azId)?.code || 'Unknown';
+              const azName = azs?.find((az: any) => az.id === azId)?.name || 'Unknown';
               if (!groups.has(azId)) {
                 groups.set(azId, { id: azId, label: azName, variants: [] });
               }
