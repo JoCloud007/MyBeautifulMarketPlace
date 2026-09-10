@@ -73,6 +73,14 @@ describe('Refonte Produit IaaS — Backend API, Shared Types & Seed Data', () =>
     prismaMock.productVariantAvailabilityZone = {
       deleteMany: jest.fn(),
     };
+    prismaMock.productRegion = { deleteMany: jest.fn() };
+    prismaMock.productAvailabilityZone = { deleteMany: jest.fn() };
+    prismaMock.productVersionRegion = { deleteMany: jest.fn() };
+    prismaMock.flavorRegion = { deleteMany: jest.fn() };
+    prismaMock.flavorAvailabilityZone = { deleteMany: jest.fn() };
+    prismaMock.availabilitySchedule = { createMany: jest.fn(), deleteMany: jest.fn(), update: jest.fn(), delete: jest.fn() };
+    prismaMock.region = { findMany: jest.fn() };
+    prismaMock.zone = { findMany: jest.fn() };
     prismaMock.flavor = {
       findMany: jest.fn(),
       findUnique: jest.fn(),
