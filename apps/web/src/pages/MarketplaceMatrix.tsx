@@ -522,7 +522,50 @@ export default function MarketplaceMatrix() {
       }
 
       const axis = activeColAxes[index];
-      const items = getAxisItems(axis, zones, azs, products);
+      let items = getAxisItems(axis, zones, azs, products);
+
+      // Filter items by parent geographic context so an AZ only appears under its actual region/country
+      const regionParent = parentPath.find((p) => p.axis === 'REGION');
+      const countryParent = parentPath.find((p) => p.axis === 'COUNTRIES');
+      const zoneParent = parentPath.find((p) => p.axis === 'ZONE');
+
+      if (axis === 'AZ') {
+        if (regionParent) {
+          items = items.filter((item) => azs?.find((a) => a.id === item.id)?.region === regionParent.id);
+        }
+        if (countryParent) {
+          items = items.filter((item) => azs?.find((a) => a.id === item.id)?.country === countryParent.id);
+        }
+        if (zoneParent) {
+          const zoneAZIds = new Set(
+            zones?.find((z: any) => z.id === zoneParent.id)?.availabilityZones?.map((za: any) => za.availabilityZoneId) ?? []
+          );
+          items = items.filter((item) => zoneAZIds.has(item.id));
+        }
+      } else if (axis === 'COUNTRIES') {
+        if (regionParent) {
+          const regionCountries = new Set(azs?.filter((a) => a.region === regionParent.id).map((a) => a.country) ?? []);
+          items = items.filter((item) => regionCountries.has(item.id));
+        }
+      } else if (axis === 'ZONE') {
+        if (regionParent) {
+          const regionZoneIds = new Set(
+            zones
+              ?.filter((z: any) => z.availabilityZones?.some((za: any) => za.availabilityZone?.region === regionParent.id))
+              .map((z: any) => z.id) ?? []
+          );
+          items = items.filter((item) => regionZoneIds.has(item.id));
+        }
+        if (countryParent) {
+          const countryZoneIds = new Set(
+            zones
+              ?.filter((z: any) => z.availabilityZones?.some((za: any) => za.availabilityZone?.country === countryParent.id))
+              .map((z: any) => z.id) ?? []
+          );
+          items = items.filter((item) => countryZoneIds.has(item.id));
+        }
+      }
+
       const results: Column[] = [];
 
       for (const item of items) {
