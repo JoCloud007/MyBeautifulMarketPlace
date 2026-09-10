@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   useAdminProducts,
   useAdminCategories,
@@ -15,6 +15,8 @@ import {
   useContinuityLevels,
   useAvailabilityZones,
   useProductVersions,
+  useRegions,
+  useZones,
 } from '@/hooks/useApi';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent } from '@/components/ui/card';
@@ -33,7 +35,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Plus, Pencil, Trash2, Server, X } from 'lucide-react';
-import type { Product, ProductVariant } from '@cloudmarket/shared-types';
+import type { Product, ProductVariant, AvailabilitySchedule, AvailabilityType } from '@cloudmarket/shared-types';
 
 function cn(...inputs: (string | undefined | false | null)[]) {
   return inputs.filter(Boolean).join(' ');
@@ -88,6 +90,172 @@ function ResponsiveTable({
   );
 }
 
+function MultiSelectToggle({
+  label,
+  options,
+  selectedIds,
+  onToggle,
+  getLabel,
+}: {
+  label: string;
+  options: { id: string }[];
+  selectedIds: string[];
+  onToggle: (id: string) => void;
+  getLabel: (item: any) => string;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-medium text-slate-300">{label}</label>
+      <div className="flex flex-wrap gap-2">
+        {options.map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onToggle(opt.id)}
+            className={cn(
+              'px-2.5 py-1 rounded-md text-xs font-medium border transition-colors',
+              selectedIds.includes(opt.id)
+                ? 'bg-blue-500/20 border-blue-500/40 text-blue-400'
+                : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-600'
+            )}
+          >
+            {getLabel(opt)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScheduleEditor({
+  schedules,
+  onChange,
+  regions,
+  azs,
+  zones,
+}: {
+  schedules: (Partial<AvailabilitySchedule> & { deleted?: boolean })[];
+  onChange: (schedules: (Partial<AvailabilitySchedule> & { deleted?: boolean })[]) => void;
+  regions: any[];
+  azs: any[];
+  zones: any[];
+}) {
+  const addSchedule = () => {
+    onChange([...schedules, { status: 'STANDARD' as AvailabilityType }]);
+  };
+
+  const updateSchedule = (index: number, field: string, value: any) => {
+    const updated = [...schedules];
+    updated[index] = { ...updated[index], [field]: value };
+    onChange(updated);
+  };
+
+  const removeSchedule = (index: number) => {
+    const s = schedules[index];
+    if (s.id) {
+      const updated = [...schedules];
+      updated[index] = { ...updated[index], deleted: true };
+      onChange(updated);
+    } else {
+      onChange(schedules.filter((_, i) => i !== index));
+    }
+  };
+
+  const visibleSchedules = schedules.filter((s) => !s.deleted);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-medium text-slate-300">Availability Schedules</label>
+        <Button type="button" size="sm" variant="outline" onClick={addSchedule} className="border-slate-700 text-slate-300 hover:bg-slate-800">
+          <Plus className="h-3 w-3 mr-1" /> Add
+        </Button>
+      </div>
+      {visibleSchedules.length === 0 && (
+        <p className="text-xs text-slate-500">No schedules. Add one to define granular availability dates.</p>
+      )}
+      {visibleSchedules.map((s) => {
+        const realIndex = schedules.findIndex((x) => x === s);
+        return (
+          <div key={realIndex} className="grid grid-cols-12 gap-2 items-end bg-slate-950 border border-slate-800 rounded-md p-2">
+            <div className="col-span-3">
+              <select
+                value={s.regionId || ''}
+                onChange={(e) => updateSchedule(realIndex, 'regionId', e.target.value || null)}
+                className="w-full h-8 rounded border border-slate-700 bg-slate-900 px-2 text-xs text-white"
+              >
+                <option value="">Any Region</option>
+                {regions?.map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-3">
+              <select
+                value={s.azId || ''}
+                onChange={(e) => updateSchedule(realIndex, 'azId', e.target.value || null)}
+                className="w-full h-8 rounded border border-slate-700 bg-slate-900 px-2 text-xs text-white"
+              >
+                <option value="">Any AZ</option>
+                {azs?.map((az) => (
+                  <option key={az.id} value={az.id}>{az.code}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-3">
+              <select
+                value={s.zoneId || ''}
+                onChange={(e) => updateSchedule(realIndex, 'zoneId', e.target.value || null)}
+                className="w-full h-8 rounded border border-slate-700 bg-slate-900 px-2 text-xs text-white"
+              >
+                <option value="">Any Zone</option>
+                {zones?.map((z) => (
+                  <option key={z.id} value={z.id}>{z.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-1">
+              <select
+                value={s.status || 'STANDARD'}
+                onChange={(e) => updateSchedule(realIndex, 'status', e.target.value)}
+                className="w-full h-8 rounded border border-slate-700 bg-slate-900 px-1 text-xs text-white"
+              >
+                <option value="STANDARD">Std</option>
+                <option value="RECOMMENDED">Rec</option>
+                <option value="RESTRICTED">Res</option>
+                <option value="ON_DEMAND">OnD</option>
+              </select>
+            </div>
+            <div className="col-span-1">
+              <Button type="button" size="sm" variant="ghost" onClick={() => removeSchedule(realIndex)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400">
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="col-span-6">
+              <Input
+                type="date"
+                value={s.availableFrom ? s.availableFrom.slice(0, 10) : ''}
+                onChange={(e) => updateSchedule(realIndex, 'availableFrom', e.target.value ? new Date(e.target.value).toISOString() : null)}
+                placeholder="From"
+                className="bg-slate-900 border-slate-700 text-white h-8 text-xs"
+              />
+            </div>
+            <div className="col-span-6">
+              <Input
+                type="date"
+                value={s.availableUntil ? s.availableUntil.slice(0, 10) : ''}
+                onChange={(e) => updateSchedule(realIndex, 'availableUntil', e.target.value ? new Date(e.target.value).toISOString() : null)}
+                placeholder="Until"
+                className="bg-slate-900 border-slate-700 text-white h-8 text-xs"
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* Product form modal */
 function ProductModal({
   open,
@@ -102,6 +270,10 @@ function ProductModal({
 }) {
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
+  const { data: regionList } = useRegions();
+  const { data: azList } = useAvailabilityZones();
+  const { data: zoneList } = useZones();
+
   const [form, setForm] = useState({
     name: editing?.name || '',
     description: editing?.description || '',
@@ -112,15 +284,75 @@ function ProductModal({
     isActive: editing?.isActive ?? true,
     initialReleaseDate: editing?.initialReleaseDate ? editing.initialReleaseDate.slice(0, 10) : '',
     productEOLDate: editing?.productEOLDate ? editing.productEOLDate.slice(0, 10) : '',
+    regionIds: editing?.regions?.map((r) => r.regionId) || [] as string[],
+    availabilityZoneIds: editing?.availabilityZones?.map((az) => az.availabilityZoneId) || [] as string[],
+    zoneIds: editing?.zones?.map((z) => z.zoneId) || [] as string[],
+    schedules: editing?.availabilitySchedules ? [...editing.availabilitySchedules] : [] as Partial<AvailabilitySchedule>[],
   });
 
   const selectedCategory = categories?.find((c) => c.id === form.categoryId);
   const isCompute = selectedCategory?.name.toLowerCase() === 'compute';
 
+  const selectedRegionIds = form.regionIds;
+  const selectedAzIds = form.availabilityZoneIds;
+
+  const filteredAzs = useMemo(() => {
+    if (!azList) return [];
+    if (selectedRegionIds.length === 0) return azList;
+    const selectedRegionNames = regionList
+      ?.filter((r) => selectedRegionIds.includes(r.id))
+      .map((r) => r.name) || [];
+    return azList.filter((az) => selectedRegionNames.includes(az.region));
+  }, [azList, selectedRegionIds, regionList]);
+
+  const filteredZones = useMemo(() => {
+    if (!zoneList) return [];
+    let result = zoneList;
+    if (selectedAzIds.length > 0) {
+      result = result.filter((z) =>
+        z.availabilityZones?.some((za: any) => selectedAzIds.includes(za.availabilityZoneId))
+      );
+    }
+    return result;
+  }, [zoneList, selectedAzIds]);
+
+  const toggleRegion = (id: string) => {
+    setForm((prev) => ({
+      ...prev,
+      regionIds: prev.regionIds.includes(id)
+        ? prev.regionIds.filter((x) => x !== id)
+        : [...prev.regionIds, id],
+    }));
+  };
+
+  const toggleAz = (id: string) => {
+    setForm((prev) => ({
+      ...prev,
+      availabilityZoneIds: prev.availabilityZoneIds.includes(id)
+        ? prev.availabilityZoneIds.filter((x) => x !== id)
+        : [...prev.availabilityZoneIds, id],
+    }));
+  };
+
+  const toggleZone = (id: string) => {
+    setForm((prev) => ({
+      ...prev,
+      zoneIds: prev.zoneIds.includes(id)
+        ? prev.zoneIds.filter((x) => x !== id)
+        : [...prev.zoneIds, id],
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload: any = { ...form };
+      const payload: any = {
+        ...form,
+        regionIds: form.regionIds,
+        availabilityZoneIds: form.availabilityZoneIds,
+        zoneIds: form.zoneIds,
+        schedules: form.schedules,
+      };
       if (!isCompute) {
         payload.computeType = null;
       } else if (!payload.computeType) {
@@ -143,7 +375,7 @@ function ProductModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
+      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-white">{editing ? 'Edit Product' : 'New Product'}</DialogTitle>
         </DialogHeader>
@@ -197,6 +429,39 @@ function ProductModal({
               <Input type="date" value={form.productEOLDate} onChange={(e) => setForm({ ...form, productEOLDate: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
             </div>
           </div>
+
+          <MultiSelectToggle
+            label="Regions"
+            options={regionList || []}
+            selectedIds={form.regionIds}
+            onToggle={toggleRegion}
+            getLabel={(r) => r.name}
+          />
+
+          <MultiSelectToggle
+            label="Availability Zones"
+            options={filteredAzs}
+            selectedIds={form.availabilityZoneIds}
+            onToggle={toggleAz}
+            getLabel={(az) => az.code}
+          />
+
+          <MultiSelectToggle
+            label="Zones"
+            options={filteredZones}
+            selectedIds={form.zoneIds}
+            onToggle={toggleZone}
+            getLabel={(z) => z.name}
+          />
+
+          <ScheduleEditor
+            schedules={form.schedules}
+            onChange={(schedules) => setForm({ ...form, schedules })}
+            regions={regionList || []}
+            azs={azList || []}
+            zones={zoneList || []}
+          />
+
           <div className="flex items-center gap-2">
             <input type="checkbox" id="prod-active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="rounded border-slate-700 bg-slate-950" />
             <label htmlFor="prod-active" className="text-sm text-slate-300">Active</label>
@@ -563,7 +828,7 @@ export default function AdminProducts() {
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable
-            headers={['Name', 'Category', 'Compute Type', 'Variants', 'Active']}
+            headers={['Name', 'Category', 'Compute Type', 'Variants', 'Regions', 'AZs', 'Active']}
             isLoading={isLoading}
             emptyMessage="No products"
           >
@@ -586,6 +851,20 @@ export default function AdminProducts() {
                 </td>
                 <td className="py-3 text-slate-400">
                   {(product as any)._count?.variants ?? product.variants?.length ?? 0}
+                </td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {product.regions?.map((r) => (
+                      <span key={r.regionId} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">{r.region?.name}</span>
+                    ))}
+                  </div>
+                </td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {product.availabilityZones?.map((az) => (
+                      <span key={az.availabilityZoneId} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">{az.availabilityZone?.code}</span>
+                    ))}
+                  </div>
                 </td>
                 <td className="py-3">
                   <Badge variant="outline" className={product.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>

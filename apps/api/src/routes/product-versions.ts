@@ -6,6 +6,17 @@ const router = Router({ mergeParams: true });
 
 const idParamSchema = z.string().uuid();
 
+const scheduleSchema = z.object({
+  id: z.string().uuid().optional(),
+  regionId: z.string().uuid().optional().nullable(),
+  azId: z.string().uuid().optional().nullable(),
+  zoneId: z.string().uuid().optional().nullable(),
+  availableFrom: z.string().datetime().or(z.date()).optional().nullable(),
+  availableUntil: z.string().datetime().or(z.date()).optional().nullable(),
+  status: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
+  deleted: z.boolean().optional(),
+});
+
 const createVersionSchema = z.object({
   version: z.string().min(1, 'Version is required'),
   releaseDate: z.string().datetime().or(z.date()).optional(),
@@ -15,9 +26,10 @@ const createVersionSchema = z.object({
   phase: z.enum(['RELEASED', 'NORMAL_SUPPORT', 'EXTENDED_SUPPORT', 'NO_SUPPORT', 'EOL']).optional(),
   isActive: z.boolean().optional(),
   changelog: z.string().optional(),
-  regionId: z.string().uuid().optional().nullable(),
+  regionIds: z.array(z.string().uuid()).optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
   availabilityZoneIds: z.array(z.string().uuid()).optional(),
+  schedules: z.array(scheduleSchema).optional(),
 });
 
 const updateVersionSchema = createVersionSchema.partial();
@@ -36,6 +48,7 @@ router.get('/', async (req, res, next) => {
       orderBy: { releaseDate: 'desc' },
       include: {
         region: true,
+        regions: { include: { region: true } },
         zones: { include: { zone: true } },
         availabilityZones: { include: { availabilityZone: true } },
       },
@@ -48,8 +61,6 @@ router.get('/', async (req, res, next) => {
 });
 
 // POST /api/products/:productId/versions
-// Geo associations: region, zones, availabilityZones
-// Fixed: empty array guards and transaction wrapping
 router.post('/', async (req, res, next) => {
   try {
     const productId = (req.params as any).productId as string;
@@ -64,13 +75,17 @@ router.post('/', async (req, res, next) => {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    const { regionId, zoneIds, availabilityZoneIds, ...versionData } = data;
+    const { regionIds, zoneIds, availabilityZoneIds, schedules, ...versionData } = data;
 
-    // Validate regionId if provided
-    if (regionId) {
-      const region = await prisma.region.findUnique({ where: { id: regionId } });
-      if (!region) {
-        return res.status(400).json({ error: 'Region not found' });
+    // Validate regionIds if provided
+    if (regionIds && regionIds.length > 0) {
+      const uniqueRegionIds = [...new Set(regionIds)];
+      if (uniqueRegionIds.length !== regionIds.length) {
+        return res.status(400).json({ error: 'Duplicate region IDs are not allowed' });
+      }
+      const regions = await prisma.region.findMany({ where: { id: { in: regionIds } } });
+      if (regions.length !== regionIds.length) {
+        return res.status(400).json({ error: 'One or more regions do not exist' });
       }
     }
 
@@ -106,16 +121,36 @@ router.post('/', async (req, res, next) => {
       data: {
         ...versionData,
         product: { connect: { id: productId } },
-        region: regionId ? { connect: { id: regionId } } : undefined,
+        regions: regionIds?.length ? { create: regionIds.map((rid: string) => ({ region: { connect: { id: rid } } })) } : undefined,
         zones: zoneIds?.length ? { create: zoneIds.map((zid: string) => ({ zone: { connect: { id: zid } } })) } : undefined,
         availabilityZones: availabilityZoneIds?.length ? { create: availabilityZoneIds.map((azId: string) => ({ availabilityZone: { connect: { id: azId } } })) } : undefined,
       },
       include: {
         region: true,
+        regions: { include: { region: true } },
         zones: { include: { zone: true } },
         availabilityZones: { include: { availabilityZone: true } },
       },
     });
+
+    // Create schedules if provided
+    if (schedules && schedules.length > 0) {
+      const toCreate = schedules.filter((s: any) => !s.deleted);
+      if (toCreate.length > 0) {
+        await prisma.availabilitySchedule.createMany({
+          data: toCreate.map((s: any) => ({
+            targetType: 'PRODUCT_VERSION' as const,
+            targetId: version.id,
+            regionId: s.regionId,
+            azId: s.azId,
+            zoneId: s.zoneId,
+            availableFrom: s.availableFrom ? new Date(s.availableFrom) : null,
+            availableUntil: s.availableUntil ? new Date(s.availableUntil) : null,
+            status: s.status || 'STANDARD',
+          })),
+        });
+      }
+    }
 
     res.status(201).json(version);
   } catch (err) {
@@ -139,13 +174,17 @@ router.patch('/:id', async (req, res, next) => {
       }
     }
 
-    const { regionId, zoneIds, availabilityZoneIds, ...versionData } = data;
+    const { regionIds, zoneIds, availabilityZoneIds, schedules, ...versionData } = data;
 
-    // Validate regionId if provided
-    if (regionId) {
-      const region = await prisma.region.findUnique({ where: { id: regionId } });
-      if (!region) {
-        return res.status(400).json({ error: 'Region not found' });
+    // Validate regionIds if provided
+    if (regionIds && regionIds.length > 0) {
+      const uniqueRegionIds = [...new Set(regionIds)];
+      if (uniqueRegionIds.length !== regionIds.length) {
+        return res.status(400).json({ error: 'Duplicate region IDs are not allowed' });
+      }
+      const regions = await prisma.region.findMany({ where: { id: { in: regionIds } } });
+      if (regions.length !== regionIds.length) {
+        return res.status(400).json({ error: 'One or more regions do not exist' });
       }
     }
 
@@ -177,8 +216,48 @@ router.patch('/:id', async (req, res, next) => {
       }
     }
 
+    // Handle schedules update
+    if (schedules) {
+      const toDelete = schedules.filter((s: any) => s.deleted && s.id).map((s: any) => s.id);
+      const toUpdate = schedules.filter((s: any) => s.id && !s.deleted);
+      const toCreate = schedules.filter((s: any) => !s.id && !s.deleted);
+      if (toDelete.length > 0) {
+        await prisma.availabilitySchedule.deleteMany({ where: { id: { in: toDelete }, targetType: 'PRODUCT_VERSION', targetId: id } });
+      }
+      for (const s of toUpdate) {
+        await prisma.availabilitySchedule.update({
+          where: { id: s.id },
+          data: {
+            regionId: s.regionId,
+            azId: s.azId,
+            zoneId: s.zoneId,
+            availableFrom: s.availableFrom ? new Date(s.availableFrom) : null,
+            availableUntil: s.availableUntil ? new Date(s.availableUntil) : null,
+            status: s.status || 'STANDARD',
+          },
+        });
+      }
+      if (toCreate.length > 0) {
+        await prisma.availabilitySchedule.createMany({
+          data: toCreate.map((s: any) => ({
+            targetType: 'PRODUCT_VERSION' as const,
+            targetId: id,
+            regionId: s.regionId,
+            azId: s.azId,
+            zoneId: s.zoneId,
+            availableFrom: s.availableFrom ? new Date(s.availableFrom) : null,
+            availableUntil: s.availableUntil ? new Date(s.availableUntil) : null,
+            status: s.status || 'STANDARD',
+          })),
+        });
+      }
+    }
+
     // Handle zone links update in a transaction
     const ops: any[] = [];
+    if (regionIds !== undefined) {
+      ops.push(prisma.productVersionRegion.deleteMany({ where: { productVersionId: id } }));
+    }
     if (zoneIds !== undefined) {
       ops.push(prisma.productVersionZone.deleteMany({ where: { productVersionId: id } }));
     }
@@ -189,12 +268,13 @@ router.patch('/:id', async (req, res, next) => {
       where: { id },
       data: {
         ...versionData,
-        region: regionId !== undefined ? (regionId ? { connect: { id: regionId } } : { disconnect: true }) : undefined,
+        regions: regionIds?.length ? { create: regionIds.map((rid: string) => ({ region: { connect: { id: rid } } })) } : undefined,
         zones: zoneIds?.length ? { create: zoneIds.map((zid: string) => ({ zone: { connect: { id: zid } } })) } : undefined,
         availabilityZones: availabilityZoneIds?.length ? { create: availabilityZoneIds.map((azId: string) => ({ availabilityZone: { connect: { id: azId } } })) } : undefined,
       },
       include: {
         region: true,
+        regions: { include: { region: true } },
         zones: { include: { zone: true } },
         availabilityZones: { include: { availabilityZone: true } },
       },

@@ -182,6 +182,54 @@ export interface FlavorZone {
   zone: Zone;
 }
 
+export interface ProductRegion {
+  productId: string;
+  regionId: string;
+  region: Region;
+}
+
+export interface ProductVersionRegion {
+  productVersionId: string;
+  regionId: string;
+  region: Region;
+}
+
+export interface FlavorRegion {
+  flavorId: string;
+  regionId: string;
+  region: Region;
+}
+
+export interface ProductAvailabilityZone {
+  productId: string;
+  availabilityZoneId: string;
+  availabilityZone: AvailabilityZone;
+}
+
+export interface FlavorAvailabilityZone {
+  flavorId: string;
+  availabilityZoneId: string;
+  availabilityZone: AvailabilityZone;
+}
+
+export interface AvailabilitySchedule {
+  id: string;
+  targetType: 'PRODUCT' | 'PRODUCT_VERSION' | 'FLAVOR';
+  targetId: string;
+  regionId: string | null;
+  region: Region | null;
+  azId: string | null;
+  az: AvailabilityZone | null;
+  zoneId: string | null;
+  zone: Zone | null;
+  availableFrom: string | null;
+  availableUntil: string | null;
+  status: AvailabilityType;
+  deleted?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface OperatingSystemZone {
   operatingSystemId: string;
   zoneId: string;
@@ -214,6 +262,9 @@ export interface Product {
   upgradeFrom: UpgradePath[];
   upgradeTo: UpgradePath[];
   zones: ProductZone[];
+  regions: ProductRegion[];
+  availabilityZones: ProductAvailabilityZone[];
+  availabilitySchedules?: AvailabilitySchedule[];
   documentation: string | null;
   roadmap: string | null;
   os: string | null;
@@ -241,8 +292,10 @@ export interface ProductVersion {
   changelog: string | null;
   regionId?: string | null;
   region?: Region | null;
+  regions: ProductVersionRegion[];
   zones?: ProductVersionZone[];
   availabilityZones?: ProductVersionAvailabilityZone[];
+  availabilitySchedules?: AvailabilitySchedule[];
   createdAt: string;
   updatedAt: string;
   variants: ProductVariant[];
@@ -270,6 +323,9 @@ export interface Flavor {
   deprecationDate: string | null;
   eolDate: string | null;
   zones: FlavorZone[];
+  regions: FlavorRegion[];
+  availabilityZones: FlavorAvailabilityZone[];
+  availabilitySchedules?: AvailabilitySchedule[];
   createdAt: string;
   updatedAt: string;
 }

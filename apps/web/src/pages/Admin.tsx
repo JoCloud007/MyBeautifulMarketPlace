@@ -111,8 +111,9 @@ import {
   Globe,
   Clock,
   AlertTriangle,
+  X,
 } from 'lucide-react';
-import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType, ProductVersion, Region } from '@cloudmarket/shared-types';
+import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType, AvailabilitySchedule, ProductVersion, Region } from '@cloudmarket/shared-types';
 import { LifecyclePhase } from '@cloudmarket/shared-types';
 import { PerformanceTargetType, VisibilityType } from '@cloudmarket/shared-types';
 
@@ -697,6 +698,8 @@ function ProductsSection() {
   const { data: products, isLoading, isError, refetch } = useAdminProducts();
   const { data: categories } = useAdminCategories();
   const { data: allZones } = useZones();
+  const { data: allRegions } = useRegions();
+  const { data: allAzs } = useAvailabilityZones();
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
@@ -705,12 +708,12 @@ function ProductsSection() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const [form, setForm] = useState({
-    name: '', description: '', categoryId: '', computeType: '', os: '', documentation: '', roadmap: '', isActive: true, zoneIds: [] as string[],
+    name: '', description: '', categoryId: '', computeType: '', os: '', documentation: '', roadmap: '', isActive: true, zoneIds: [] as string[], regionIds: [] as string[], availabilityZoneIds: [] as string[], schedules: [] as (Partial<AvailabilitySchedule> & { deleted?: boolean })[],
   });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const resetForm = () => {
-    setForm({ name: '', description: '', categoryId: '', computeType: '', os: '', documentation: '', roadmap: '', isActive: true, zoneIds: [] });
+    setForm({ name: '', description: '', categoryId: '', computeType: '', os: '', documentation: '', roadmap: '', isActive: true, zoneIds: [], regionIds: [], availabilityZoneIds: [], schedules: [] });
     setEditing(null);
   };
 
@@ -722,6 +725,9 @@ function ProductsSection() {
       categoryId: product.categoryId, computeType: product.computeType || '', os: product.os || '',
       documentation: product.documentation || '', roadmap: product.roadmap || '', isActive: product.isActive,
       zoneIds: product.zones?.map((z: any) => z.zoneId) ?? [],
+      regionIds: product.regions?.map((r: any) => r.regionId) ?? [],
+      availabilityZoneIds: product.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [],
+      schedules: product.availabilitySchedules ? [...product.availabilitySchedules] : [],
     });
     setIsOpen(true);
   };
@@ -731,6 +737,9 @@ function ProductsSection() {
     try {
       const payload: any = { ...form };
       if (!payload.computeType) delete payload.computeType;
+      if (payload.regionIds.length === 0) delete payload.regionIds;
+      if (payload.availabilityZoneIds.length === 0) delete payload.availabilityZoneIds;
+      if (payload.schedules.length === 0) delete payload.schedules;
       if (editing) await updateProduct.mutateAsync({ id: editing.id, ...payload });
       else await createProduct.mutateAsync(payload);
       setIsOpen(false); resetForm();
@@ -752,6 +761,19 @@ function ProductsSection() {
     }
     setConfirmDelete({ open: false, id: null });
   };
+
+  const filteredAzOptions = useMemo(() => {
+    if (!allAzs) return [];
+    if (form.regionIds.length === 0) return allAzs;
+    const selectedRegionNames = allRegions?.filter((r) => form.regionIds.includes(r.id)).map((r) => r.name) || [];
+    return allAzs.filter((az) => selectedRegionNames.includes(az.region));
+  }, [allAzs, form.regionIds, allRegions]);
+
+  const filteredZoneOptions = useMemo(() => {
+    if (!allZones) return [];
+    if (form.availabilityZoneIds.length === 0) return allZones;
+    return allZones.filter((z) => z.availabilityZones?.some((za: any) => form.availabilityZoneIds.includes(za.availabilityZoneId)));
+  }, [allZones, form.availabilityZoneIds]);
 
   if (isError) return <QueryError message="Unable to load products." onRetry={refetch} />;
 
@@ -775,6 +797,12 @@ function ProductsSection() {
         <span>{(product as any).variants?.length ?? 0} variants</span>
       </div>
       <div className="mt-1 flex flex-wrap gap-1">
+        {product.regions?.map((r: any) => (
+          <Badge key={r.regionId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{r.region?.name}</Badge>
+        ))}
+        {product.availabilityZones?.map((az: any) => (
+          <Badge key={az.availabilityZoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{az.availabilityZone?.name}</Badge>
+        ))}
         {product.zones?.map((z: any) => (
           <Badge key={z.zoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{z.zone?.name}</Badge>
         ))}
@@ -803,7 +831,7 @@ function ProductsSection() {
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable
-            headers={['Name', 'Category', 'Type', 'Variants', 'Zones', 'Active']}
+            headers={['Name', 'Category', 'Type', 'Variants', 'Regions', 'AZs', 'Zones', 'Active']}
             isLoading={isLoading}
             emptyMessage="No products"
             mobileCards={mobileCards}
@@ -816,6 +844,20 @@ function ProductsSection() {
                   {isCompute(product) ? (product.computeType || '—') : '—'}
                 </td>
                 <td className="py-3 text-slate-400">{(product as any).variants?.length ?? 0}</td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {product.regions?.map((r: any) => (
+                      <Badge key={r.regionId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{r.region?.name}</Badge>
+                    )) ?? <span className="text-slate-600">—</span>}
+                  </div>
+                </td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {product.availabilityZones?.map((az: any) => (
+                      <Badge key={az.availabilityZoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{az.availabilityZone?.name}</Badge>
+                    )) ?? <span className="text-slate-600">—</span>}
+                  </div>
+                </td>
                 <td className="py-3">
                   <div className="flex flex-wrap gap-1">
                     {product.zones?.map((z: any) => (
@@ -908,12 +950,35 @@ function ProductsSection() {
             </div>
             <div className="space-y-2">
               <MultiPickupInput
+                label="Regions"
+                values={form.regionIds}
+                onChange={(ids) => setForm({ ...form, regionIds: ids })}
+                options={allRegions?.map((r) => ({ id: r.id, label: r.name })) ?? []}
+              />
+            </div>
+            <div className="space-y-2">
+              <MultiPickupInput
+                label="Availability Zones"
+                values={form.availabilityZoneIds}
+                onChange={(ids) => setForm({ ...form, availabilityZoneIds: ids })}
+                options={filteredAzOptions.map((az) => ({ id: az.id, label: az.name }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <MultiPickupInput
                 label="Zones"
                 values={form.zoneIds}
                 onChange={(ids) => setForm({ ...form, zoneIds: ids })}
-                options={allZones?.map((z) => ({ id: z.id, label: z.name })) ?? []}
+                options={filteredZoneOptions.map((z) => ({ id: z.id, label: z.name }))}
               />
             </div>
+            <ScheduleEditor
+              schedules={form.schedules}
+              onChange={(schedules) => setForm({ ...form, schedules })}
+              regions={allRegions || []}
+              azs={allAzs || []}
+              zones={allZones || []}
+            />
             <div className="flex items-center gap-2">
               <input type="checkbox" id="isActive" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
               <label htmlFor="isActive" className="text-sm text-slate-300">Active</label>
@@ -1463,18 +1528,20 @@ function PerformanceProfilesSection() {
 function FlavorsSection() {
   const { data: flavors, isLoading, isError, refetch } = useAdminFlavors();
   const { data: allZones } = useZones();
+  const { data: allRegions } = useRegions();
+  const { data: allAzs } = useAvailabilityZones();
   const createFlavor = useCreateFlavor();
   const updateFlavor = useUpdateFlavor();
   const deleteFlavor = useDeleteFlavor();
 
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Flavor | null>(null);
-  const [form, setForm] = useState({ name: '', vcpu: 0, ramGb: 0, description: '', zoneIds: [] as string[], releaseDate: '', deprecationDate: '', eolDate: '' });
+  const [form, setForm] = useState({ name: '', vcpu: 0, ramGb: 0, description: '', zoneIds: [] as string[], regionIds: [] as string[], availabilityZoneIds: [] as string[], schedules: [] as (Partial<AvailabilitySchedule> & { deleted?: boolean })[], releaseDate: '', deprecationDate: '', eolDate: '' });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
-  const resetForm = () => { setForm({ name: '', vcpu: 0, ramGb: 0, description: '', zoneIds: [], releaseDate: '', deprecationDate: '', eolDate: '' }); setEditing(null); };
+  const resetForm = () => { setForm({ name: '', vcpu: 0, ramGb: 0, description: '', zoneIds: [], regionIds: [], availabilityZoneIds: [], schedules: [], releaseDate: '', deprecationDate: '', eolDate: '' }); setEditing(null); };
   const openCreate = () => { resetForm(); setIsOpen(true); };
-  const openEdit = (f: Flavor) => { setEditing(f); setForm({ name: f.name, vcpu: f.vcpu, ramGb: f.ramGb, description: f.description || '', zoneIds: f.zones?.map((z: any) => z.zoneId) ?? [], releaseDate: f.releaseDate ? f.releaseDate.slice(0, 10) : '', deprecationDate: f.deprecationDate ? f.deprecationDate.slice(0, 10) : '', eolDate: f.eolDate ? f.eolDate.slice(0, 10) : '' }); setIsOpen(true); };
+  const openEdit = (f: Flavor) => { setEditing(f); setForm({ name: f.name, vcpu: f.vcpu, ramGb: f.ramGb, description: f.description || '', zoneIds: f.zones?.map((z: any) => z.zoneId) ?? [], regionIds: f.regions?.map((r: any) => r.regionId) ?? [], availabilityZoneIds: f.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [], schedules: f.availabilitySchedules ? [...f.availabilitySchedules] : [], releaseDate: f.releaseDate ? f.releaseDate.slice(0, 10) : '', deprecationDate: f.deprecationDate ? f.deprecationDate.slice(0, 10) : '', eolDate: f.eolDate ? f.eolDate.slice(0, 10) : '' }); setIsOpen(true); };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1485,6 +1552,9 @@ function FlavorsSection() {
     else delete payload.deprecationDate;
     if (payload.eolDate) payload.eolDate = new Date(payload.eolDate).toISOString();
     else delete payload.eolDate;
+    if (payload.regionIds.length === 0) delete payload.regionIds;
+    if (payload.availabilityZoneIds.length === 0) delete payload.availabilityZoneIds;
+    if (payload.schedules.length === 0) delete payload.schedules;
     if (editing) await updateFlavor.mutateAsync({ id: editing.id, ...payload });
     else await createFlavor.mutateAsync(payload);
     setIsOpen(false); resetForm();
@@ -1500,6 +1570,19 @@ function FlavorsSection() {
     setConfirmDelete({ open: false, id: null });
   };
 
+  const filteredAzOptions = useMemo(() => {
+    if (!allAzs) return [];
+    if (form.regionIds.length === 0) return allAzs;
+    const selectedRegionNames = allRegions?.filter((r) => form.regionIds.includes(r.id)).map((r) => r.name) || [];
+    return allAzs.filter((az) => selectedRegionNames.includes(az.region));
+  }, [allAzs, form.regionIds, allRegions]);
+
+  const filteredZoneOptions = useMemo(() => {
+    if (!allZones) return [];
+    if (form.availabilityZoneIds.length === 0) return allZones;
+    return allZones.filter((z) => z.availabilityZones?.some((za: any) => form.availabilityZoneIds.includes(za.availabilityZoneId)));
+  }, [allZones, form.availabilityZoneIds]);
+
   if (isError) return <QueryError message="Unable to load flavors." onRetry={refetch} />;
 
   const mobileCards = flavors?.map((flavor) => (
@@ -1514,6 +1597,12 @@ function FlavorsSection() {
         {flavor.vcpu} vCPU · {flavor.ramGb} GB RAM
       </div>
       <div className="mt-1 flex flex-wrap gap-1">
+        {flavor.regions?.map((r: any) => (
+          <Badge key={r.regionId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{r.region?.name}</Badge>
+        ))}
+        {flavor.availabilityZones?.map((az: any) => (
+          <Badge key={az.availabilityZoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{az.availabilityZone?.name}</Badge>
+        ))}
         {flavor.zones?.map((z: any) => (
           <Badge key={z.zoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{z.zone?.name}</Badge>
         ))}
@@ -1532,13 +1621,27 @@ function FlavorsSection() {
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Name', 'vCPU', 'RAM', 'Used By', 'Zones', 'Description']} isLoading={isLoading} emptyMessage="No flavors" mobileCards={mobileCards}>
+          <ResponsiveTable headers={['Name', 'vCPU', 'RAM', 'Used By', 'Regions', 'AZs', 'Zones', 'Description']} isLoading={isLoading} emptyMessage="No flavors" mobileCards={mobileCards}>
             {flavors?.map((flavor) => (
               <tr key={flavor.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{flavor.name}</td>
                 <td className="py-3 text-slate-400">{flavor.vcpu}</td>
                 <td className="py-3 text-slate-400">{flavor.ramGb} GB</td>
                 <td className="py-3 text-slate-400">{(flavor as any)._count?.variants ?? 0}</td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {flavor.regions?.map((r: any) => (
+                      <Badge key={r.regionId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{r.region?.name}</Badge>
+                    )) ?? <span className="text-slate-600">—</span>}
+                  </div>
+                </td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {flavor.availabilityZones?.map((az: any) => (
+                      <Badge key={az.availabilityZoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{az.availabilityZone?.name}</Badge>
+                    )) ?? <span className="text-slate-600">—</span>}
+                  </div>
+                </td>
                 <td className="py-3">
                   <div className="flex flex-wrap gap-1">
                     {flavor.zones?.map((z: any) => (
@@ -1575,10 +1678,29 @@ function FlavorsSection() {
               <div className="space-y-2"><label className="text-sm font-medium text-slate-300">EOL Date</label><Input type="date" value={form.eolDate} onChange={(e) => setForm({ ...form, eolDate: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             </div>
             <MultiPickupInput
+              label="Regions"
+              values={form.regionIds}
+              onChange={(ids) => setForm({ ...form, regionIds: ids })}
+              options={allRegions?.map((r) => ({ id: r.id, label: r.name })) ?? []}
+            />
+            <MultiPickupInput
+              label="Availability Zones"
+              values={form.availabilityZoneIds}
+              onChange={(ids) => setForm({ ...form, availabilityZoneIds: ids })}
+              options={filteredAzOptions.map((az) => ({ id: az.id, label: az.name }))}
+            />
+            <MultiPickupInput
               label="Zones"
               values={form.zoneIds}
               onChange={(ids) => setForm({ ...form, zoneIds: ids })}
-              options={allZones?.map((z) => ({ id: z.id, label: z.name })) ?? []}
+              options={filteredZoneOptions.map((z) => ({ id: z.id, label: z.name }))}
+            />
+            <ScheduleEditor
+              schedules={form.schedules}
+              onChange={(schedules) => setForm({ ...form, schedules })}
+              regions={allRegions || []}
+              azs={allAzs || []}
+              zones={allZones || []}
             />
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
@@ -1602,6 +1724,135 @@ function FlavorsSection() {
   );
 }
 
+function ScheduleEditor({
+  schedules,
+  onChange,
+  regions,
+  azs,
+  zones,
+}: {
+  schedules: (Partial<AvailabilitySchedule> & { deleted?: boolean })[];
+  onChange: (schedules: (Partial<AvailabilitySchedule> & { deleted?: boolean })[]) => void;
+  regions: any[];
+  azs: any[];
+  zones: any[];
+}) {
+  const addSchedule = () => {
+    onChange([...schedules, { status: 'STANDARD' as AvailabilityType }]);
+  };
+
+  const updateSchedule = (index: number, field: string, value: any) => {
+    const updated = [...schedules];
+    updated[index] = { ...updated[index], [field]: value };
+    onChange(updated);
+  };
+
+  const removeSchedule = (index: number) => {
+    const s = schedules[index];
+    if (s.id) {
+      const updated = [...schedules];
+      updated[index] = { ...updated[index], deleted: true };
+      onChange(updated);
+    } else {
+      onChange(schedules.filter((_, i) => i !== index));
+    }
+  };
+
+  const visibleSchedules = schedules.filter((s) => !s.deleted);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-medium text-slate-300">Availability Schedules</label>
+        <Button type="button" size="sm" variant="outline" onClick={addSchedule} className="border-slate-700 text-slate-300 hover:bg-slate-800">
+          <Plus className="h-3 w-3 mr-1" /> Add
+        </Button>
+      </div>
+      {visibleSchedules.length === 0 && (
+        <p className="text-xs text-slate-500">No schedules. Add one to define granular availability dates.</p>
+      )}
+      {visibleSchedules.map((s) => {
+        const realIndex = schedules.findIndex((x) => x === s);
+        return (
+          <div key={realIndex} className="grid grid-cols-12 gap-2 items-end bg-slate-950 border border-slate-800 rounded-md p-2">
+            <div className="col-span-3">
+              <select
+                value={s.regionId || ''}
+                onChange={(e) => updateSchedule(realIndex, 'regionId', e.target.value || null)}
+                className="w-full h-8 rounded border border-slate-700 bg-slate-900 px-2 text-xs text-white"
+              >
+                <option value="">Any Region</option>
+                {regions?.map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-3">
+              <select
+                value={s.azId || ''}
+                onChange={(e) => updateSchedule(realIndex, 'azId', e.target.value || null)}
+                className="w-full h-8 rounded border border-slate-700 bg-slate-900 px-2 text-xs text-white"
+              >
+                <option value="">Any AZ</option>
+                {azs?.map((az) => (
+                  <option key={az.id} value={az.id}>{az.code}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-3">
+              <select
+                value={s.zoneId || ''}
+                onChange={(e) => updateSchedule(realIndex, 'zoneId', e.target.value || null)}
+                className="w-full h-8 rounded border border-slate-700 bg-slate-900 px-2 text-xs text-white"
+              >
+                <option value="">Any Zone</option>
+                {zones?.map((z) => (
+                  <option key={z.id} value={z.id}>{z.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-1">
+              <select
+                value={s.status || 'STANDARD'}
+                onChange={(e) => updateSchedule(realIndex, 'status', e.target.value)}
+                className="w-full h-8 rounded border border-slate-700 bg-slate-900 px-1 text-xs text-white"
+              >
+                <option value="STANDARD">Std</option>
+                <option value="RECOMMENDED">Rec</option>
+                <option value="RESTRICTED">Res</option>
+                <option value="ON_DEMAND">OnD</option>
+              </select>
+            </div>
+            <div className="col-span-1">
+              <Button type="button" size="sm" variant="ghost" onClick={() => removeSchedule(realIndex)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400">
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="col-span-6">
+              <Input
+                type="date"
+                value={s.availableFrom ? s.availableFrom.slice(0, 10) : ''}
+                onChange={(e) => updateSchedule(realIndex, 'availableFrom', e.target.value ? new Date(e.target.value).toISOString() : null)}
+                placeholder="From"
+                className="bg-slate-900 border-slate-700 text-white h-8 text-xs"
+              />
+            </div>
+            <div className="col-span-6">
+              <Input
+                type="date"
+                value={s.availableUntil ? s.availableUntil.slice(0, 10) : ''}
+                onChange={(e) => updateSchedule(realIndex, 'availableUntil', e.target.value ? new Date(e.target.value).toISOString() : null)}
+                placeholder="Until"
+                className="bg-slate-900 border-slate-700 text-white h-8 text-xs"
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ============ PRODUCT VERSIONS SECTION ============
 function ProductVersionsSection() {
   const { data: products, isLoading, isError, refetch } = useAdminProducts();
@@ -1614,7 +1865,7 @@ function ProductVersionsSection() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<ProductVersion | null>(null);
-  const [form, setForm] = useState({ productId: '', version: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: 'RELEASED' as LifecyclePhase, isActive: true, changelog: '', regionId: '', zoneIds: [] as string[], availabilityZoneIds: [] as string[] });
+  const [form, setForm] = useState({ productId: '', version: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: 'RELEASED' as LifecyclePhase, isActive: true, changelog: '', regionIds: [] as string[], zoneIds: [] as string[], availabilityZoneIds: [] as string[], schedules: [] as (Partial<AvailabilitySchedule> & { deleted?: boolean })[] });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const allVersions = useMemo(() => {
@@ -1627,7 +1878,7 @@ function ProductVersionsSection() {
     return list;
   }, [products]);
 
-  const resetForm = () => { setForm({ productId: '', version: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: LifecyclePhase.RELEASED, isActive: true, changelog: '', regionId: '', zoneIds: [], availabilityZoneIds: [] }); setEditing(null); };
+  const resetForm = () => { setForm({ productId: '', version: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: LifecyclePhase.RELEASED, isActive: true, changelog: '', regionIds: [], zoneIds: [], availabilityZoneIds: [], schedules: [] }); setEditing(null); };
   const openCreate = () => { resetForm(); setIsOpen(true); };
   const openEdit = (v: ProductVersion & { productName: string }) => {
     setEditing(v);
@@ -1641,9 +1892,10 @@ function ProductVersionsSection() {
       phase: v.phase,
       isActive: v.isActive,
       changelog: v.changelog || '',
-      regionId: v.regionId || '',
+      regionIds: v.regions?.map((r: any) => r.regionId) ?? [],
       zoneIds: v.zones?.map((z: any) => z.zoneId) ?? [],
       availabilityZoneIds: v.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [],
+      schedules: v.availabilitySchedules ? [...v.availabilitySchedules] : [],
     });
     setIsOpen(true);
   };
@@ -1660,9 +1912,10 @@ function ProductVersionsSection() {
         phase: form.phase,
         isActive: form.isActive,
         changelog: form.changelog || undefined,
-        regionId: form.regionId || undefined,
+        regionIds: form.regionIds.length > 0 ? form.regionIds : undefined,
         zoneIds: form.zoneIds.length > 0 ? form.zoneIds : undefined,
         availabilityZoneIds: form.availabilityZoneIds.length > 0 ? form.availabilityZoneIds : undefined,
+        schedules: form.schedules.length > 0 ? form.schedules : undefined,
       };
       if (editing) {
         await updateVersion.mutateAsync({ id: editing.id, ...payload });
@@ -1679,6 +1932,19 @@ function ProductVersionsSection() {
     try { if (confirmDelete.id) await deleteVersion.mutateAsync(confirmDelete.id); } catch { }
     setConfirmDelete({ open: false, id: null });
   };
+
+  const filteredAzOptions = useMemo(() => {
+    if (!allAzs) return [];
+    if (form.regionIds.length === 0) return allAzs;
+    const selectedRegionNames = allRegions?.filter((r) => form.regionIds.includes(r.id)).map((r) => r.name) || [];
+    return allAzs.filter((az) => selectedRegionNames.includes(az.region));
+  }, [allAzs, form.regionIds, allRegions]);
+
+  const filteredZoneOptions = useMemo(() => {
+    if (!allZones) return [];
+    if (form.availabilityZoneIds.length === 0) return allZones;
+    return allZones.filter((z) => z.availabilityZones?.some((za: any) => form.availabilityZoneIds.includes(za.availabilityZoneId)));
+  }, [allZones, form.availabilityZoneIds]);
 
   if (isError) return <QueryError message="Unable to load product versions." onRetry={refetch} />;
 
@@ -1708,7 +1974,7 @@ function ProductVersionsSection() {
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Product', 'Version', 'Release Date', 'Normal Support End', 'Extended Support End', 'EOL Date', 'Phase', 'Active', 'Region', 'Zones', 'AZ']} isLoading={isLoading} emptyMessage="No product versions" mobileCards={mobileCards}>
+          <ResponsiveTable headers={['Product', 'Version', 'Release Date', 'Normal Support End', 'Extended Support End', 'EOL Date', 'Phase', 'Active', 'Regions', 'Zones', 'AZ']} isLoading={isLoading} emptyMessage="No product versions" mobileCards={mobileCards}>
             {allVersions?.map((v) => (
               <tr key={v.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{v.productName}</td>
@@ -1728,7 +1994,11 @@ function ProductVersionsSection() {
                   </Badge>
                 </td>
                 <td className="py-3">
-                  {v.region ? <Badge variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{v.region.name}</Badge> : <span className="text-slate-600">—</span>}
+                  <div className="flex flex-wrap gap-1">
+                    {v.regions?.map((r: any) => (
+                      <Badge key={r.regionId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{r.region?.name}</Badge>
+                    )) ?? <span className="text-slate-600">—</span>}
+                  </div>
                 </td>
                 <td className="py-3">
                   <div className="flex flex-wrap gap-1">
@@ -1802,28 +2072,30 @@ function ProductVersionsSection() {
               <label htmlFor="pv-active" className="text-sm text-slate-300">Active</label>
             </div>
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Changelog</label><Textarea value={form.changelog} onChange={(e) => setForm({ ...form, changelog: e.target.value })} rows={3} className="bg-slate-950 border-slate-700 text-white" /></div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Region</label>
-              <select
-                value={form.regionId}
-                onChange={(e) => setForm({ ...form, regionId: e.target.value })}
-                className="w-full h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
-              >
-                <option value="">Select Region...</option>
-                {allRegions?.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
-            </div>
             <MultiPickupInput
-              label="Zones"
-              values={form.zoneIds}
-              onChange={(ids) => setForm({ ...form, zoneIds: ids })}
-              options={allZones?.map((z) => ({ id: z.id, label: z.name })) ?? []}
+              label="Regions"
+              values={form.regionIds}
+              onChange={(ids) => setForm({ ...form, regionIds: ids })}
+              options={allRegions?.map((r) => ({ id: r.id, label: r.name })) ?? []}
             />
             <MultiPickupInput
               label="Availability Zones"
               values={form.availabilityZoneIds}
               onChange={(ids) => setForm({ ...form, availabilityZoneIds: ids })}
-              options={allAzs?.map((az) => ({ id: az.id, label: az.name })) ?? []}
+              options={filteredAzOptions?.map((az) => ({ id: az.id, label: az.name })) ?? []}
+            />
+            <MultiPickupInput
+              label="Zones"
+              values={form.zoneIds}
+              onChange={(ids) => setForm({ ...form, zoneIds: ids })}
+              options={filteredZoneOptions?.map((z) => ({ id: z.id, label: z.name })) ?? []}
+            />
+            <ScheduleEditor
+              schedules={form.schedules}
+              onChange={(schedules) => setForm({ ...form, schedules })}
+              regions={allRegions || []}
+              azs={allAzs || []}
+              zones={allZones || []}
             />
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
