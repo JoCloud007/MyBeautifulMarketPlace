@@ -2471,8 +2471,8 @@ function RegionsSection() {
     setIsOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     try {
       if (editing) await updateRegion.mutateAsync({ id: editing.id, ...form });
       else await createRegion.mutateAsync(form);
@@ -2578,7 +2578,7 @@ function RegionsSection() {
             </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+              <Button type="button" onClick={() => handleSubmit()} className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
