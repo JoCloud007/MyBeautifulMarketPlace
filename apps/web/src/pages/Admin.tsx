@@ -1,7 +1,12 @@
-import { useState, useMemo, Children } from 'react';
+import { useState, useMemo, Children, useEffect } from 'react';
+import { PickupList, productStatusPicklist } from '@/components/ui/pickup-list';
 import {
   useAdminDashboard,
   useAdminProducts,
+  useTransitions,
+  useCreateTransition,
+  useUpdateTransition,
+  useDeleteTransition,
   useAdminCategories,
   useAdminDependencies,
   useAdminForecasts,
@@ -65,6 +70,10 @@ import {
   useCreatePerformanceProfile,
   useUpdatePerformanceProfile,
   useDeletePerformanceProfile,
+  useInfraVersions,
+  useCreateInfraVersion,
+  useUpdateInfraVersion,
+  useDeleteInfraVersion,
 } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
@@ -112,15 +121,21 @@ import {
   Clock,
   AlertTriangle,
   X,
+  ArrowRightLeft,
+  Boxes,
 } from 'lucide-react';
-import type { ApprovalStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType, AvailabilitySchedule, ProductVersion, Region } from '@cloudmarket/shared-types';
+import type { ForecastStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType, AvailabilitySchedule, ProductVersion, Region, Transition, InfraVersion } from '@cloudmarket/shared-types';
 import { LifecyclePhase } from '@cloudmarket/shared-types';
 import { PerformanceTargetType, VisibilityType } from '@cloudmarket/shared-types';
 
-const statusConfig: Record<ApprovalStatus, { label: string; color: string }> = {
-  PENDING: { label: 'Pending', color: 'border-amber-500/20 text-amber-500' },
+const statusConfig: Record<ForecastStatus, { label: string; color: string }> = {
+  DRAFT: { label: 'Draft', color: 'border-slate-500/20 text-slate-400' },
+  PENDING_TECH: { label: 'Tech review', color: 'border-violet-500/20 text-violet-400' },
+  PENDING_MANAGER: { label: 'Manager approval', color: 'border-amber-500/20 text-amber-500' },
+  PENDING_BUDGET: { label: 'Budget validation', color: 'border-cyan-500/20 text-cyan-400' },
   APPROVED: { label: 'Approved', color: 'border-emerald-500/20 text-emerald-500' },
   REJECTED: { label: 'Rejected', color: 'border-red-500/20 text-red-500' },
+  CANCELLED: { label: 'Cancelled', color: 'border-slate-600/20 text-slate-500' },
 };
 
 function cn(...inputs: (string | undefined | false | null)[]) {
@@ -708,12 +723,12 @@ function ProductsSection() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const [form, setForm] = useState({
-    name: '', description: '', categoryId: '', computeType: '', os: '', documentation: '', roadmap: '', isActive: true, zoneIds: [] as string[], regionIds: [] as string[], availabilityZoneIds: [] as string[], schedules: [] as (Partial<AvailabilitySchedule> & { deleted?: boolean })[],
+    name: '', description: '', categoryId: '', computeType: '', os: '', documentation: '', roadmap: '', status: 'AVAILABLE', isActive: true, zoneIds: [] as string[], regionIds: [] as string[], availabilityZoneIds: [] as string[], schedules: [] as (Partial<AvailabilitySchedule> & { deleted?: boolean })[],
   });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const resetForm = () => {
-    setForm({ name: '', description: '', categoryId: '', computeType: '', os: '', documentation: '', roadmap: '', isActive: true, zoneIds: [], regionIds: [], availabilityZoneIds: [], schedules: [] });
+    setForm({ name: '', description: '', categoryId: '', computeType: '', os: '', documentation: '', roadmap: '', status: 'AVAILABLE', isActive: true, zoneIds: [], regionIds: [], availabilityZoneIds: [], schedules: [] });
     setEditing(null);
   };
 
@@ -723,7 +738,7 @@ function ProductsSection() {
     setForm({
       name: product.name, description: product.description || '',
       categoryId: product.categoryId, computeType: product.computeType || '', os: product.os || '',
-      documentation: product.documentation || '', roadmap: product.roadmap || '', isActive: product.isActive,
+      documentation: product.documentation || '', roadmap: product.roadmap || '', status: product.status || 'AVAILABLE', isActive: product.isActive,
       zoneIds: product.zones?.map((z: any) => z.zoneId) ?? [],
       regionIds: product.regions?.map((r: any) => r.regionId) ?? [],
       availabilityZoneIds: product.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [],
@@ -949,6 +964,14 @@ function ProductsSection() {
               <Textarea value={form.roadmap} onChange={(e) => setForm({ ...form, roadmap: e.target.value })} rows={3} className="bg-slate-950 border-slate-700 text-white" />
             </div>
             <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Status</label>
+              <PickupList
+                options={productStatusPicklist}
+                value={form.status}
+                onChange={(v) => setForm({ ...form, status: v })}
+              />
+            </div>
+            <div className="space-y-2">
               <MultiPickupInput
                 label="Regions"
                 values={form.regionIds}
@@ -1003,6 +1026,316 @@ function ProductsSection() {
         cancelLabel="Cancel"
         variant="destructive"
       />
+    </div>
+  );
+}
+
+// ============ TRANSITIONS SECTION ============
+function TransitionsAdminSection() {
+  const { data: transitions, isLoading, isError, refetch } = useTransitions();
+  const { data: products } = useAdminProducts();
+  if (isError) return <QueryError message="Unable to load transitions." onRetry={refetch} />;
+  const createTransition = useCreateTransition();
+  const updateTransition = useUpdateTransition();
+  const deleteTransition = useDeleteTransition();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<Transition | null>(null);
+  const [form, setForm] = useState({
+    name: '', description: '', fromProductId: '', toProductId: '',
+    fromVersion: '', toVersion: '', migrationType: 'REBUILD', status: 'BACKLOG',
+    availableFrom: '', notes: '',
+  });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+
+  const resetForm = () => {
+    setForm({ name: '', description: '', fromProductId: '', toProductId: '', fromVersion: '', toVersion: '', migrationType: 'REBUILD', status: 'BACKLOG', availableFrom: '', notes: '' });
+    setEditing(null);
+  };
+
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (t: Transition) => {
+    setEditing(t);
+    setForm({
+      name: t.name, description: t.description || '',
+      fromProductId: t.fromProductId, toProductId: t.toProductId,
+      fromVersion: t.fromVersion, toVersion: t.toVersion,
+      migrationType: t.migrationType, status: t.status,
+      availableFrom: t.availableFrom ? t.availableFrom.slice(0, 10) : '',
+      notes: t.notes || '',
+    });
+    setIsOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const payload: any = { ...form };
+      if (payload.availableFrom) payload.availableFrom = new Date(payload.availableFrom).toISOString();
+      else delete payload.availableFrom;
+      if (editing) await updateTransition.mutateAsync({ id: editing.id, ...payload });
+      else await createTransition.mutateAsync({ productId: form.fromProductId, ...payload });
+      setIsOpen(false); resetForm();
+    } catch {
+      /* mutation error handled by hook onError */
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      if (confirmDelete.id) await deleteTransition.mutateAsync(confirmDelete.id);
+    } catch {
+      /* handled by hook */
+    }
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  const statusCfg = (s: string) => {
+    const opt = productStatusPicklist.find((o) => o.value === s);
+    const colorMap: Record<string, string> = {
+      BACKLOG: 'border-slate-500/40 text-slate-300', OPPORTUNITY: 'border-purple-500/40 text-purple-300',
+      AVAILABLE: 'border-emerald-500/40 text-emerald-300', AVAILABLE_PILOT_PENDING: 'border-yellow-400/40 text-yellow-300',
+      DELAY_PENDING: 'border-orange-500/40 text-orange-300', CANCELLED: 'border-red-500/40 text-red-300',
+    };
+    return { label: opt?.label || s, className: colorMap[s] || 'border-slate-600 text-slate-400' };
+  };
+
+  const mobileCards = transitions?.map((t) => (
+    <MobileCard key={t.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{t.name}</p>
+          <p className="text-sm text-slate-400">{t.fromProduct?.name} → {t.toProduct?.name}</p>
+        </div>
+        <Badge variant="outline" className={`text-xs ${statusCfg(t.status).className}`}>{statusCfg(t.status).label}</Badge>
+      </div>
+      <div className="mt-2 text-sm text-slate-500">
+        {t.fromVersion} → {t.toVersion} · {t.migrationType.replace('_', '/')}
+        {t.availableFrom && <span> · from {new Date(t.availableFrom).toLocaleDateString()}</span>}
+      </div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openEdit(t)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400"><Pencil className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ open: true, id: t.id })} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]">
+          <Plus className="mr-2 h-4 w-4" /> Add Transition
+        </Button>
+      </div>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable
+            headers={['Name', 'From', 'To', 'Versions', 'Migration', 'Status', 'Available From', '']}
+            isLoading={isLoading}
+            emptyMessage="No transitions"
+            mobileCards={mobileCards}
+          >
+            {transitions?.map((t) => (
+              <tr key={t.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{t.name}</td>
+                <td className="py-3 text-slate-400">{t.fromProduct?.name}</td>
+                <td className="py-3 text-cyan-300">{t.toProduct?.name}</td>
+                <td className="py-3 text-slate-400">{t.fromVersion} → {t.toVersion}</td>
+                <td className="py-3 text-slate-400">{t.migrationType.replace('_', ' ')}</td>
+                <td className="py-3">
+                  <Badge variant="outline" className={`text-xs ${statusCfg(t.status).className}`}>{statusCfg(t.status).label}</Badge>
+                </td>
+                <td className="py-3 text-slate-400">
+                  {t.availableFrom ? new Date(t.availableFrom).toLocaleDateString() : '—'}
+                </td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(t)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ open: true, id: t.id })} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: confirmDelete.id })}
+        title="Delete transition"
+        description="Are you sure you want to delete this transition? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
+
+      {/* Create/Edit Dialog */}
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-white">{editing ? 'Edit transition' : 'New transition'}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Name</label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="e.g. RHEL 8 to 9 In-Place Upgrade" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">From Product</label>
+                <Select value={form.fromProductId} onChange={(e) => setForm({ ...form, fromProductId: e.target.value })} required disabled={!!editing} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="">Choose...</option>
+                  {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">To Product</label>
+                <Select value={form.toProductId} onChange={(e) => setForm({ ...form, toProductId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="">Choose...</option>
+                  {products?.filter((p) => p.id !== form.fromProductId).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">From Version</label>
+                <Input value={form.fromVersion} onChange={(e) => setForm({ ...form, fromVersion: e.target.value })} required placeholder="e.g. 8" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">To Version</label>
+                <Input value={form.toVersion} onChange={(e) => setForm({ ...form, toVersion: e.target.value })} required placeholder="e.g. 9" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Migration Type</label>
+                <Select value={form.migrationType} onChange={(e) => setForm({ ...form, migrationType: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="IN_PLACE">In-place</option>
+                  <option value="REBUILD">Rebuild</option>
+                  <option value="BLUE_GREEN">Blue/Green</option>
+                  <option value="SNAPSHOT">Snapshot</option>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Status</label>
+                <PickupList options={productStatusPicklist} value={form.status} onChange={(v) => setForm({ ...form, status: v })} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Available From</label>
+              <Input type="date" value={form.availableFrom} onChange={(e) => setForm({ ...form, availableFrom: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Description</label>
+              <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className="bg-slate-950 border-slate-700 text-white" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setIsOpen(false)} className="text-slate-400">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">Save</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function TransitionsSection({ productId }: { productId: string }) {
+  const [paths, setPaths] = useState<{ outgoing: any[]; incoming: any[] }>({ outgoing: [], incoming: [] });
+  const [loading, setLoading] = useState(true);
+  const [formOpen, setFormOpen] = useState(false);
+  const [toProductId, setToProductId] = useState('');
+  const [fromVersion, setFromVersion] = useState('');
+  const [toVersion, setToVersion] = useState('');
+  const [migrationType, setMigrationType] = useState('REBUILD');
+  const { data: allProducts } = useAdminProducts();
+
+  const load = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/products/${productId}/upgrade-paths`);
+      if (res.ok) setPaths(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [productId]);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/products/${productId}/upgrade-paths`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ toProductId, fromVersion, toVersion, migrationType }),
+    });
+    if (res.ok) {
+      setFormOpen(false);
+      setToProductId(''); setFromVersion(''); setToVersion('');
+      load();
+    }
+  };
+
+  const handleDelete = async (pathId: string) => {
+    const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/products/${productId}/upgrade-paths/${pathId}`, { method: 'DELETE' });
+    if (res.ok) load();
+  };
+
+  const targetProducts = allProducts?.filter((p) => p.id !== productId) || [];
+
+  return (
+    <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-sm font-medium text-white">Transitions</h4>
+        <Button size="sm" variant="ghost" onClick={() => setFormOpen((v) => !v)} className="text-blue-400 hover:bg-blue-500/10">
+          <Plus className="h-3 w-3 mr-1" /> Add
+        </Button>
+      </div>
+
+      {formOpen && (
+        <form onSubmit={handleCreate} className="space-y-2 mb-3 p-3 rounded-md border border-slate-800 bg-slate-900">
+          <Select value={toProductId} onChange={(e) => setToProductId(e.target.value)} required className="bg-slate-950 border-slate-700 text-white min-h-[40px]">
+            <option value="">Transitions to product...</option>
+            {targetProducts.map((p: Product) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </Select>
+          <div className="grid grid-cols-2 gap-2">
+            <Input placeholder="From version (e.g. 1.0)" value={fromVersion} onChange={(e) => setFromVersion(e.target.value)} required className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+            <Input placeholder="To version (e.g. 2.0)" value={toVersion} onChange={(e) => setToVersion(e.target.value)} required className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+          </div>
+          <Select value={migrationType} onChange={(e) => setMigrationType(e.target.value)} className="bg-slate-950 border-slate-700 text-white min-h-[40px]">
+            <option value="IN_PLACE">In-place</option>
+            <option value="REBUILD">Rebuild</option>
+            <option value="BLUE_GREEN">Blue/Green</option>
+            <option value="SNAPSHOT">Snapshot</option>
+          </Select>
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">Save</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setFormOpen(false)} className="text-slate-400">Cancel</Button>
+          </div>
+        </form>
+      )}
+
+      {loading ? (
+        <Skeleton className="h-12 rounded-md bg-slate-800" />
+      ) : paths.outgoing.length === 0 && paths.incoming.length === 0 ? (
+        <p className="text-xs text-slate-500">No transitions declared for this product.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {paths.outgoing.map((p: any) => (
+            <div key={p.id} className="flex items-center justify-between rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5">
+              <span className="text-xs text-cyan-300">→ {p.toProduct?.name} <span className="text-slate-500">({p.fromVersion} → {p.toVersion} · {p.migrationType})</span></span>
+              <Button size="sm" variant="ghost" onClick={() => handleDelete(p.id)} className="h-6 w-6 p-0 text-slate-500 hover:text-red-400"><Trash2 className="h-3 w-3" /></Button>
+            </div>
+          ))}
+          {paths.incoming.map((p: any) => (
+            <div key={p.id} className="flex items-center justify-between rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5">
+              <span className="text-xs text-slate-400">← from {p.fromProduct?.name} <span className="text-slate-500">({p.fromVersion} → {p.toVersion})</span></span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1162,6 +1495,8 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
           )}
         </div>
       )}
+
+      <TransitionsSection productId={product.id} />
 
       <Dialog open={variantOpen} onOpenChange={setVariantOpen}>
         <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
@@ -1795,7 +2130,7 @@ function ScheduleEditor({
               >
                 <option value="">Any AZ</option>
                 {azs?.map((az) => (
-                  <option key={az.id} value={az.id}>{az.code}</option>
+                  <option key={az.id} value={az.id}>{az.name} ({az.code})</option>
                 ))}
               </select>
             </div>
@@ -2254,7 +2589,7 @@ function ForecastsAdminSection() {
   const updateForecast = useUpdateForecast();
   const deleteForecast = useDeleteForecast();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<ApprovalStatus | 'ALL'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<ForecastStatus | 'ALL'>('ALL');
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const filtered = forecasts?.filter((f) => {
@@ -2264,11 +2599,11 @@ function ForecastsAdminSection() {
   });
 
   const handleApprove = async (id: string) => {
-    await updateForecast.mutateAsync({ id, status: 'APPROVED' as Forecast['status'], reviewedBy: 'Admin' });
+    await updateForecast.mutateAsync({ id, status: 'APPROVED' as ForecastStatus, reviewedBy: 'Admin' });
   };
 
   const handleReject = async (id: string) => {
-    await updateForecast.mutateAsync({ id, status: 'REJECTED' as Forecast['status'], reviewedBy: 'Admin', rejectionReason: 'Rejected via admin' });
+    await updateForecast.mutateAsync({ id, status: 'REJECTED' as ForecastStatus, reviewedBy: 'Admin', rejectionReason: 'Rejected via admin' });
   };
 
   const handleDelete = (id: string) => {
@@ -2299,7 +2634,7 @@ function ForecastsAdminSection() {
         <p className="text-xs text-slate-600">{new Date(forecast.createdAt).toLocaleDateString('en-US')}</p>
       </div>
       <div className="mt-3 flex justify-end gap-1">
-        {forecast.status === 'PENDING' && (
+        {forecast.status === 'PENDING_TECH' && (
           <>
             <Button size="sm" variant="ghost" onClick={() => handleApprove(forecast.id)} className="h-8 w-8 p-0 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10"><CheckCircle className="h-4 w-4" /></Button>
             <Button size="sm" variant="ghost" onClick={() => handleReject(forecast.id)} className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-500/10"><XCircle className="h-4 w-4" /></Button>
@@ -2317,11 +2652,15 @@ function ForecastsAdminSection() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <Input placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 min-h-[44px]" />
         </div>
-        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as ApprovalStatus | 'ALL')} className="w-40 bg-slate-900 border-slate-700 text-white min-h-[44px]">
+        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as ForecastStatus | 'ALL')} className="w-48 bg-slate-900 border-slate-700 text-white min-h-[44px]">
           <option value="ALL">All statuses</option>
-          <option value="PENDING">Pending</option>
+          <option value="DRAFT">Draft</option>
+          <option value="PENDING_TECH">Tech review</option>
+          <option value="PENDING_MANAGER">Manager approval</option>
+          <option value="PENDING_BUDGET">Budget validation</option>
           <option value="APPROVED">Approved</option>
           <option value="REJECTED">Rejected</option>
+          <option value="CANCELLED">Cancelled</option>
         </Select>
       </div>
       <Card className="bg-slate-900 border-slate-800">
@@ -2366,7 +2705,7 @@ function ForecastsAdminSection() {
                         <td className="py-3 text-slate-500">{new Date(forecast.createdAt).toLocaleDateString('en-US')}</td>
                         <td className="py-3 text-right">
                           <div className="flex items-center justify-end gap-1">
-                            {forecast.status === 'PENDING' && (
+                            {forecast.status === 'PENDING_TECH' && (
                               <>
                                 <Button size="sm" variant="ghost" onClick={() => handleApprove(forecast.id)} className="h-8 w-8 p-0 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10"><CheckCircle className="h-4 w-4" /></Button>
                                 <Button size="sm" variant="ghost" onClick={() => handleReject(forecast.id)} className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-500/10"><XCircle className="h-4 w-4" /></Button>
@@ -2528,8 +2867,10 @@ function AvailabilityZonesSection() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<AvailabilityZone | null>(null);
+  const { data: infraVersions } = useInfraVersions();
+
   const [form, setForm] = useState({
-    name: '', city: '', country: '', region: '', latitude: '', longitude: '', isActive: true,
+    name: '', city: '', country: '', region: '', latitude: '', longitude: '', isActive: true, infraVersionIds: [] as string[],
   });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [searchQuery, setSearchQuery] = useState('');
@@ -2537,7 +2878,7 @@ function AvailabilityZonesSection() {
   const [showCountryDropdown, setShowCountryDropdown] = useState(false);
 
   const resetForm = () => {
-    setForm({ name: '', city: '', country: '', region: '', latitude: '', longitude: '', isActive: true });
+    setForm({ name: '', city: '', country: '', region: '', latitude: '', longitude: '', isActive: true, infraVersionIds: [] });
     setCountryQuery('');
     setEditing(null);
   };
@@ -2547,6 +2888,7 @@ function AvailabilityZonesSection() {
     setForm({
       name: z.name, city: z.city, country: z.country, region: z.region,
       latitude: String(z.latitude), longitude: String(z.longitude), isActive: z.isActive,
+      infraVersionIds: (z as any).infraVersions?.map((iv: any) => iv.infraVersionId) ?? [],
     });
     setCountryQuery(z.country);
     setIsOpen(true);
@@ -2699,6 +3041,12 @@ function AvailabilityZonesSection() {
                 <label htmlFor="az-active" className="text-sm font-medium text-slate-300">Active</label>
               </div>
             </div>
+            <MultiPickupInput
+              label="Hosted Infra Versions (an AZ can host IV1 and IV2)"
+              values={form.infraVersionIds}
+              onChange={(ids) => setForm({ ...form, infraVersionIds: ids })}
+              options={infraVersions?.map((iv) => ({ id: iv.id, label: iv.code })) ?? []}
+            />
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
               <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
@@ -3471,6 +3819,200 @@ function ContinuityLevelsSection() {
   );
 }
 
+// ============ INFRA VERSIONS SECTION ============
+function InfraVersionsSection() {
+  const { data: infraVersions, isLoading, isError, refetch } = useInfraVersions();
+  const { data: allAzs } = useAvailabilityZones();
+  const createIV = useCreateInfraVersion();
+  const updateIV = useUpdateInfraVersion();
+  const deleteIV = useDeleteInfraVersion();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<InfraVersion | null>(null);
+  const [form, setForm] = useState({
+    code: '', name: '', description: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '',
+    phase: 'RELEASED' as LifecyclePhase, isActive: true, changelog: '', availabilityZoneIds: [] as string[],
+  });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+
+  const resetForm = () => {
+    setForm({ code: '', name: '', description: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: LifecyclePhase.RELEASED, isActive: true, changelog: '', availabilityZoneIds: [] });
+    setEditing(null);
+  };
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (iv: InfraVersion) => {
+    setEditing(iv);
+    setForm({
+      code: iv.code,
+      name: iv.name,
+      description: iv.description || '',
+      releaseDate: iv.releaseDate ? iv.releaseDate.slice(0, 10) : '',
+      normalSupportEnd: iv.normalSupportEnd ? iv.normalSupportEnd.slice(0, 10) : '',
+      extendedSupportEnd: iv.extendedSupportEnd ? iv.extendedSupportEnd.slice(0, 10) : '',
+      eolDate: iv.eolDate ? iv.eolDate.slice(0, 10) : '',
+      phase: iv.phase,
+      isActive: iv.isActive,
+      changelog: iv.changelog || '',
+      availabilityZoneIds: iv.availabilityZones?.map((z: any) => z.availabilityZoneId) ?? [],
+    });
+    setIsOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      code: form.code,
+      name: form.name,
+      description: form.description || undefined,
+      releaseDate: form.releaseDate ? new Date(form.releaseDate).toISOString() : undefined,
+      normalSupportEnd: form.normalSupportEnd ? new Date(form.normalSupportEnd).toISOString() : undefined,
+      extendedSupportEnd: form.extendedSupportEnd ? new Date(form.extendedSupportEnd).toISOString() : undefined,
+      eolDate: form.eolDate ? new Date(form.eolDate).toISOString() : undefined,
+      phase: form.phase,
+      isActive: form.isActive,
+      changelog: form.changelog || undefined,
+      availabilityZoneIds: form.availabilityZoneIds,
+    };
+    if (editing) await updateIV.mutateAsync({ id: editing.id, ...payload });
+    else await createIV.mutateAsync(payload);
+    setIsOpen(false);
+    resetForm();
+  };
+
+  const handleDelete = (id: string) => { setConfirmDelete({ open: true, id }); };
+  const handleConfirmDelete = async () => {
+    try { if (confirmDelete.id) await deleteIV.mutateAsync(confirmDelete.id); } catch { }
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  if (isError) return <QueryError message="Unable to load infra versions." onRetry={refetch} />;
+
+  const mobileCards = infraVersions?.map((iv) => (
+    <MobileCard key={iv.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{iv.name}</p>
+          <p className="text-sm text-slate-400">{iv.code} — {iv.availabilityZones?.length ?? 0} AZ(s)</p>
+        </div>
+        <Badge variant="outline" className={iv.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+          {iv.isActive ? 'Active' : 'Inactive'}
+        </Badge>
+      </div>
+      <div className="mt-2 text-sm text-slate-500">Phase: {iv.phase.replace(/_/g, ' ')}</div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openEdit(iv)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => handleDelete(iv.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add Infra Version</Button>
+      </div>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable headers={['Code', 'Name', 'Release Date', 'Normal Support End', 'Extended Support End', 'EOL Date', 'Phase', 'AZs', 'Active']} isLoading={isLoading} emptyMessage="No infra versions" mobileCards={mobileCards}>
+            {infraVersions?.map((iv) => (
+              <tr key={iv.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{iv.code}</td>
+                <td className="py-3 text-slate-400">{iv.name}</td>
+                <td className="py-3 text-slate-400">{iv.releaseDate ? new Date(iv.releaseDate).toLocaleDateString() : '—'}</td>
+                <td className="py-3 text-slate-400">{iv.normalSupportEnd ? new Date(iv.normalSupportEnd).toLocaleDateString() : '—'}</td>
+                <td className="py-3 text-slate-400">{iv.extendedSupportEnd ? new Date(iv.extendedSupportEnd).toLocaleDateString() : '—'}</td>
+                <td className="py-3 text-slate-400">{iv.eolDate ? new Date(iv.eolDate).toLocaleDateString() : '—'}</td>
+                <td className="py-3">
+                  <Badge variant="outline" className="border-blue-500/20 text-blue-400">{iv.phase.replace(/_/g, ' ')}</Badge>
+                </td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {iv.availabilityZones?.map((z: any) => (
+                      <Badge key={z.availabilityZoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{z.availabilityZone?.name}</Badge>
+                    )) ?? <span className="text-slate-600">—</span>}
+                  </div>
+                </td>
+                <td className="py-3">
+                  <Badge variant="outline" className={iv.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+                    {iv.isActive ? 'Active' : 'Inactive'}
+                  </Badge>
+                </td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(iv)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(iv.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit Infra Version' : 'New Infra Version'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Code</label>
+                <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required disabled={!!editing} placeholder="IV3" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Name</label>
+                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="Infrastructure Generation 3" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+              </div>
+            </div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className="bg-slate-950 border-slate-700 text-white" /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Release Date</label><Input type="date" value={form.releaseDate} onChange={(e) => setForm({ ...form, releaseDate: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Normal Support End</label><Input type="date" value={form.normalSupportEnd} onChange={(e) => setForm({ ...form, normalSupportEnd: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Extended Support End</label><Input type="date" value={form.extendedSupportEnd} onChange={(e) => setForm({ ...form, extendedSupportEnd: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">EOL Date</label><Input type="date" value={form.eolDate} onChange={(e) => setForm({ ...form, eolDate: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Phase</label>
+              <select value={form.phase} onChange={(e) => setForm({ ...form, phase: e.target.value as LifecyclePhase })} className="w-full h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white">
+                <option value="RELEASED">Released</option>
+                <option value="NORMAL_SUPPORT">Normal Support</option>
+                <option value="EXTENDED_SUPPORT">Extended Support</option>
+                <option value="NO_SUPPORT">No Support</option>
+                <option value="EOL">EOL</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="iv-active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="rounded border-slate-700 bg-slate-950" />
+              <label htmlFor="iv-active" className="text-sm text-slate-300">Active</label>
+            </div>
+            <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Changelog</label><Textarea value={form.changelog} onChange={(e) => setForm({ ...form, changelog: e.target.value })} rows={3} className="bg-slate-950 border-slate-700 text-white" /></div>
+            <MultiPickupInput
+              label="Hosted Availability Zones (an AZ can host IV1 and IV2)"
+              values={form.availabilityZoneIds}
+              onChange={(ids) => setForm({ ...form, availabilityZoneIds: ids })}
+              options={allAzs?.map((az) => ({ id: az.id, label: az.name ? `${az.name} (${az.code})` : az.code })) ?? []}
+            />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">{editing ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(o) => setConfirmDelete((c) => ({ ...c, open: o }))}
+        title="Delete Infra Version"
+        description="Are you sure you want to delete this infra version? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        variant="destructive"
+      />
+    </div>
+  );
+}
+
 // ============ MAIN ADMIN PAGE ============
 export default function Admin() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -3478,7 +4020,9 @@ export default function Admin() {
   const tabs = [
     { value: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { value: 'products', label: 'Products', icon: Package },
+    { value: 'transitions', label: 'Transitions', icon: ArrowRightLeft },
     { value: 'product-versions', label: 'Product Versions', icon: Box },
+    { value: 'infra-versions', label: 'Infra Versions', icon: Boxes },
     { value: 'os', label: 'OS', icon: Monitor },
     { value: 'categories', label: 'Categories', icon: Layers },
     { value: 'flavors', label: 'Flavors', icon: Cpu },
@@ -3521,10 +4065,12 @@ export default function Admin() {
 
         <TabsContent value="dashboard" className="animate-fade-in"><DashboardSection onNavigate={setActiveTab} /></TabsContent>
         <TabsContent value="products" className="animate-fade-in"><ProductsSection /></TabsContent>
+        <TabsContent value="transitions" className="animate-fade-in"><TransitionsAdminSection /></TabsContent>
         <TabsContent value="os" className="animate-fade-in"><OSSection /></TabsContent>
         <TabsContent value="categories" className="animate-fade-in"><CategoriesSection /></TabsContent>
         <TabsContent value="flavors" className="animate-fade-in"><FlavorsSection /></TabsContent>
         <TabsContent value="product-versions" className="animate-fade-in"><ProductVersionsSection /></TabsContent>
+        <TabsContent value="infra-versions" className="animate-fade-in"><InfraVersionsSection /></TabsContent>
         <TabsContent value="dependencies" className="animate-fade-in"><DependenciesSection /></TabsContent>
         <TabsContent value="applications" className="animate-fade-in"><ApplicationsSection /></TabsContent>
         <TabsContent value="continuity-levels" className="animate-fade-in"><ContinuityLevelsSection /></TabsContent>

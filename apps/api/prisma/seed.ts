@@ -1,4 +1,4 @@
-import { PrismaClient, DependencyType, ApprovalStatus, LifecyclePhase, InstanceStatus, HealthStatus, MaintenanceStatus, ComputeType, PerformanceTargetType, VisibilityType } from '@prisma/client';
+import { PrismaClient, DependencyType, ForecastStatus, LifecyclePhase, InstanceStatus, HealthStatus, MaintenanceStatus, ComputeType, PerformanceTargetType, VisibilityType } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -521,12 +521,21 @@ async function main() {
     },
   });
 
-  // Create Users
-  await prisma.user.create({
-    data: { email: 'admin@cloudmarket.local', name: 'System Administrator', role: 'ADMIN' },
+  // Create Users (roles for the forecast lifecycle governance)
+  const adminUser = await prisma.user.create({
+    data: { email: 'admin@cloudmarket.local', name: 'System Administrator', role: 'ADMIN', roles: ['ADMIN', 'REQUESTER', 'TECH_LEAD', 'MANAGER', 'FINANCE'] },
+  });
+  const managerUser = await prisma.user.create({
+    data: { email: 'manager@cloudmarket.local', name: 'Carol Manager', role: 'USER', roles: ['MANAGER'] },
+  });
+  const techLeadUser = await prisma.user.create({
+    data: { email: 'techlead@cloudmarket.local', name: 'Trevor TechLead', role: 'USER', roles: ['TECH_LEAD'] },
+  });
+  const financeUser = await prisma.user.create({
+    data: { email: 'finance@cloudmarket.local', name: 'Fiona Finance', role: 'USER', roles: ['FINANCE'] },
   });
   await prisma.user.create({
-    data: { email: 'user@cloudmarket.local', name: 'Demo User', role: 'USER' },
+    data: { email: 'user@cloudmarket.local', name: 'Demo User', role: 'USER', roles: ['REQUESTER'], managerId: managerUser.id },
   });
 
   // Create Applications
@@ -545,7 +554,8 @@ async function main() {
     data: {
       requestedBy: 'Demo User',
       requesterEmail: 'user@cloudmarket.local',
-      status: ApprovalStatus.PENDING,
+      status: ForecastStatus.PENDING_TECH,
+      submittedAt: new Date(),
       justification: 'Need VMs for development team expansion',
       applicationId: appDevTools.id,
       environment: 'DEV',
@@ -566,7 +576,8 @@ async function main() {
     data: {
       requestedBy: 'Demo User',
       requesterEmail: 'user@cloudmarket.local',
-      status: ApprovalStatus.APPROVED,
+      status: ForecastStatus.APPROVED,
+      submittedAt: new Date(),
       justification: 'Windows servers for finance department',
       reviewedBy: 'System Administrator',
       reviewedAt: new Date(),
@@ -589,7 +600,8 @@ async function main() {
     data: {
       requestedBy: 'Demo User',
       requesterEmail: 'user@cloudmarket.local',
-      status: ApprovalStatus.REJECTED,
+      status: ForecastStatus.REJECTED,
+      submittedAt: new Date(),
       lines: {
         create: [
           {

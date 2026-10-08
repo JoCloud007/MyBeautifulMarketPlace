@@ -5,11 +5,31 @@ import { forecastRoutes } from '../routes/forecasts';
 var prismaMock: any = {};
 
 jest.mock('@prisma/client', () => ({
-  PrismaClient: jest.fn().mockImplementation(() => prismaMock),
-  ApprovalStatus: {
-    PENDING: 'PENDING',
+  PrismaClient: jest.fn().mockImplementation(() => {
+    return new Proxy(
+      {},
+      {
+        get(_target, prop: string) {
+          return prismaMock?.[prop] ?? {};
+        },
+      }
+    );
+  }),
+  ForecastStatus: {
+    DRAFT: 'DRAFT',
+    PENDING_TECH: 'PENDING_TECH',
+    PENDING_MANAGER: 'PENDING_MANAGER',
+    PENDING_BUDGET: 'PENDING_BUDGET',
     APPROVED: 'APPROVED',
     REJECTED: 'REJECTED',
+    CANCELLED: 'CANCELLED',
+  },
+  ForecastAction: {
+    CREATE: 'CREATE', UPDATE: 'UPDATE', SUBMIT: 'SUBMIT', APPROVE: 'APPROVE',
+    REJECT: 'REJECT', CANCEL: 'CANCEL', RESUBMIT: 'RESUBMIT',
+  },
+  Role: {
+    ADMIN: 'ADMIN', REQUESTER: 'REQUESTER', TECH_LEAD: 'TECH_LEAD', MANAGER: 'MANAGER', FINANCE: 'FINANCE',
   },
 }));
 

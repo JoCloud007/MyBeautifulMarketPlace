@@ -1,7 +1,9 @@
 import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
-import type { Product, Category, Forecast, ForecastStats, Flavor, Dependency, User, AvailabilityZone, Zone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, ProductVersion, UpgradePath, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats, PresentationOrder, PresentationStepType, PerformanceProfile, Country, Region } from '@cloudmarket/shared-types';
+import type { Product, Category, Forecast, ForecastStats, ForecastTransition, GovernanceDefinition, ServiceNowStatus, Flavor, Dependency, User, AvailabilityZone, Zone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, ProductVersion, UpgradePath, Transition, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats, PresentationOrder, PresentationStepType, PerformanceProfile, Country, Region, InfraVersion } from '@cloudmarket/shared-types';
+import type { ForecastStatus } from '@cloudmarket/shared-types';
+import { useAuthStore, type SimulatedUser } from '@/stores/useAuthStore';
 
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
 
@@ -427,12 +429,46 @@ export function useDeleteDependency() {
   });
 }
 
-// ========== FORECASTS ==========
+// ========== FORECASTS (lifecycle) ==========
+
+const FORECAST_KEYS = ['forecasts', 'forecast-stats', 'forecast-trends', 'resources-by-zone', 'demand-heatmap', 'forecast-queue', 'forecast-governance'];
+
+function invalidateForecastQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  for (const key of FORECAST_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
+}
+
+/** Actor fields appended to lifecycle mutations from the simulated user. */
+export function actorFields(user: SimulatedUser | null) {
+  if (!user) return { actorName: 'Anonymous' };
+  return { actorId: user.id, actorName: user.name, actorEmail: user.email };
+}
 
 export function useForecasts() {
   return useQuery<Forecast[]>({
     queryKey: ['forecasts'],
     queryFn: () => fetchJson('/forecasts'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+/** Approver queue: forecasts at the given lifecycle status. */
+export function useForecastQueue(status: ForecastStatus | null) {
+  return useQuery<Forecast[]>({
+    queryKey: ['forecast-queue', status],
+    queryFn: () => fetchJson('/forecasts', { queue: status ?? undefined }),
+    enabled: !!status,
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+/** Requester view: my own forecasts by email. */
+export function useMyForecasts(email: string | null | undefined) {
+  return useQuery<Forecast[]>({
+    queryKey: ['forecasts', 'mine', email],
+    queryFn: () => fetchJson('/forecasts', { mine: email ?? undefined }),
+    enabled: !!email,
     retry: 3,
     retryDelay: 2000,
   });
@@ -447,52 +483,79 @@ export function useForecastStats() {
   });
 }
 
+export function useGovernance() {
+  return useQuery<GovernanceDefinition & { recentTransitions: ForecastTransition[] }>({
+    queryKey: ['forecast-governance'],
+    queryFn: () => fetchJson('/forecasts/governance'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
 export function useCreateForecast() {
   const queryClient = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
   return useMutation({
-    mutationFn: async (payload: Partial<Forecast>) => {
+    mutationFn: async (payload: Record<string, any>) => {
       const { data } = await api.post('/forecasts', payload);
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['forecasts'] });
-      queryClient.invalidateQueries({ queryKey: ['forecast-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['forecast-trends'] });
-      queryClient.invalidateQueries({ queryKey: ['resources-by-zone'] });
-      queryClient.invalidateQueries({ queryKey: ['demand-heatmap'] });
+      invalidateForecastQueries(queryClient);
       addToast('Forecast request created', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Error during creation', 'error');
+      addToast(err.response?.data?.error || err.response?.data?.message || 'Error during creation', 'error');
     },
   });
 }
 
+/** Edit a forecast — only allowed by the API while it is in DRAFT. */
 export function useUpdateForecast() {
   const queryClient = useQueryClient();
   const addToast = useToastStore((s) => s.addToast);
   return useMutation({
-    mutationFn: async ({ id, ...payload }: { id: string } & Partial<Forecast>) => {
+    mutationFn: async ({ id, ...payload }: { id: string } & Record<string, any>) => {
       const { data } = await api.patch(`/forecasts/${id}`, payload);
       return data;
     },
-    onSuccess: (data, variables) => {
-      queryClient.setQueryData(['forecasts'], (old: Forecast[] | undefined) =>
-        old?.map((f) => (f.id === variables.id ? data : f)) ?? []
-      );
-      queryClient.invalidateQueries({ queryKey: ['forecasts'] });
-      queryClient.invalidateQueries({ queryKey: ['forecast-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['forecast-trends'] });
-      queryClient.invalidateQueries({ queryKey: ['resources-by-zone'] });
-      queryClient.invalidateQueries({ queryKey: ['demand-heatmap'] });
-      const status = (variables as any).status;
-      if (status === 'APPROVED') addToast('Request approved', 'success');
-      else if (status === 'REJECTED') addToast('Request rejected', 'warning');
-      else addToast('Request updated', 'success');
+    onSuccess: () => {
+      invalidateForecastQueries(queryClient);
+      addToast('Request updated', 'success');
     },
     onError: (err: any) => {
-      addToast(err.response?.data?.message || 'Error during update', 'error');
+      addToast(err.response?.data?.error || err.response?.data?.message || 'Error during update', 'error');
+    },
+  });
+}
+
+/** Generic lifecycle action: submit / approve / reject / cancel / resubmit. */
+export function useForecastAction(action: 'submit' | 'approve' | 'reject' | 'cancel' | 'resubmit') {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  const user = useAuthStore((s) => s.user);
+  return useMutation({
+    mutationFn: async ({ id, comment }: { id: string; comment?: string }) => {
+      const { data } = await api.post(`/forecasts/${id}/${action}`, {
+        ...actorFields(user),
+        ...(comment !== undefined ? { comment } : {}),
+      });
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      invalidateForecastQueries(queryClient);
+      const messages: Record<string, string> = {
+        submit: 'Request submitted for technical review',
+        approve: 'Request approved',
+        reject: 'Request rejected',
+        cancel: 'Request cancelled',
+        resubmit: 'Request resubmitted',
+      };
+      addToast(messages[action], action === 'reject' ? 'warning' : 'success');
+      void variables;
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.error || err.response?.data?.message || `Error during ${action}`, 'error');
     },
   });
 }
@@ -508,15 +571,40 @@ export function useDeleteForecast() {
       queryClient.setQueryData(['forecasts'], (old: Forecast[] | undefined) =>
         old?.filter((f) => f.id !== id) ?? []
       );
-      queryClient.invalidateQueries({ queryKey: ['forecasts'] });
-      queryClient.invalidateQueries({ queryKey: ['forecast-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['forecast-trends'] });
-      queryClient.invalidateQueries({ queryKey: ['resources-by-zone'] });
-      queryClient.invalidateQueries({ queryKey: ['demand-heatmap'] });
+      invalidateForecastQueries(queryClient);
       addToast('Request deleted', 'success');
     },
     onError: (err: any) => {
       addToast(err.response?.data?.message || 'Unable to delete this request', 'error');
+    },
+  });
+}
+
+// ========== SERVICENOW (optional integration) ==========
+
+export function useServiceNowStatus() {
+  return useQuery<ServiceNowStatus>({
+    queryKey: ['servicenow-status'],
+    queryFn: () => fetchJson('/servicenow/status'),
+    retry: 1,
+  });
+}
+
+export function useServiceNowSync() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post('/servicenow/sync');
+      return data;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['servicenow-status'] });
+      queryClient.invalidateQueries({ queryKey: ['applications'] });
+      addToast(`ServiceNow sync OK: ${data.imported} imported, ${data.updated} updated`, 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.error || 'ServiceNow sync failed', 'error');
     },
   });
 }
@@ -1178,6 +1266,83 @@ export function useDeleteUpgradePath() {
     },
     onError: (err: any) => {
       addToast(err.response?.data?.message || 'Unable to delete this upgrade path', 'error');
+    },
+  });
+}
+
+// ========== TRANSITIONS ==========
+
+export function useTransitions() {
+  return useQuery<Transition[]>({
+    queryKey: ['transitions'],
+    queryFn: () => fetchJson('/products/transitions/all'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useProductTransitions(productId: string) {
+  return useQuery<{ outgoing: Transition[]; incoming: Transition[] }>({
+    queryKey: ['transitions', 'product', productId],
+    queryFn: () => fetchJson(`/products/${productId}/transitions`),
+    enabled: !!productId,
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreateTransition() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ productId, ...payload }: { productId: string } & Partial<Transition>) => {
+      const { data } = await api.post(`/products/${productId}/transitions`, payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transitions'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Transition created successfully', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error during creation', 'error');
+    },
+  });
+}
+
+export function useUpdateTransition() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & Partial<Transition>) => {
+      const { data } = await api.patch(`/products/transitions/${id}`, payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transitions'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Transition updated successfully', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Error during update', 'error');
+    },
+  });
+}
+
+export function useDeleteTransition() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/products/transitions/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transitions'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Transition deleted', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.message || 'Unable to delete this transition', 'error');
     },
   });
 }
@@ -1967,6 +2132,49 @@ export function useDeleteRegion() {
     mutationFn: (id: string) => fetchJson(`/regions/${id}`, { method: 'DELETE' }),
     onSuccess: async () => { await qc.invalidateQueries({ queryKey: ['regions'] }); await qc.refetchQueries({ queryKey: ['regions'] }); addToast('Region deleted successfully', 'success'); },
     onError: async (err: any) => { await qc.invalidateQueries({ queryKey: ['regions'] }); await qc.refetchQueries({ queryKey: ['regions'] }); addToast(err.message || 'Failed to delete region', 'error'); },
+  });
+}
+
+// ========== INFRA VERSIONS ==========
+
+export function useInfraVersions() {
+  return useQuery<InfraVersion[]>({
+    queryKey: ['infra-versions'],
+    queryFn: () => fetchJson('/infra-versions'),
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
+export function useCreateInfraVersion() {
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: (payload: Partial<InfraVersion> & { availabilityZoneIds?: string[] }) =>
+      fetchJson('/infra-versions', { method: 'POST', body: JSON.stringify(payload) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['infra-versions'] }); addToast('Infra version created successfully', 'success'); },
+    onError: (err: any) => addToast(err.response?.data?.message || err.response?.data?.error || 'Failed to create infra version', 'error'),
+  });
+}
+
+export function useUpdateInfraVersion() {
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: ({ id, ...payload }: { id: string } & Partial<InfraVersion> & { availabilityZoneIds?: string[] }) =>
+      fetchJson(`/infra-versions/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['infra-versions'] }); addToast('Infra version updated', 'success'); },
+    onError: (err: any) => addToast(err.response?.data?.message || err.response?.data?.error || 'Failed to update infra version', 'error'),
+  });
+}
+
+export function useDeleteInfraVersion() {
+  const qc = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: (id: string) => fetchJson(`/infra-versions/${id}`, { method: 'DELETE' }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['infra-versions'] }); addToast('Infra version deleted', 'success'); },
+    onError: (err: any) => addToast(err.response?.data?.message || err.response?.data?.error || 'Failed to delete infra version', 'error'),
   });
 }
 

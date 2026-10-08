@@ -33,12 +33,12 @@ model Product {
   forecastLines       ForecastLine[]
   upgradeFrom         UpgradePath[]             @relation("UpgradeFrom")
   upgradeTo           UpgradePath[]             @relation("UpgradeTo")
+  transitionsFrom     Transition[]              @relation("TransitionsFrom")
+  transitionsTo       Transition[]              @relation("TransitionsTo")
   instances           Instance[]
   zones               ProductZone[]
   regions             ProductRegion[]
   availabilityZones   ProductAvailabilityZone[]
-  regionId            String?
-  region              Region?                   @relation(fields: [regionId], references: [id])
   productVersions     ProductVersion[]
   performanceProfiles PerformanceProfile[]
   documentation       String?
@@ -46,6 +46,7 @@ model Product {
   os                  String?
   initialReleaseDate  DateTime?
   productEOLDate      DateTime?
+  status              ProductStatus             @default(AVAILABLE)
   isActive            Boolean                   @default(true)
   createdAt           DateTime                  @default(now())
   updatedAt           DateTime                  @updatedAt
@@ -65,8 +66,6 @@ model ProductVersion {
   changelog          String?
   createdAt          DateTime                         @default(now())
   updatedAt          DateTime                         @updatedAt
-  regionId           String?
-  region             Region?                          @relation(fields: [regionId], references: [id])
   regions            ProductVersionRegion[]
   zones              ProductVersionZone[]
   availabilityZones  ProductVersionAvailabilityZone[]
@@ -148,6 +147,29 @@ model ProductVariantAvailabilityZone {
   @@id([variantId, availabilityZoneId])
 }
 
+model Transition {
+  id            String        @id @default(uuid())
+  name          String
+  slug          String        @unique
+  description   String?
+  fromProductId String
+  fromProduct   Product       @relation("TransitionsFrom", fields: [fromProductId], references: [id])
+  toProductId   String
+  toProduct     Product       @relation("TransitionsTo", fields: [toProductId], references: [id])
+  fromVersion   String
+  toVersion     String
+  migrationType MigrationType @default(REBUILD)
+  status        ProductStatus @default(BACKLOG)
+  availableFrom DateTime?
+  eolDate       DateTime?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([fromProductId])
+  @@index([toProductId])
+}
+
 model UpgradePath {
   id            String        @id @default(uuid())
   fromProductId String
@@ -200,6 +222,8 @@ model Application {
   id                 String              @id @default(uuid())
   name               String              @unique
   description        String?
+  snowSysId          String?             @unique
+  source             String              @default("MANUAL")
   continuityLevelId  String
   continuityLevel    ContinuityLevel     @relation(fields: [continuityLevelId], references: [id])
   owner              String
@@ -227,19 +251,26 @@ model Forecast {
   requestedBy     String
   requesterEmail  String
   targetDate      DateTime?
-  status          ApprovalStatus @default(PENDING)
+  status          ForecastStatus @default(DRAFT)
   justification   String?
   reviewedBy      String?
   reviewedAt      DateTime?
   rejectionReason String?
+  estimatedCost   Float?
+  costCurrency    String         @default("EUR")
+  submittedAt     DateTime?
   requestedAt     DateTime       @default(now())
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   lines           ForecastLine[]
+  transitions     ForecastTransition[]
   instances       Instance[]
   applicationId   String?
   application     Application?   @relation(fields: [applicationId], references: [id], onDelete: SetNull)
   environment     Environment    @default(DEV)
+
+  @@index([status])
+  @@index([requestedBy])
 }
 
 model ForecastLine {
@@ -257,6 +288,65 @@ model ForecastLine {
   quantity   Int              @default(1)
   metadata   Json?
   resiliency ResiliencyLevel  @default(STANDARD)
+  unitPrice  Float?
+}
+
+model ServiceNowConfig {
+  id             String    @id @default("singleton")
+  instanceUrl    String?
+  username       String?
+  password       String?
+  snowTable      String    @default("cmdb_ci_appl")
+  enabled        Boolean   @default(false)
+  lastSyncAt     DateTime?
+  lastSyncStatus String?
+  lastSyncError  String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model ForecastTransition {
+  id         String         @id @default(uuid())
+  forecastId String
+  forecast   Forecast       @relation(fields: [forecastId], references: [id], onDelete: Cascade)
+  action     ForecastAction
+  fromStatus ForecastStatus
+  toStatus   ForecastStatus
+  actorName  String
+  actorEmail String?
+  actorRole  Role?
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  @@index([forecastId])
+  @@index([createdAt])
+}
+
+model InfraVersion {
+  id                 String                 @id @default(uuid())
+  code               String                 @unique
+  name               String
+  description        String?
+  releaseDate        DateTime?
+  normalSupportEnd   DateTime?
+  extendedSupportEnd DateTime?
+  eolDate            DateTime?
+  phase              LifecyclePhase         @default(RELEASED)
+  isActive           Boolean                @default(true)
+  changelog          String?
+  availabilityZones  AzInfraVersion[]
+  availabilitySchedules AvailabilitySchedule[]
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+}
+
+model AzInfraVersion {
+  availabilityZoneId String           @map("availabilityZoneId")
+  availabilityZone   AvailabilityZone @relation(fields: [availabilityZoneId], references: [id], onDelete: Cascade)
+  infraVersionId     String
+  infraVersion       InfraVersion     @relation(fields: [infraVersionId], references: [id], onDelete: Cascade)
+
+  @@id([availabilityZoneId, infraVersionId])
 }
 
 model Country {
@@ -276,8 +366,6 @@ model Region {
   isActive              Boolean                @default(true)
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
-  products              Product[]
-  productVersions       ProductVersion[]
   productRegions        ProductRegion[]
   productVersionRegions ProductVersionRegion[]
   flavorRegions         FlavorRegion[]
@@ -302,6 +390,7 @@ model AvailabilityZone {
   productAvailabilityZones ProductAvailabilityZone[]
   flavorAvailabilityZones  FlavorAvailabilityZone[]
   availabilitySchedules    AvailabilitySchedule[]
+  infraVersions            AzInfraVersion[]
   createdAt                DateTime                         @default(now())
   updatedAt                DateTime                         @updatedAt
 }
@@ -391,6 +480,10 @@ model User {
   email     String   @unique
   name      String
   role      UserRole @default(USER)
+  roles     Role[]   @default([])
+  managerId String?
+  manager   User?    @relation("UserManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports   User[]   @relation("UserManager")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -496,6 +589,34 @@ enum UserRole {
   USER
 }
 
+enum ForecastStatus {
+  DRAFT
+  PENDING_TECH
+  PENDING_MANAGER
+  PENDING_BUDGET
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ForecastAction {
+  CREATE
+  UPDATE
+  SUBMIT
+  APPROVE
+  REJECT
+  CANCEL
+  RESUBMIT
+}
+
+enum Role {
+  ADMIN
+  REQUESTER
+  TECH_LEAD
+  MANAGER
+  FINANCE
+}
+
 enum Environment {
   PRD
   DEV
@@ -506,6 +627,15 @@ enum ResiliencyLevel {
   STANDARD
   HA
   MULTI_AZ
+}
+
+enum ProductStatus {
+  BACKLOG
+  OPPORTUNITY
+  AVAILABLE
+  AVAILABLE_PILOT_PENDING
+  DELAY_PENDING
+  CANCELLED
 }
 
 enum LifecyclePhase {
@@ -562,6 +692,7 @@ enum AvailabilityTargetType {
   PRODUCT
   PRODUCT_VERSION
   FLAVOR
+  INFRA_VERSION
 }
 
 model ProductRegion {
@@ -619,6 +750,8 @@ model AvailabilitySchedule {
   az             AvailabilityZone?      @relation(fields: [azId], references: [id], onDelete: SetNull)
   zoneId         String?
   zone           Zone?                  @relation(fields: [zoneId], references: [id], onDelete: SetNull)
+  infraVersionId String?
+  infraVersion   InfraVersion?          @relation(fields: [infraVersionId], references: [id], onDelete: SetNull)
   availableFrom  DateTime?
   availableUntil DateTime?
   status         AvailabilityType       @default(STANDARD)

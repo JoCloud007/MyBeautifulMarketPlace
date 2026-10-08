@@ -4,6 +4,34 @@ export enum ApprovalStatus {
   REJECTED = 'REJECTED',
 }
 
+export enum ForecastStatus {
+  DRAFT = 'DRAFT',
+  PENDING_TECH = 'PENDING_TECH',
+  PENDING_MANAGER = 'PENDING_MANAGER',
+  PENDING_BUDGET = 'PENDING_BUDGET',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum ForecastAction {
+  CREATE = 'CREATE',
+  UPDATE = 'UPDATE',
+  SUBMIT = 'SUBMIT',
+  APPROVE = 'APPROVE',
+  REJECT = 'REJECT',
+  CANCEL = 'CANCEL',
+  RESUBMIT = 'RESUBMIT',
+}
+
+export enum Role {
+  ADMIN = 'ADMIN',
+  REQUESTER = 'REQUESTER',
+  TECH_LEAD = 'TECH_LEAD',
+  MANAGER = 'MANAGER',
+  FINANCE = 'FINANCE',
+}
+
 export enum DependencyType {
   REQUIRED = 'REQUIRED',
   RECOMMENDED = 'RECOMMENDED',
@@ -24,6 +52,15 @@ export enum ResiliencyLevel {
 export enum ComputeType {
   PHYSICAL = 'PHYSICAL',
   VIRTUAL = 'VIRTUAL',
+}
+
+export enum ProductStatus {
+  BACKLOG = 'BACKLOG',
+  OPPORTUNITY = 'OPPORTUNITY',
+  AVAILABLE = 'AVAILABLE',
+  AVAILABLE_PILOT_PENDING = 'AVAILABLE_PILOT_PENDING',
+  DELAY_PENDING = 'DELAY_PENDING',
+  CANCELLED = 'CANCELLED',
 }
 
 export enum LifecyclePhase {
@@ -214,7 +251,7 @@ export interface FlavorAvailabilityZone {
 
 export interface AvailabilitySchedule {
   id: string;
-  targetType: 'PRODUCT' | 'PRODUCT_VERSION' | 'FLAVOR';
+  targetType: 'PRODUCT' | 'PRODUCT_VERSION' | 'FLAVOR' | 'INFRA_VERSION';
   targetId: string;
   regionId: string | null;
   region: Region | null;
@@ -222,12 +259,39 @@ export interface AvailabilitySchedule {
   az: AvailabilityZone | null;
   zoneId: string | null;
   zone: Zone | null;
+  infraVersionId?: string | null;
+  infraVersion?: InfraVersion | null;
   availableFrom: string | null;
   availableUntil: string | null;
   status: AvailabilityType;
   deleted?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface InfraVersion {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  releaseDate: string | null;
+  normalSupportEnd: string | null;
+  extendedSupportEnd: string | null;
+  eolDate: string | null;
+  phase: LifecyclePhase;
+  isActive: boolean;
+  changelog: string | null;
+  availabilityZones?: AzInfraVersion[];
+  availabilitySchedules?: AvailabilitySchedule[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AzInfraVersion {
+  availabilityZoneId: string;
+  availabilityZone: AvailabilityZone;
+  infraVersionId: string;
+  infraVersion: InfraVersion;
 }
 
 export interface OperatingSystemZone {
@@ -240,9 +304,31 @@ export interface UpgradePath {
   id: string;
   fromProductId: string;
   toProductId: string;
+  fromProduct?: { id: string; name: string; slug: string };
+  toProduct?: { id: string; name: string; slug: string };
   fromVersion: string;
   toVersion: string;
   migrationType: MigrationType;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Transition {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  fromProductId: string;
+  fromProduct?: { id: string; name: string; slug: string };
+  toProductId: string;
+  toProduct?: { id: string; name: string; slug: string };
+  fromVersion: string;
+  toVersion: string;
+  migrationType: MigrationType;
+  status: ProductStatus;
+  availableFrom: string | null;
+  eolDate: string | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -270,6 +356,7 @@ export interface Product {
   os: string | null;
   initialReleaseDate: string | null;
   productEOLDate: string | null;
+  status: ProductStatus;
   productVersions: ProductVersion[];
   regionId?: string | null;
   region?: Region | null;
@@ -356,6 +443,8 @@ export interface Application {
   id: string;
   name: string;
   description: string | null;
+  snowSysId: string | null;
+  source: string;
   continuityLevelId: string;
   continuityLevel: ContinuityLevel;
   owner: string;
@@ -430,6 +519,20 @@ export interface ForecastLine {
   quantity: number;
   metadata?: any;
   resiliency: ResiliencyLevel;
+  unitPrice: number | null;
+}
+
+export interface ForecastTransition {
+  id: string;
+  forecastId: string;
+  action: ForecastAction;
+  fromStatus: ForecastStatus;
+  toStatus: ForecastStatus;
+  actorName: string;
+  actorEmail: string | null;
+  actorRole: Role | null;
+  comment: string | null;
+  createdAt: string;
 }
 
 export interface Forecast {
@@ -438,11 +541,15 @@ export interface Forecast {
   requesterEmail: string;
   targetDate?: string;
   lines: ForecastLine[];
-  status: ApprovalStatus;
+  transitions?: ForecastTransition[];
+  status: ForecastStatus;
   justification: string | null;
   reviewedBy: string | null;
   reviewedAt: string | null;
   rejectionReason: string | null;
+  estimatedCost: number | null;
+  costCurrency: string;
+  submittedAt: string | null;
   requestedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -456,8 +563,40 @@ export interface User {
   email: string;
   name: string;
   role: 'ADMIN' | 'USER';
+  roles: Role[];
+  managerId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface LifecycleStep {
+  status: ForecastStatus;
+  label: string;
+  description: string;
+  role: Role | null;
+}
+
+export interface GovernanceRule {
+  id: string;
+  title: string;
+  description: string;
+}
+
+export interface GovernanceDefinition {
+  steps: LifecycleStep[];
+  rules: GovernanceRule[];
+  sla: { step: ForecastStatus; targetDays: number }[];
+}
+
+export interface ServiceNowStatus {
+  configured: boolean;
+  enabled: boolean;
+  instanceUrl: string | null;
+  username: string | null;
+  snowTable: string;
+  lastSyncAt: string | null;
+  lastSyncStatus: string | null;
+  lastSyncError: string | null;
 }
 
 export interface AvailabilityZone {
@@ -488,6 +627,8 @@ export interface ForecastStats {
   pending: number;
   approved: number;
   rejected: number;
+  byStatus: { status: ForecastStatus; count: number }[];
+  totalEstimatedCost: number;
 }
 
 export interface AdminDashboard {

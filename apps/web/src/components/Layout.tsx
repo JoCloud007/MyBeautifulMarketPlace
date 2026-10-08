@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
+import { UserSwitcher } from '@/components/UserSwitcher';
 
 /* ── Nav structure ─────────────────────────────────────────────── */
 
@@ -31,7 +32,6 @@ const navGroups = [
     label: 'Planning',
     icon: BarChart3,
     items: [
-      { path: '/forecasts', label: 'Forecasts', icon: BarChart3 },
       { path: '/applications', label: 'Applications', icon: Layers },
     ],
   },
@@ -39,6 +39,7 @@ const navGroups = [
 
 const standalone = [
   { path: '/', label: 'Home', icon: Home },
+  { path: '/forecasts', label: 'Forecast', icon: BarChart3 },
   { path: '/admin', label: 'Admin', icon: Shield },
 ];
 
@@ -183,6 +184,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               );
             })}
           </div>
+
+          {/* Identity switcher (simulated auth) */}
+          <UserSwitcher />
 
           {/* Mobile menu button */}
           <button

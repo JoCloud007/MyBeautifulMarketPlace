@@ -9,6 +9,17 @@ jest.mock('@prisma/client', () => ({
     return prismaMock;
   }),
   ApprovalStatus: { PENDING: 'PENDING', APPROVED: 'APPROVED', REJECTED: 'REJECTED' },
+  ForecastStatus: {
+    DRAFT: 'DRAFT', PENDING_TECH: 'PENDING_TECH', PENDING_MANAGER: 'PENDING_MANAGER',
+    PENDING_BUDGET: 'PENDING_BUDGET', APPROVED: 'APPROVED', REJECTED: 'REJECTED', CANCELLED: 'CANCELLED',
+  },
+  ForecastAction: {
+    CREATE: 'CREATE', UPDATE: 'UPDATE', SUBMIT: 'SUBMIT', APPROVE: 'APPROVE',
+    REJECT: 'REJECT', CANCEL: 'CANCEL', RESUBMIT: 'RESUBMIT',
+  },
+  Role: {
+    ADMIN: 'ADMIN', REQUESTER: 'REQUESTER', TECH_LEAD: 'TECH_LEAD', MANAGER: 'MANAGER', FINANCE: 'FINANCE',
+  },
 }));
 
 import { forecastRoutes } from '../routes/forecasts';

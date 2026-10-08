@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { UserRole } from '@prisma/client';
+import { UserRole, Role } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db';
 
@@ -7,23 +7,29 @@ const router = Router();
 
 const idParamSchema = z.string().uuid();
 
+const roleValues = Object.values(Role) as [Role, ...Role[]];
+
 const createUserSchema = z.object({
   email: z.string().email('Invalid email address'),
   name: z.string().min(1, 'Name is required'),
   role: z.enum([UserRole.USER]).optional(),
+  roles: z.array(z.enum(roleValues)).optional(),
+  managerId: z.string().uuid().nullable().optional(),
 });
 
 const updateUserSchema = z.object({
   email: z.string().email().optional(),
   name: z.string().min(1).optional(),
   role: z.enum([UserRole.USER]).optional(),
+  roles: z.array(z.enum(roleValues)).optional(),
+  managerId: z.string().uuid().nullable().optional(),
 });
 
 // GET /api/users
 router.get('/', async (_req, res, next) => {
   try {
     const users = await prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
+      orderBy: { name: 'asc' },
     });
     res.json(users);
   } catch (err) {

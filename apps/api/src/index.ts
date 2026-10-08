@@ -30,6 +30,8 @@ import { zoneRoutes } from './routes/zones';
 import { presentationOrderRoutes } from './routes/presentation-orders';
 import { performanceProfileRoutes } from './routes/performance-profiles';
 import { geoRoutes } from './routes/geo';
+import { infraVersionRoutes } from './routes/infra-versions';
+import { serviceNowRoutes } from './routes/servicenow';
 import { startCronJobs } from './cron';
 
 dotenv.config();
@@ -78,6 +80,8 @@ app.use('/api/zones', zoneRoutes);
 app.use('/api/presentation-orders', presentationOrderRoutes);
 app.use('/api/performance-profiles', performanceProfileRoutes);
 app.use('/api', geoRoutes);
+app.use('/api/infra-versions', infraVersionRoutes);
+app.use('/api/servicenow', serviceNowRoutes);
 
 // Conditional admin API key protection (fail-closed: requires key if set)
 const adminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {

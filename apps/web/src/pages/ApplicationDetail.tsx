@@ -20,7 +20,7 @@ import {
   Clock4,
   AlertTriangle,
 } from 'lucide-react';
-import { ApprovalStatus, InstanceStatus } from '@cloudmarket/shared-types';
+import { ForecastStatus, InstanceStatus } from '@cloudmarket/shared-types';
 
 function AnimatedSection({ children, className, delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
   const { ref, isVisible } = useScrollReveal<HTMLDivElement>();
@@ -42,10 +42,14 @@ const continuityColor: Record<string, string> = {
   EXTREME: 'bg-red-500/10 text-red-500 border-red-500/20',
 };
 
-const statusConfig: Record<ApprovalStatus, { label: string; color: string }> = {
-  PENDING: { label: 'Pending', color: 'bg-slate-500/10 text-slate-400 border-slate-500/20' },
+const statusConfig: Record<ForecastStatus, { label: string; color: string }> = {
+  DRAFT: { label: 'Draft', color: 'bg-slate-500/10 text-slate-400 border-slate-500/20' },
+  PENDING_TECH: { label: 'Tech review', color: 'bg-violet-500/10 text-violet-400 border-violet-500/20' },
+  PENDING_MANAGER: { label: 'Manager approval', color: 'bg-amber-500/10 text-amber-500 border-amber-500/20' },
+  PENDING_BUDGET: { label: 'Budget validation', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' },
   APPROVED: { label: 'Approved', color: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' },
   REJECTED: { label: 'Rejected', color: 'bg-red-500/10 text-red-500 border-red-500/20' },
+  CANCELLED: { label: 'Cancelled', color: 'bg-slate-600/10 text-slate-500 border-slate-600/20' },
 };
 
 const instanceStatusConfig: Record<InstanceStatus, { label: string; color: string; icon: typeof Clock4 }> = {
@@ -360,7 +364,7 @@ export default function ApplicationDetailPage() {
                           </td>
                           <td className="py-3 text-slate-400">{inst.product?.name}</td>
                           <td className="py-3 text-slate-400">{inst.flavor?.name}</td>
-                          <td className="py-3 text-slate-400">{inst.az?.code}</td>
+                          <td className="py-3 text-slate-400">{inst.az?.name}</td>
                           <td className="py-3">
                             <Badge variant="outline" className={`gap-1 ${status.color}`}>
                               <StatusIcon className="h-3 w-3" />

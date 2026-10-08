@@ -121,7 +121,8 @@ describe('🏗️ Project Foundations & Data Layer', () => {
 
     test('schema defines core enums', () => {
       expect(schema).toContain('enum DependencyType');
-      expect(schema).toContain('enum ApprovalStatus');
+      expect(schema).toContain('enum ForecastStatus');
+      expect(schema).toContain('enum Role');
       expect(schema).toContain('enum UserRole');
       expect(schema).toContain('enum ComputeType');
       expect(schema).toContain('enum LifecyclePhase');
@@ -147,8 +148,8 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       expect(schema).toContain('@@unique([productId, dependsOnId])');
     });
 
-    test('Forecast uses ApprovalStatus enum with default PENDING', () => {
-      expect(schema).toContain('status          ApprovalStatus @default(PENDING)');
+    test('Forecast uses ForecastStatus enum with default DRAFT', () => {
+      expect(schema).toContain('status          ForecastStatus @default(DRAFT)');
     });
 
     test('User uses UserRole enum with default USER', () => {
@@ -679,6 +680,8 @@ describe('🏗️ Project Foundations & Data Layer', () => {
   describe('9️⃣ Forecast CRUD', () => {
     let productId: string;
     let flavorId: string;
+    let applicationId: string;
+    let azCode: string;
     let testForecastId: string;
 
     beforeAll(async () => {
@@ -686,15 +689,19 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       productId = products[0].id;
       const { data: flavors } = await get('/api/flavors');
       flavorId = flavors[0].id;
+      const { data: applications } = await get('/api/applications');
+      applicationId = applications[0].id;
+      const { data: zones } = await get('/api/availability-zones');
+      azCode = zones[0].code;
     });
 
-    test('GET /api/forecasts returns all forecasts with product and flavor', async () => {
+    test('GET /api/forecasts returns all forecasts with lines and application', async () => {
       const { status, data } = await get('/api/forecasts');
       expect(status).toBe(200);
       expect(Array.isArray(data)).toBe(true);
       for (const f of data) {
-        expect(f.product).toBeDefined();
-        expect(f.flavor).toBeDefined();
+        expect(f.lines).toBeDefined();
+        expect(f.application).toBeDefined();
       }
     });
 
@@ -705,33 +712,33 @@ describe('🏗️ Project Foundations & Data Layer', () => {
       expect(data).toHaveProperty('pending');
       expect(data).toHaveProperty('approved');
       expect(data).toHaveProperty('rejected');
+      expect(data).toHaveProperty('byStatus');
+      expect(data).toHaveProperty('totalEstimatedCost');
       expect(typeof data.total).toBe('number');
-      expect(data.total).toBe(data.pending + data.approved + data.rejected);
     });
 
-    test('POST /api/forecasts creates a forecast', async () => {
+    test('POST /api/forecasts creates and submits a forecast', async () => {
       const { status, data } = await post('/api/forecasts', {
-        productId,
-        flavorId,
         requestedBy: 'Jest Tester',
         requesterEmail: 'jest@example.com',
-        quantity: 3,
+        submit: true,
         justification: 'Need VMs for testing',
+        applicationId: applicationId,
+        lines: [{ productId, flavorId, azCode: azCode, quantity: 3 }],
       });
       expect(status).toBe(201);
       expect(data.id).toBeDefined();
-      expect(data.status).toBe('PENDING');
+      expect(data.status).toBe('PENDING_TECH');
       testForecastId = data.id;
       cleanup.push({ type: 'forecasts', id: data.id });
     });
 
     test('POST /api/forecasts rejects invalid email with 400', async () => {
       const { status, data } = await post('/api/forecasts', {
-        productId,
-        flavorId,
         requestedBy: 'Bad',
         requesterEmail: 'not-an-email',
-        quantity: 1,
+        applicationId: applicationId,
+        lines: [{ productId, flavorId, azCode: azCode, quantity: 1 }],
       });
       expect(status).toBe(400);
       expect(data.error).toBe('Validation Error');
@@ -739,42 +746,39 @@ describe('🏗️ Project Foundations & Data Layer', () => {
 
     test('POST /api/forecasts rejects quantity < 1 with 400', async () => {
       const { status, data } = await post('/api/forecasts', {
-        productId,
-        flavorId,
         requestedBy: 'Bad',
         requesterEmail: 'bad@example.com',
-        quantity: 0,
+        applicationId: applicationId,
+        lines: [{ productId, flavorId, azCode: azCode, quantity: 0 }],
       });
       expect(status).toBe(400);
       expect(data.error).toBe('Validation Error');
     });
 
-    test('PATCH /api/forecasts/:id updates status and sets reviewedAt', async () => {
-      const { status, data } = await patch(`/api/forecasts/${testForecastId}`, {
-        status: 'APPROVED',
-        reviewedBy: 'Admin Jest',
+    test('POST /api/forecasts/:id/approve advances to PENDING_MANAGER', async () => {
+      const { status, data } = await post(`/api/forecasts/${testForecastId}/approve`, {
+        actorName: 'Admin Jest',
       });
       expect(status).toBe(200);
-      expect(data.status).toBe('APPROVED');
+      expect(data.status).toBe('PENDING_MANAGER');
       expect(data.reviewedBy).toBe('Admin Jest');
       expect(data.reviewedAt).toBeDefined();
     });
 
-    test('PATCH /api/forecasts/:id stores rejectionReason when REJECTED', async () => {
+    test('POST /api/forecasts/:id/reject stores rejectionReason', async () => {
       // Create a new forecast to reject
       const { data: fc } = await post('/api/forecasts', {
-        productId,
-        flavorId,
         requestedBy: 'Reject Me',
         requesterEmail: 'reject@example.com',
-        quantity: 1,
+        submit: true,
+        applicationId: applicationId,
+        lines: [{ productId, flavorId, azCode: azCode, quantity: 1 }],
       });
       cleanup.push({ type: 'forecasts', id: fc.id });
 
-      const { status, data } = await patch(`/api/forecasts/${fc.id}`, {
-        status: 'REJECTED',
-        reviewedBy: 'Admin',
-        rejectionReason: 'Budget denied',
+      const { status, data } = await post(`/api/forecasts/${fc.id}/reject`, {
+        actorName: 'Admin',
+        comment: 'Budget denied',
       });
       expect(status).toBe(200);
       expect(data.status).toBe('REJECTED');

@@ -55,11 +55,13 @@ function DialogPortal({ children }: { children: React.ReactNode }) {
 function DialogOverlay({ className }: { className?: string }) {
   const ctx = React.useContext(DialogContext);
   if (!ctx) throw new Error("DialogOverlay must be used within Dialog");
+  if (!ctx.open) return null;
   return (
     <div
       data-state="open"
+      onClick={() => ctx.onOpenChange(false)}
       className={cn(
-        "fixed inset-0 z-50 bg-black/80 pointer-events-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+        "fixed inset-0 z-50 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         className
       )}
     />
@@ -68,13 +70,29 @@ function DialogOverlay({ className }: { className?: string }) {
 
 function DialogContent({ className, children }: { className?: string; children: React.ReactNode }) {
   const ctx = React.useContext(DialogContext);
+  const contentRef = React.useRef<HTMLDivElement>(null);
+
+  // Focus the content so the Escape keydown reaches its onKeyDown handler.
+  React.useEffect(() => {
+    if (ctx?.open) contentRef.current?.focus();
+  }, [ctx?.open]);
+
   if (!ctx) throw new Error("DialogContent must be used within Dialog");
   if (!ctx.open) return null;
   return (
     <>
       <DialogOverlay />
       <div
+        ref={contentRef}
         data-state="open"
+        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+        onKeyDown={(e: React.KeyboardEvent) => {
+          if (e.key === "Escape") {
+            e.stopPropagation();
+            ctx.onOpenChange(false);
+          }
+        }}
+        tabIndex={-1}
         className={cn(
           "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 pointer-events-auto data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
           className

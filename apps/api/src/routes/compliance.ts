@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ResiliencyLevel, InstanceStatus, HealthStatus, ApprovalStatus } from '@prisma/client';
+import { ResiliencyLevel, InstanceStatus, HealthStatus, ForecastStatus } from '@prisma/client';
 import { prisma } from '../db';
 
 const router = Router();
@@ -61,7 +61,7 @@ router.get('/', async (_req, res, next) => {
 
     const results: ApplicationCompliance[] = applications.map((app) => {
       const appInstances = instances.filter((i) => i.applicationId === app.id);
-      const appForecasts = forecasts.filter((f) => f.applicationId === app.id && f.status === ApprovalStatus.APPROVED);
+      const appForecasts = forecasts.filter((f) => f.applicationId === app.id && f.status === ForecastStatus.APPROVED);
 
       const runningInstances = appInstances.filter((i) => i.status === InstanceStatus.RUNNING);
       const uniqueAZs = new Set(runningInstances.map((i) => i.azCode)).size;
