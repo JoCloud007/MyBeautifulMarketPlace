@@ -87,20 +87,24 @@ router.delete('/regions/:id', async (req, res, next) => {
     idParamSchema.parse(id);
     const region = await prisma.region.findUnique({
       where: { id },
-      include: { products: true, productVersions: true },
+      include: { productRegions: { include: { product: true } }, productVersionRegions: { include: { productVersion: true } }, flavorRegions: { include: { flavor: true } } },
     });
     if (!region) {
       res.status(404).json({ error: 'Not Found', message: 'Record to delete does not exist.' });
       return;
     }
     const details: string[] = [];
-    if (region.products.length > 0) {
-      const names = region.products.map((p: any) => p.name).join(', ');
-      details.push(`${region.products.length} product(s): ${names}`);
+    if (region.productRegions.length > 0) {
+      const names = region.productRegions.map((pr: any) => pr.product?.name).filter(Boolean).join(', ');
+      details.push(`${region.productRegions.length} product(s): ${names}`);
     }
-    if (region.productVersions.length > 0) {
-      const names = region.productVersions.map((v: any) => v.version).join(', ');
-      details.push(`${region.productVersions.length} version(s): ${names}`);
+    if (region.productVersionRegions.length > 0) {
+      const names = region.productVersionRegions.map((pvr: any) => pvr.productVersion?.version).filter(Boolean).join(', ');
+      details.push(`${region.productVersionRegions.length} version(s): ${names}`);
+    }
+    if (region.flavorRegions.length > 0) {
+      const names = region.flavorRegions.map((fr: any) => fr.flavor?.name).filter(Boolean).join(', ');
+      details.push(`${region.flavorRegions.length} flavor(s): ${names}`);
     }
     if (details.length > 0) {
       res.status(409).json({ error: 'Conflict', message: `Cannot delete region — ${details.join('; ')}.` });

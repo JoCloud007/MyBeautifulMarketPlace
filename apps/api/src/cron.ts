@@ -43,7 +43,25 @@ export async function updateLifecyclePhases() {
     data: { phase: LifecyclePhase.EOL },
   });
 
-  console.log(`[${new Date().toISOString()}] OS version lifecycle phases updated`);
+  // ---- Infra Versions (same phase model) ----
+  await prisma.infraVersion.updateMany({
+    where: { phase: LifecyclePhase.RELEASED, releaseDate: { lte: now } },
+    data: { phase: LifecyclePhase.NORMAL_SUPPORT },
+  });
+  await prisma.infraVersion.updateMany({
+    where: { phase: LifecyclePhase.NORMAL_SUPPORT, normalSupportEnd: { lt: now } },
+    data: { phase: LifecyclePhase.EXTENDED_SUPPORT },
+  });
+  await prisma.infraVersion.updateMany({
+    where: { phase: LifecyclePhase.EXTENDED_SUPPORT, extendedSupportEnd: { lt: now } },
+    data: { phase: LifecyclePhase.NO_SUPPORT },
+  });
+  await prisma.infraVersion.updateMany({
+    where: { phase: LifecyclePhase.NO_SUPPORT, eolDate: { lt: now } },
+    data: { phase: LifecyclePhase.EOL },
+  });
+
+  console.log(`[${new Date().toISOString()}] OS + Infra Version lifecycle phases updated`);
 }
 
 /** Start all cron jobs */

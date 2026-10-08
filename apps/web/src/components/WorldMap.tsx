@@ -39,6 +39,8 @@ const apiRegionToDisplay: Record<string, string> = {
   'eu-west': 'EMEA',
   'us-east': 'AMER',
   'ap-south': 'APAC',
+  'ap-east': 'APAC',
+  'ap-southeast': 'APAC',
   'us-west': 'AMER',
   'sa-east': 'AMER',
   'me-south': 'EMEA',
@@ -50,6 +52,7 @@ const countryNameMapping: Record<string, string> = {
   'uk': 'United Kingdom',
   'usa': 'United States of America',
   'us': 'United States of America',
+  'united states': 'United States of America',
 };
 
 interface WorldMapProps {

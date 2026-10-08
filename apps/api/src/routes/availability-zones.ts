@@ -14,6 +14,7 @@ const createAZSchema = z.object({
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
   isActive: z.boolean().optional(),
+  infraVersionIds: z.array(z.string().uuid()).max(100).optional(),
 });
 
 const updateAZSchema = createAZSchema.partial();
@@ -35,6 +36,7 @@ router.get('/', async (_req, res, next) => {
   try {
     const zones = await prisma.availabilityZone.findMany({
       orderBy: { region: 'asc' },
+      include: { infraVersions: { include: { infraVersion: true } } },
     });
     res.json(zones.map(injectCapitalCoordinates));
   } catch (err) {
@@ -49,6 +51,7 @@ router.get('/:id', async (req, res, next) => {
     idParamSchema.parse(id);
     const zone = await prisma.availabilityZone.findUnique({
       where: { id },
+      include: { infraVersions: { include: { infraVersion: true } } },
     });
 
     if (!zone) {
@@ -73,9 +76,14 @@ router.post('/', async (req, res, next) => {
       return res.status(409).json({ error: 'An availability zone with this code already exists' });
     }
 
-    const { code: _code, ...rest } = data;
+    const { code: _code, infraVersionIds, ...rest } = data;
     const zone = await prisma.availabilityZone.create({
-      data: { ...rest, code },
+      data: {
+        ...rest,
+        code,
+        infraVersions: infraVersionIds ? { create: infraVersionIds.map((infraVersionId) => ({ infraVersionId })) } : undefined,
+      },
+      include: { infraVersions: { include: { infraVersion: true } } },
     });
 
     res.status(201).json(zone);
@@ -92,11 +100,22 @@ router.patch('/:id', async (req, res, next) => {
     const data = updateAZSchema.parse(req.body);
 
     // Prevent updating code to preserve referential integrity with instances
-    const { code: _code, ...safeData } = data;
+    const { code: _code, infraVersionIds, ...safeData } = data;
 
-    const zone = await prisma.availabilityZone.update({
-      where: { id },
-      data: safeData,
+    const zone = await prisma.$transaction(async (tx) => {
+      if (infraVersionIds) {
+        await tx.azInfraVersion.deleteMany({ where: { availabilityZoneId: id } });
+        if (infraVersionIds.length > 0) {
+          await tx.azInfraVersion.createMany({
+            data: infraVersionIds.map((infraVersionId) => ({ availabilityZoneId: id, infraVersionId })),
+          });
+        }
+      }
+      return tx.availabilityZone.update({
+        where: { id },
+        data: safeData,
+        include: { infraVersions: { include: { infraVersion: true } } },
+      });
     });
 
     res.json(zone);

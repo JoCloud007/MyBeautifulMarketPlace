@@ -11,9 +11,9 @@ import type { Product, ProductVariant, AvailabilityZone, LifecyclePhase } from '
 /* ── Region name helper ────────────────────────────────────────── */
 
 const defaultRegionNames: Record<string, string> = {
-  'eu-west': 'Europe',
-  'us-east': 'North America',
-  'ap-south': 'Asia-Pacific',
+  'eu-west': 'EMEA',
+  'us-east': 'AMER',
+  'ap-south': 'APAC',
 };
 
 function getRegionDisplayName(code: string): string {
@@ -27,7 +27,7 @@ function getRegionDisplayName(code: string): string {
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
-type Axis = 'PRODUCT' | 'FLAVOR' | 'OS' | 'OS_VERSION' | 'PRODUCT_VERSION' | 'ZONE' | 'AZ' | 'REGION' | 'COUNTRIES' | 'NONE';
+type Axis = 'PRODUCT' | 'FLAVOR' | 'OS' | 'OS_VERSION' | 'PRODUCT_VERSION' | 'INFRA_VERSION' | 'ZONE' | 'AZ' | 'REGION' | 'COUNTRIES' | 'NONE';
 type RowAxis = Axis;
 type ColAxis = Axis;
 type ViewMode = 'grouped' | 'flat';
@@ -331,6 +331,15 @@ function matchesAxis(
       return variant.osVersionId === id || variant.osVersion?.id === id;
     case 'PRODUCT_VERSION':
       return variant.productVersionId === id || variant.productVersion?.id === id;
+    case 'INFRA_VERSION': {
+      // A variant is available on an infra version when one of its AZs hosts that generation
+      const ivAZs = new Set(
+        (azs ?? [])
+          .filter((a: any) => a.infraVersions?.some((link: any) => link.infraVersionId === id))
+          .map((a) => a.id)
+      );
+      return variant.availabilityZones?.some((a: any) => ivAZs.has(a.availabilityZoneId)) ?? false;
+    }
     case 'NONE':
     default:
       return true;
@@ -375,6 +384,11 @@ function getAxisItems(axis: ColAxis, zones?: any[], azs?: AvailabilityZone[], pr
       return getOsVersionItems(products);
     case 'PRODUCT_VERSION':
       return getProductVersionItems(products);
+    case 'INFRA_VERSION':
+      return (azs ?? []).flatMap((a: any) => a.infraVersions ?? []).map((link: any) => ({
+        id: link.infraVersionId,
+        label: link.infraVersion?.code || link.infraVersionId,
+      })).filter((item, idx, arr) => arr.findIndex((i) => i.id === item.id) === idx);
     default:
       return [];
   }
@@ -957,6 +971,7 @@ export default function MarketplaceMatrix() {
                     { value: 'OS', label: 'OS' },
                     { value: 'OS_VERSION', label: 'OS Version' },
                     { value: 'PRODUCT_VERSION', label: 'Product Version' },
+                    { value: 'INFRA_VERSION', label: 'Infra Version' },
                     { value: 'ZONE', label: 'Zones' },
                     { value: 'AZ', label: 'AZs' },
                     { value: 'REGION', label: 'Regions' },
@@ -997,6 +1012,7 @@ export default function MarketplaceMatrix() {
                     { value: 'OS', label: 'OS' },
                     { value: 'OS_VERSION', label: 'OS Version' },
                     { value: 'PRODUCT_VERSION', label: 'Product Version' },
+                    { value: 'INFRA_VERSION', label: 'Infra Version' },
                     { value: 'ZONE', label: 'Zones' },
                     { value: 'AZ', label: 'AZs' },
                     { value: 'REGION', label: 'Regions' },

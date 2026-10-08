@@ -185,7 +185,7 @@ function ScheduleEditor({
               >
                 <option value="">Any AZ</option>
                 {azs?.map((az) => (
-                  <option key={az.id} value={az.id}>{az.code}</option>
+                  <option key={az.id} value={az.id}>{az.name} ({az.code})</option>
                 ))}
               </select>
             </div>
@@ -384,7 +384,7 @@ function FlavorModal({
             options={filteredAzs}
             selectedIds={form.availabilityZoneIds}
             onToggle={toggleAz}
-            getLabel={(az) => az.code}
+            getLabel={(az) => (az.name ? `${az.name} (${az.code})` : az.code)}
           />
 
           <MultiSelectToggle
@@ -456,7 +456,7 @@ export default function AdminFlavors() {
                   <td className="py-3">
                     <div className="flex flex-wrap gap-1">
                       {flavor.availabilityZones?.map((az) => (
-                        <span key={az.availabilityZoneId} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">{az.availabilityZone?.code}</span>
+                        <span key={az.availabilityZoneId} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">{az.availabilityZone?.name}</span>
                       ))}
                     </div>
                   </td>

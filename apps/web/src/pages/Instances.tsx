@@ -322,7 +322,7 @@ export default function InstancesPage() {
                                   )}
                                 </td>
                                 <td className="py-3 text-slate-400">{instance.flavor?.name}</td>
-                                <td className="py-3 text-slate-400">{instance.az?.code}</td>
+                                <td className="py-3 text-slate-400">{instance.az?.name}</td>
                                 <td className="py-3">
                                   <Badge variant="outline" className={`gap-1 ${status.color}`}>
                                     <StatusIcon className="h-3 w-3" />

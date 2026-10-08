@@ -17,6 +17,31 @@ const scheduleSchema = z.object({
   deleted: z.boolean().optional(),
 });
 
+async function validateScheduleRefs(schedules: any[]) {
+  const regionIds = [...new Set(schedules.map((s) => s.regionId).filter(Boolean))];
+  const azIds = [...new Set(schedules.map((s) => s.azId).filter(Boolean))];
+  const zoneIds = [...new Set(schedules.map((s) => s.zoneId).filter(Boolean))];
+
+  if (regionIds.length > 0) {
+    const found = await prisma.region.findMany({ where: { id: { in: regionIds } }, select: { id: true } });
+    if (found.length !== regionIds.length) {
+      throw new Error('One or more schedule region IDs do not exist');
+    }
+  }
+  if (azIds.length > 0) {
+    const found = await prisma.availabilityZone.findMany({ where: { id: { in: azIds } }, select: { id: true } });
+    if (found.length !== azIds.length) {
+      throw new Error('One or more schedule availability zone IDs do not exist');
+    }
+  }
+  if (zoneIds.length > 0) {
+    const found = await prisma.zone.findMany({ where: { id: { in: zoneIds } }, select: { id: true } });
+    if (found.length !== zoneIds.length) {
+      throw new Error('One or more schedule zone IDs do not exist');
+    }
+  }
+}
+
 const createFlavorSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   vcpu: z.number().int().min(0, 'vCPU must be a non-negative integer'),
@@ -128,6 +153,7 @@ router.post('/', async (req, res, next) => {
     if (schedules && schedules.length > 0) {
       const toCreate = schedules.filter((s: any) => !s.deleted);
       if (toCreate.length > 0) {
+        await validateScheduleRefs(toCreate);
         await prisma.availabilitySchedule.createMany({
           data: toCreate.map((s: any) => ({
             targetType: 'FLAVOR' as const,
@@ -267,6 +293,7 @@ router.patch('/:id', async (req, res, next) => {
         });
       }
       if (toCreate.length > 0) {
+        await validateScheduleRefs(toCreate);
         await prisma.availabilitySchedule.createMany({
           data: toCreate.map((s: any) => ({
             targetType: 'FLAVOR' as const,

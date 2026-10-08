@@ -17,6 +17,31 @@ const scheduleSchema = z.object({
   deleted: z.boolean().optional(),
 });
 
+async function validateScheduleRefs(schedules: any[]) {
+  const regionIds = [...new Set(schedules.map((s) => s.regionId).filter(Boolean))];
+  const azIds = [...new Set(schedules.map((s) => s.azId).filter(Boolean))];
+  const zoneIds = [...new Set(schedules.map((s) => s.zoneId).filter(Boolean))];
+
+  if (regionIds.length > 0) {
+    const found = await prisma.region.findMany({ where: { id: { in: regionIds } }, select: { id: true } });
+    if (found.length !== regionIds.length) {
+      throw new Error('One or more schedule region IDs do not exist');
+    }
+  }
+  if (azIds.length > 0) {
+    const found = await prisma.availabilityZone.findMany({ where: { id: { in: azIds } }, select: { id: true } });
+    if (found.length !== azIds.length) {
+      throw new Error('One or more schedule availability zone IDs do not exist');
+    }
+  }
+  if (zoneIds.length > 0) {
+    const found = await prisma.zone.findMany({ where: { id: { in: zoneIds } }, select: { id: true } });
+    if (found.length !== zoneIds.length) {
+      throw new Error('One or more schedule zone IDs do not exist');
+    }
+  }
+}
+
 const createVersionSchema = z.object({
   version: z.string().min(1, 'Version is required'),
   releaseDate: z.string().datetime().or(z.date()).optional(),
@@ -28,7 +53,7 @@ const createVersionSchema = z.object({
   changelog: z.string().optional(),
   regionIds: z.array(z.string().uuid()).optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
-  availabilityZoneIds: z.array(z.string().uuid()).optional(),
+  availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
   schedules: z.array(scheduleSchema).optional(),
 });
 
@@ -47,7 +72,6 @@ router.get('/', async (req, res, next) => {
       where: { productId },
       orderBy: { releaseDate: 'desc' },
       include: {
-        region: true,
         regions: { include: { region: true } },
         zones: { include: { zone: true } },
         availabilityZones: { include: { availabilityZone: true } },
@@ -126,7 +150,6 @@ router.post('/', async (req, res, next) => {
         availabilityZones: availabilityZoneIds?.length ? { create: availabilityZoneIds.map((azId: string) => ({ availabilityZone: { connect: { id: azId } } })) } : undefined,
       },
       include: {
-        region: true,
         regions: { include: { region: true } },
         zones: { include: { zone: true } },
         availabilityZones: { include: { availabilityZone: true } },
@@ -137,6 +160,7 @@ router.post('/', async (req, res, next) => {
     if (schedules && schedules.length > 0) {
       const toCreate = schedules.filter((s: any) => !s.deleted);
       if (toCreate.length > 0) {
+        await validateScheduleRefs(toCreate);
         await prisma.availabilitySchedule.createMany({
           data: toCreate.map((s: any) => ({
             targetType: 'PRODUCT_VERSION' as const,
@@ -238,6 +262,7 @@ router.patch('/:id', async (req, res, next) => {
         });
       }
       if (toCreate.length > 0) {
+        await validateScheduleRefs(toCreate);
         await prisma.availabilitySchedule.createMany({
           data: toCreate.map((s: any) => ({
             targetType: 'PRODUCT_VERSION' as const,
@@ -273,7 +298,6 @@ router.patch('/:id', async (req, res, next) => {
         availabilityZones: availabilityZoneIds?.length ? { create: availabilityZoneIds.map((azId: string) => ({ availabilityZone: { connect: { id: azId } } })) } : undefined,
       },
       include: {
-        region: true,
         regions: { include: { region: true } },
         zones: { include: { zone: true } },
         availabilityZones: { include: { availabilityZone: true } },

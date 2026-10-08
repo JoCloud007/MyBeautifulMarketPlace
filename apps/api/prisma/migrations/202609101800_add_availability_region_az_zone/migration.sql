@@ -26,6 +26,14 @@ CREATE TABLE "FlavorRegion" (
 );
 
 -- CreateTable
+CREATE TABLE "ProductVersionAvailabilityZone" (
+    "productVersionId" TEXT NOT NULL,
+    "availabilityZoneId" TEXT NOT NULL,
+
+    CONSTRAINT "ProductVersionAvailabilityZone_pkey" PRIMARY KEY ("productVersionId","availabilityZoneId")
+);
+
+-- CreateTable
 CREATE TABLE "ProductAvailabilityZone" (
     "productId" TEXT NOT NULL,
     "availabilityZoneId" TEXT NOT NULL,
@@ -78,6 +86,12 @@ ALTER TABLE "FlavorRegion" ADD CONSTRAINT "FlavorRegion_flavorId_fkey" FOREIGN K
 
 -- AddForeignKey
 ALTER TABLE "FlavorRegion" ADD CONSTRAINT "FlavorRegion_regionId_fkey" FOREIGN KEY ("regionId") REFERENCES "Region"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProductVersionAvailabilityZone" ADD CONSTRAINT "ProductVersionAvailabilityZone_productVersionId_fkey" FOREIGN KEY ("productVersionId") REFERENCES "ProductVersion"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ProductVersionAvailabilityZone" ADD CONSTRAINT "ProductVersionAvailabilityZone_availabilityZoneId_fkey" FOREIGN KEY ("availabilityZoneId") REFERENCES "AvailabilityZone"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ProductAvailabilityZone" ADD CONSTRAINT "ProductAvailabilityZone_productId_fkey" FOREIGN KEY ("productId") REFERENCES "Product"("id") ON DELETE CASCADE ON UPDATE CASCADE;

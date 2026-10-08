@@ -13,6 +13,7 @@ export const SLUG_PREFIXES = {
   operatingSystem: 'os',
   zone: 'zon',
   region: 'reg',
+  transition: 'trn',
 } as const;
 
 export function generateSlug(

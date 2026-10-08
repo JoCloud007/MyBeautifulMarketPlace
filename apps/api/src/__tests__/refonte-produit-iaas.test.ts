@@ -1337,6 +1337,7 @@ describe('Refonte Produit IaaS — Backend API, Shared Types & Seed Data', () =>
         categoryId: 'dddddddd-dddd-dddd-dddd-ddddddddddda',
         category: {} as any,
         computeType: SharedTypes.ComputeType.VIRTUAL,
+        status: SharedTypes.ProductStatus.AVAILABLE,
         variants: [],
         dependencies: [],
         dependentProducts: [],

@@ -5,6 +5,17 @@ import { generateSlug } from '../lib/slugify';
 
 const router = Router();
 
+const scheduleSchema = z.object({
+  id: z.string().uuid().optional(),
+  regionId: z.string().uuid().optional().nullable(),
+  azId: z.string().uuid().optional().nullable(),
+  zoneId: z.string().uuid().optional().nullable(),
+  availableFrom: z.string().datetime().or(z.date()).optional().nullable(),
+  availableUntil: z.string().datetime().or(z.date()).optional().nullable(),
+  status: z.enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND']).optional(),
+  deleted: z.boolean().optional(),
+});
+
 const productSchema = z.object({
   name: z.string().min(1),
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/).optional(),
@@ -18,7 +29,9 @@ const productSchema = z.object({
   productEOLDate: z.string().datetime().or(z.date()).optional(),
   isActive: z.boolean().optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
-  regionId: z.string().uuid().optional(),
+  regionIds: z.array(z.string().uuid()).optional(),
+  availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
+  schedules: z.array(scheduleSchema).optional(),
 });
 
 const flavorSchema = z.object({
@@ -27,6 +40,9 @@ const flavorSchema = z.object({
   ramGb: z.number().int().min(0),
   description: z.string().optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
+  regionIds: z.array(z.string().uuid()).optional(),
+  availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
+  schedules: z.array(scheduleSchema).optional(),
   releaseDate: z.string().datetime().or(z.date()).optional(),
   deprecationDate: z.string().datetime().or(z.date()).optional(),
   eolDate: z.string().datetime().or(z.date()).optional(),
@@ -107,8 +123,9 @@ router.get('/products', async (_req, res, next) => {
         category: true,
         variants: { include: { os: true, osVersion: true, flavor: true, availabilityZones: { include: { availabilityZone: true } }, zones: { include: { zone: true } }, continuityLevel: true } },
         zones: { include: { zone: true } },
-        region: true,
-        productVersions: { include: { region: true, zones: { include: { zone: true } }, availabilityZones: { include: { availabilityZone: true } } } },
+        regions: { include: { region: true } },
+        availabilityZones: { include: { availabilityZone: true } },
+        productVersions: { include: { regions: { include: { region: true } }, zones: { include: { zone: true } }, availabilityZones: { include: { availabilityZone: true } } } },
         _count: { select: { forecastLines: true, variants: true, instances: true } },
       },
       orderBy: { updatedAt: 'desc' },
@@ -156,15 +173,31 @@ router.post('/products', async (req, res, next) => {
       }
     }
 
-    // Validate regionId if provided
-    if (data.regionId) {
-      const region = await prisma.region.findUnique({ where: { id: data.regionId } });
-      if (!region) {
-        return res.status(400).json({ error: 'Region not found' });
+    // Validate regionIds if provided
+    if (data.regionIds && data.regionIds.length > 0) {
+      const uniqueRegionIds = [...new Set(data.regionIds)];
+      if (uniqueRegionIds.length !== data.regionIds.length) {
+        return res.status(400).json({ error: 'Duplicate region IDs are not allowed' });
+      }
+      const regions = await prisma.region.findMany({ where: { id: { in: data.regionIds } } });
+      if (regions.length !== data.regionIds.length) {
+        return res.status(400).json({ error: 'One or more regions do not exist' });
       }
     }
 
-    const { zoneIds, regionId, ...productData } = data;
+    // Validate availabilityZoneIds if provided
+    if (data.availabilityZoneIds && data.availabilityZoneIds.length > 0) {
+      const uniqueAzIds = [...new Set(data.availabilityZoneIds)];
+      if (uniqueAzIds.length !== data.availabilityZoneIds.length) {
+        return res.status(400).json({ error: 'Duplicate availability zone IDs are not allowed' });
+      }
+      const azs = await prisma.availabilityZone.findMany({ where: { id: { in: data.availabilityZoneIds } } });
+      if (azs.length !== data.availabilityZoneIds.length) {
+        return res.status(400).json({ error: 'One or more availability zones do not exist' });
+      }
+    }
+
+    const { zoneIds, regionIds, availabilityZoneIds, schedules, ...productData } = data;
 
     try {
       const product = await prisma.product.create({
@@ -172,10 +205,27 @@ router.post('/products', async (req, res, next) => {
           ...productData,
           slug,
           zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
-          regionId: regionId || undefined,
+          regions: regionIds ? { create: regionIds.map((rid) => ({ regionId: rid })) } : undefined,
+          availabilityZones: availabilityZoneIds ? { create: availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) } : undefined,
         },
-        include: { category: true, variants: { include: { os: true, flavor: true } }, zones: { include: { zone: true } }, region: true, productVersions: { include: { region: true, zones: { include: { zone: true } }, availabilityZones: { include: { availabilityZone: true } } } } },
+        include: { category: true, variants: { include: { os: true, flavor: true, availabilityZones: { include: { availabilityZone: true } }, zones: { include: { zone: true } } } }, zones: { include: { zone: true } }, regions: { include: { region: true } }, availabilityZones: { include: { availabilityZone: true } }, productVersions: { include: { regions: { include: { region: true } }, zones: { include: { zone: true } }, availabilityZones: { include: { availabilityZone: true } } } } },
       });
+
+      if (schedules && schedules.length > 0) {
+        await prisma.availabilitySchedule.createMany({
+          data: schedules.map((s) => ({
+            targetType: 'PRODUCT' as const,
+            targetId: product.id,
+            regionId: s.regionId || null,
+            azId: s.azId || null,
+            zoneId: s.zoneId || null,
+            availableFrom: s.availableFrom ? new Date(s.availableFrom) : null,
+            availableUntil: s.availableUntil ? new Date(s.availableUntil) : null,
+            status: s.status || 'STANDARD',
+          })),
+        });
+      }
+
       res.status(201).json(product);
     } catch (err: any) {
       if (err.code === 'P2002') {
@@ -241,25 +291,90 @@ router.patch('/products/:id', async (req, res, next) => {
       }
     }
 
-    // Validate regionId if provided
-    if (data.regionId) {
-      const region = await prisma.region.findUnique({ where: { id: data.regionId } });
-      if (!region) {
-        return res.status(400).json({ error: 'Region not found' });
+    // Validate regionIds if provided
+    if (data.regionIds && data.regionIds.length > 0) {
+      const uniqueRegionIds = [...new Set(data.regionIds)];
+      if (uniqueRegionIds.length !== data.regionIds.length) {
+        return res.status(400).json({ error: 'Duplicate region IDs are not allowed' });
+      }
+      const regions = await prisma.region.findMany({ where: { id: { in: data.regionIds } } });
+      if (regions.length !== data.regionIds.length) {
+        return res.status(400).json({ error: 'One or more regions do not exist' });
       }
     }
 
-    const { zoneIds, regionId, ...productData } = updateData;
+    // Validate availabilityZoneIds if provided
+    if (data.availabilityZoneIds && data.availabilityZoneIds.length > 0) {
+      const uniqueAzIds = [...new Set(data.availabilityZoneIds)];
+      if (uniqueAzIds.length !== data.availabilityZoneIds.length) {
+        return res.status(400).json({ error: 'Duplicate availability zone IDs are not allowed' });
+      }
+      const azs = await prisma.availabilityZone.findMany({ where: { id: { in: data.availabilityZoneIds } } });
+      if (azs.length !== data.availabilityZoneIds.length) {
+        return res.status(400).json({ error: 'One or more availability zones do not exist' });
+      }
+    }
+
+    const { zoneIds, regionIds, availabilityZoneIds, schedules, ...productData } = updateData;
+
+    // Handle relation updates
+    if (zoneIds) {
+      await prisma.productZone.deleteMany({ where: { productId: id } });
+    }
+    if (regionIds) {
+      await prisma.productRegion.deleteMany({ where: { productId: id } });
+    }
+    if (availabilityZoneIds) {
+      await prisma.productAvailabilityZone.deleteMany({ where: { productId: id } });
+    }
+
+    // Handle schedules update
+    if (schedules) {
+      const toDelete = schedules.filter((s: any) => s.deleted && s.id).map((s: any) => s.id);
+      const toUpdate = schedules.filter((s: any) => s.id && !s.deleted);
+      const toCreate = schedules.filter((s: any) => !s.id && !s.deleted);
+      if (toDelete.length > 0) {
+        await prisma.availabilitySchedule.deleteMany({ where: { id: { in: toDelete }, targetType: 'PRODUCT', targetId: id } });
+      }
+      for (const s of toUpdate) {
+        await prisma.availabilitySchedule.update({
+          where: { id: s.id },
+          data: {
+            regionId: s.regionId,
+            azId: s.azId,
+            zoneId: s.zoneId,
+            availableFrom: s.availableFrom ? new Date(s.availableFrom) : null,
+            availableUntil: s.availableUntil ? new Date(s.availableUntil) : null,
+            status: s.status || 'STANDARD',
+          },
+        });
+      }
+      if (toCreate.length > 0) {
+        await prisma.availabilitySchedule.createMany({
+          data: toCreate.map((s: any) => ({
+            targetType: 'PRODUCT',
+            targetId: id,
+            regionId: s.regionId,
+            azId: s.azId,
+            zoneId: s.zoneId,
+            availableFrom: s.availableFrom ? new Date(s.availableFrom) : null,
+            availableUntil: s.availableUntil ? new Date(s.availableUntil) : null,
+            status: s.status || 'STANDARD',
+          })),
+        });
+      }
+    }
 
     try {
       const product = await prisma.product.update({
         where: { id },
         data: {
           ...productData,
-          zones: zoneIds ? { deleteMany: {}, create: zoneIds.map((zid: string) => ({ zoneId: zid })) } : undefined,
-          regionId: regionId !== undefined ? regionId : undefined,
+          zones: zoneIds ? { create: zoneIds.map((zid: string) => ({ zoneId: zid })) } : undefined,
+          regions: regionIds ? { create: regionIds.map((rid: string) => ({ regionId: rid })) } : undefined,
+          availabilityZones: availabilityZoneIds ? { create: availabilityZoneIds.map((azId: string) => ({ availabilityZoneId: azId })) } : undefined,
         },
-        include: { category: true, variants: { include: { os: { include: { zones: { include: { zone: true } } } }, osVersion: true, flavor: { include: { zones: { include: { zone: true } } } }, availabilityZones: { include: { availabilityZone: true } }, zones: { include: { zone: true } }, continuityLevel: true } }, zones: { include: { zone: true } }, region: true, productVersions: { include: { region: true, zones: { include: { zone: true } }, availabilityZones: { include: { availabilityZone: true } } } } },
+        include: { category: true, variants: { include: { os: { include: { zones: { include: { zone: true } } } }, osVersion: true, flavor: { include: { zones: { include: { zone: true } } } }, availabilityZones: { include: { availabilityZone: true } }, zones: { include: { zone: true } }, continuityLevel: true } }, zones: { include: { zone: true } }, regions: { include: { region: true } }, availabilityZones: { include: { availabilityZone: true } }, productVersions: { include: { regions: { include: { region: true } }, zones: { include: { zone: true } }, availabilityZones: { include: { availabilityZone: true } } } } },
       });
       res.json(product);
     } catch (err: any) {
@@ -421,7 +536,7 @@ router.delete('/categories/:id', async (req, res, next) => {
 router.get('/flavors', async (_req, res, next) => {
   try {
     const flavors = await prisma.flavor.findMany({
-      include: { zones: { include: { zone: true } }, _count: { select: { variants: true, forecastLines: true, instances: true } } },
+      include: { zones: { include: { zone: true } }, regions: { include: { region: true } }, availabilityZones: { include: { availabilityZone: true } }, _count: { select: { variants: true, forecastLines: true, instances: true } } },
       orderBy: { createdAt: 'desc' },
     });
     res.json(flavors);
@@ -434,7 +549,33 @@ router.get('/flavors', async (_req, res, next) => {
 router.post('/flavors', async (req, res, next) => {
   try {
     const data = flavorSchema.parse(req.body);
-    const flavor = await prisma.flavor.create({ data });
+    const { zoneIds, regionIds, availabilityZoneIds, schedules, ...flavorData } = data;
+
+    const flavor = await prisma.flavor.create({
+      data: {
+        ...flavorData,
+        zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+        regions: regionIds ? { create: regionIds.map((rid) => ({ regionId: rid })) } : undefined,
+        availabilityZones: availabilityZoneIds ? { create: availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) } : undefined,
+      },
+      include: { zones: { include: { zone: true } }, regions: { include: { region: true } }, availabilityZones: { include: { availabilityZone: true } } },
+    });
+
+    if (schedules && schedules.length > 0) {
+      await prisma.availabilitySchedule.createMany({
+        data: schedules.map((s) => ({
+          targetType: 'FLAVOR' as const,
+          targetId: flavor.id,
+          regionId: s.regionId || null,
+          azId: s.azId || null,
+          zoneId: s.zoneId || null,
+          availableFrom: s.availableFrom ? new Date(s.availableFrom) : null,
+          availableUntil: s.availableUntil ? new Date(s.availableUntil) : null,
+          status: s.status || 'STANDARD',
+        })),
+      });
+    }
+
     res.status(201).json(flavor);
   } catch (err) {
     next(err);
@@ -462,11 +603,78 @@ router.patch('/flavors/:id', async (req, res, next) => {
       }
     }
 
-    const { zoneIds, ...flavorData } = data;
+    // Validate regionIds if provided
+    if (data.regionIds && data.regionIds.length > 0) {
+      const uniqueRegionIds = [...new Set(data.regionIds)];
+      if (uniqueRegionIds.length !== data.regionIds.length) {
+        return res.status(400).json({ error: 'Duplicate region IDs are not allowed' });
+      }
+      const regions = await prisma.region.findMany({ where: { id: { in: data.regionIds } } });
+      if (regions.length !== data.regionIds.length) {
+        return res.status(400).json({ error: 'One or more regions do not exist' });
+      }
+    }
 
-    // Handle zone links update
+    // Validate availabilityZoneIds if provided
+    if (data.availabilityZoneIds && data.availabilityZoneIds.length > 0) {
+      const uniqueAzIds = [...new Set(data.availabilityZoneIds)];
+      if (uniqueAzIds.length !== data.availabilityZoneIds.length) {
+        return res.status(400).json({ error: 'Duplicate availability zone IDs are not allowed' });
+      }
+      const azs = await prisma.availabilityZone.findMany({ where: { id: { in: data.availabilityZoneIds } } });
+      if (azs.length !== data.availabilityZoneIds.length) {
+        return res.status(400).json({ error: 'One or more availability zones do not exist' });
+      }
+    }
+
+    const { zoneIds, regionIds, availabilityZoneIds, schedules, ...flavorData } = data;
+
+    // Handle relation updates
     if (zoneIds) {
       await prisma.flavorZone.deleteMany({ where: { flavorId: id } });
+    }
+    if (regionIds) {
+      await prisma.flavorRegion.deleteMany({ where: { flavorId: id } });
+    }
+    if (availabilityZoneIds) {
+      await prisma.flavorAvailabilityZone.deleteMany({ where: { flavorId: id } });
+    }
+
+    // Handle schedules update
+    if (schedules) {
+      const toDelete = schedules.filter((s: any) => s.deleted && s.id).map((s: any) => s.id);
+      const toUpdate = schedules.filter((s: any) => s.id && !s.deleted);
+      const toCreate = schedules.filter((s: any) => !s.id && !s.deleted);
+      if (toDelete.length > 0) {
+        await prisma.availabilitySchedule.deleteMany({ where: { id: { in: toDelete }, targetType: 'FLAVOR', targetId: id } });
+      }
+      for (const s of toUpdate) {
+        await prisma.availabilitySchedule.update({
+          where: { id: s.id },
+          data: {
+            regionId: s.regionId,
+            azId: s.azId,
+            zoneId: s.zoneId,
+            availableFrom: s.availableFrom ? new Date(s.availableFrom) : null,
+            availableUntil: s.availableUntil ? new Date(s.availableUntil) : null,
+            status: s.status || 'STANDARD',
+          },
+        });
+      }
+      if (toCreate.length > 0) {
+        await prisma.availabilitySchedule.createMany({
+          data: toCreate.map((s: any) => ({
+            targetType: 'FLAVOR',
+            targetId: id,
+            regionId: s.regionId,
+            azId: s.azId,
+            zoneId: s.zoneId,
+            availableFrom: s.availableFrom ? new Date(s.availableFrom) : null,
+            availableUntil: s.availableUntil ? new Date(s.availableUntil) : null,
+            status: s.status || 'STANDARD',
+          })),
+        });
+      }
     }
 
     const flavor = await prisma.flavor.update({
@@ -474,8 +682,10 @@ router.patch('/flavors/:id', async (req, res, next) => {
       data: {
         ...flavorData,
         zones: zoneIds ? { create: zoneIds.map((zid) => ({ zoneId: zid })) } : undefined,
+        regions: regionIds ? { create: regionIds.map((rid) => ({ regionId: rid })) } : undefined,
+        availabilityZones: availabilityZoneIds ? { create: availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) } : undefined,
       },
-      include: { zones: { include: { zone: true } }, _count: { select: { variants: true } } },
+      include: { zones: { include: { zone: true } }, regions: { include: { region: true } }, availabilityZones: { include: { availabilityZone: true } }, _count: { select: { variants: true } } },
     });
     res.json(flavor);
   } catch (err) {

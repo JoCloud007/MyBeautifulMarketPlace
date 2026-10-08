@@ -22,6 +22,7 @@ const createProductSchema = z.object({
   os: z.string().optional(),
   initialReleaseDate: z.string().datetime().or(z.date()).optional(),
   productEOLDate: z.string().datetime().or(z.date()).optional(),
+  status: z.enum(['BACKLOG', 'OPPORTUNITY', 'AVAILABLE', 'AVAILABLE_PILOT_PENDING', 'DELAY_PENDING', 'CANCELLED']).optional(),
   isActive: z.boolean().optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
   regionIds: z.array(z.string().uuid()).optional(),
@@ -65,6 +66,7 @@ const updateProductSchema = z.object({
   os: z.string().optional().nullable(),
   initialReleaseDate: z.string().datetime().or(z.date()).optional(),
   productEOLDate: z.string().datetime().or(z.date()).optional(),
+  status: z.enum(['BACKLOG', 'OPPORTUNITY', 'AVAILABLE', 'AVAILABLE_PILOT_PENDING', 'DELAY_PENDING', 'CANCELLED']).optional(),
   isActive: z.boolean().optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
   regionIds: z.array(z.string().uuid()).optional(),
@@ -120,12 +122,19 @@ router.get('/', async (req, res, next) => {
         dependentProducts: {
           include: { product: { include: { category: true } } },
         },
-        upgradeFrom: { include: { toProduct: { select: { id: true, name: true, slug: true } } } },
-        upgradeTo: { include: { fromProduct: { select: { id: true, name: true, slug: true } } } },
+        upgradeFrom: { include: { fromProduct: { select: { id: true, name: true, slug: true } } } },
+        upgradeTo: { include: { toProduct: { select: { id: true, name: true, slug: true } } } },
         zones: { include: { zone: true } },
         regions: { include: { region: true } },
         availabilityZones: { include: { availabilityZone: true } },
-        productVersions: true,
+        productVersions: {
+          include: {
+            variants: { include: { os: true } },
+            regions: { include: { region: true } },
+            zones: { include: { zone: true } },
+            availabilityZones: { include: { availabilityZone: true } },
+          },
+        },
         performanceProfiles: { include: { metrics: true } },
         _count: { select: { variants: { where: { isActive: true } }, instances: true } },
       },
@@ -229,8 +238,14 @@ router.post('/', async (req, res, next) => {
           zones: { include: { zone: true } },
           regions: { include: { region: true } },
           availabilityZones: { include: { availabilityZone: true } },
-          region: true,
-          productVersions: true,
+          productVersions: {
+            include: {
+              variants: { include: { os: true } },
+              regions: { include: { region: true } },
+              zones: { include: { zone: true } },
+              availabilityZones: { include: { availabilityZone: true } },
+            },
+          },
           _count: { select: { variants: { where: { isActive: true } } } },
         },
       });
@@ -413,12 +428,19 @@ router.get('/:slug', async (req, res, next) => {
         dependentProducts: {
           include: { product: { include: { category: true } } },
         },
-        upgradeFrom: { include: { toProduct: { select: { id: true, name: true, slug: true } } } },
-        upgradeTo: { include: { fromProduct: { select: { id: true, name: true, slug: true } } } },
+        upgradeFrom: { include: { fromProduct: { select: { id: true, name: true, slug: true } } } },
+        upgradeTo: { include: { toProduct: { select: { id: true, name: true, slug: true } } } },
         zones: { include: { zone: true } },
         regions: { include: { region: true } },
         availabilityZones: { include: { availabilityZone: true } },
-        productVersions: true,
+        productVersions: {
+          include: {
+            variants: { include: { os: true } },
+            regions: { include: { region: true } },
+            zones: { include: { zone: true } },
+            availabilityZones: { include: { availabilityZone: true } },
+          },
+        },
         performanceProfiles: { include: { metrics: true } },
         _count: { select: { variants: { where: { isActive: true } }, instances: true } },
       },
@@ -602,8 +624,14 @@ router.patch('/:id', async (req, res, next) => {
         zones: { include: { zone: true } },
         regions: { include: { region: true } },
         availabilityZones: { include: { availabilityZone: true } },
-        region: true,
-        productVersions: true,
+        productVersions: {
+          include: {
+            variants: { include: { os: true } },
+            regions: { include: { region: true } },
+            zones: { include: { zone: true } },
+            availabilityZones: { include: { availabilityZone: true } },
+          },
+        },
         _count: { select: { variants: { where: { isActive: true } } } },
       },
     });
@@ -770,6 +798,250 @@ router.get('/:slug/forecasts', async (req, res, next) => {
     });
 
     res.json(forecasts);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Upgrade paths (product transitions) ────────────────────────────
+
+const createUpgradePathSchema = z.object({
+  toProductId: z.string().uuid('Invalid target product ID'),
+  fromVersion: z.string().min(1),
+  toVersion: z.string().min(1),
+  migrationType: z.enum(['IN_PLACE', 'REBUILD', 'BLUE_GREEN', 'SNAPSHOT']).optional(),
+  notes: z.string().optional().nullable(),
+});
+
+// GET /api/products/:id/upgrade-paths — transitions from and to this product
+router.get('/:id/upgrade-paths', async (req, res, next) => {
+  try {
+    const id = idParamSchema.parse(req.params.id);
+    const [outgoing, incoming] = await Promise.all([
+      prisma.upgradePath.findMany({
+        where: { fromProductId: id },
+        include: {
+          fromProduct: { select: { id: true, name: true, slug: true } },
+          toProduct: { select: { id: true, name: true, slug: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.upgradePath.findMany({
+        where: { toProductId: id },
+        include: {
+          fromProduct: { select: { id: true, name: true, slug: true } },
+          toProduct: { select: { id: true, name: true, slug: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+    res.json({ outgoing, incoming });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/products/:id/upgrade-paths — declare a transition from this product to another
+router.post('/:id/upgrade-paths', async (req, res, next) => {
+  try {
+    const id = idParamSchema.parse(req.params.id);
+    const data = createUpgradePathSchema.parse(req.body);
+
+    const [product, target] = await Promise.all([
+      prisma.product.findUnique({ where: { id } }),
+      prisma.product.findUnique({ where: { id: data.toProductId } }),
+    ]);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    if (!target) return res.status(404).json({ error: 'Target product not found' });
+    if (data.toProductId === id) {
+      return res.status(400).json({ error: 'A product cannot transition to itself' });
+    }
+
+    const path = await prisma.upgradePath.create({
+      data: {
+        fromProductId: id,
+        toProductId: data.toProductId,
+        fromVersion: data.fromVersion,
+        toVersion: data.toVersion,
+        migrationType: data.migrationType || 'REBUILD',
+        notes: data.notes || null,
+      },
+      include: {
+        fromProduct: { select: { id: true, name: true, slug: true } },
+        toProduct: { select: { id: true, name: true, slug: true } },
+      },
+    });
+    res.status(201).json(path);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/products/:id/upgrade-paths/:pathId
+router.delete('/:id/upgrade-paths/:pathId', async (req, res, next) => {
+  try {
+    const { id, pathId } = req.params;
+    idParamSchema.parse(id);
+    idParamSchema.parse(pathId);
+    const existing = await prisma.upgradePath.findUnique({ where: { id: pathId } });
+    if (!existing || existing.fromProductId !== id) {
+      return res.status(404).json({ error: 'Upgrade path not found for this product' });
+    }
+    await prisma.upgradePath.delete({ where: { id: pathId } });
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Transitions (first-class product transitions) ──────────────────
+
+const createTransitionSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  slug: z.string().min(1).regex(/^[a-z0-9-]+$/).optional(),
+  description: z.string().optional().nullable(),
+  fromProductId: z.string().uuid('Invalid source product ID'),
+  toProductId: z.string().uuid('Invalid target product ID'),
+  fromVersion: z.string().min(1),
+  toVersion: z.string().min(1),
+  migrationType: z.enum(['IN_PLACE', 'REBUILD', 'BLUE_GREEN', 'SNAPSHOT']).optional(),
+  status: z.enum(['BACKLOG', 'OPPORTUNITY', 'AVAILABLE', 'AVAILABLE_PILOT_PENDING', 'DELAY_PENDING', 'CANCELLED']).optional(),
+  availableFrom: z.string().datetime().or(z.date()).optional().nullable(),
+  eolDate: z.string().datetime().or(z.date()).optional().nullable(),
+  notes: z.string().optional().nullable(),
+});
+
+const updateTransitionSchema = createTransitionSchema.partial().omit({ fromProductId: true, toProductId: true });
+
+function transitionInclude() {
+  return {
+    fromProduct: { select: { id: true, name: true, slug: true } },
+    toProduct: { select: { id: true, name: true, slug: true } },
+  };
+}
+
+// GET /api/products/transitions/all — every declared transition
+router.get('/transitions/all', async (req, res, next) => {
+  try {
+    const transitions = await prisma.transition.findMany({
+      include: transitionInclude(),
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(transitions);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/products/transitions/:id
+router.get('/transitions/:id', async (req, res, next) => {
+  try {
+    const id = idParamSchema.parse(req.params.id);
+    const transition = await prisma.transition.findUnique({
+      where: { id },
+      include: transitionInclude(),
+    });
+    if (!transition) return res.status(404).json({ error: 'Transition not found' });
+    res.json(transition);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/products/:id/transitions — declare a transition from this product
+router.post('/:id/transitions', async (req, res, next) => {
+  try {
+    const fromId = idParamSchema.parse(req.params.id);
+    const data = createTransitionSchema.parse({ ...req.body, fromProductId: fromId });
+
+    const [source, target] = await Promise.all([
+      prisma.product.findUnique({ where: { id: data.fromProductId } }),
+      prisma.product.findUnique({ where: { id: data.toProductId } }),
+    ]);
+    if (!source) return res.status(404).json({ error: 'Source product not found' });
+    if (!target) return res.status(404).json({ error: 'Target product not found' });
+    if (data.toProductId === fromId) {
+      return res.status(400).json({ error: 'A product cannot transition to itself' });
+    }
+
+    const slug = data.slug || generateSlug('transition', data.name);
+    const transition = await prisma.transition.create({
+      data: {
+        name: data.name,
+        slug,
+        description: data.description || null,
+        fromProductId: data.fromProductId,
+        toProductId: data.toProductId,
+        fromVersion: data.fromVersion,
+        toVersion: data.toVersion,
+        migrationType: data.migrationType || 'REBUILD',
+        status: data.status || 'BACKLOG',
+        availableFrom: data.availableFrom ? new Date(data.availableFrom) : null,
+        eolDate: data.eolDate ? new Date(data.eolDate) : null,
+        notes: data.notes || null,
+      },
+      include: transitionInclude(),
+    });
+    res.status(201).json(transition);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/products/transitions/:id
+router.patch('/transitions/:id', async (req, res, next) => {
+  try {
+    const id = idParamSchema.parse(req.params.id);
+    const data = updateTransitionSchema.parse(req.body);
+    const transition = await prisma.transition.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.fromVersion !== undefined ? { fromVersion: data.fromVersion } : {}),
+        ...(data.toVersion !== undefined ? { toVersion: data.toVersion } : {}),
+        ...(data.migrationType !== undefined ? { migrationType: data.migrationType } : {}),
+        ...(data.status !== undefined ? { status: data.status } : {}),
+        ...(data.availableFrom !== undefined ? { availableFrom: data.availableFrom ? new Date(data.availableFrom) : null } : {}),
+        ...(data.eolDate !== undefined ? { eolDate: data.eolDate ? new Date(data.eolDate) : null } : {}),
+        ...(data.notes !== undefined ? { notes: data.notes } : {}),
+      },
+      include: transitionInclude(),
+    });
+    res.json(transition);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/products/transitions/:id
+router.delete('/transitions/:id', async (req, res, next) => {
+  try {
+    const id = idParamSchema.parse(req.params.id);
+    await prisma.transition.delete({ where: { id } });
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/products/:id/transitions — transitions from and to this product
+router.get('/:id/transitions', async (req, res, next) => {
+  try {
+    const id = idParamSchema.parse(req.params.id);
+    const [outgoing, incoming] = await Promise.all([
+      prisma.transition.findMany({
+        where: { fromProductId: id },
+        include: transitionInclude(),
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.transition.findMany({
+        where: { toProductId: id },
+        include: transitionInclude(),
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+    res.json({ outgoing, incoming });
   } catch (err) {
     next(err);
   }

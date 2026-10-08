@@ -54,6 +54,8 @@ const regionColors: Record<string, string> = {
   'us-east': '#10b981',
   'us-west': '#34d399',
   'ap-south': '#f59e0b',
+  'ap-east': '#f59e0b',
+  'ap-southeast': '#fbbf24',
   'ap-northeast': '#fbbf24',
   'sa-east': '#ef4444',
   'af-south': '#a855f7',
@@ -364,7 +366,7 @@ function VariantBranchCard({ variant, product }: { variant: ProductVariant; prod
                           intersectingAzs.map((az: any) => (
                             <Badge key={az.availabilityZoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">
                               <MapPin className="h-2.5 w-2.5 mr-0.5" />
-                              {az.availabilityZone?.code}
+                              {az.availabilityZone?.name}
                             </Badge>
                           ))
                         )}
@@ -689,7 +691,7 @@ export default function ProductDetail() {
                   label="Availability Zone"
                   value={azFilter}
                   onChange={setAzFilter}
-                  options={uniqueAzs.map((az: any) => ({ id: az.id, label: `${az.code} (${az.region})` }))}
+                  options={uniqueAzs.map((az: any) => ({ id: az.id, label: `${az.name} (${az.code})` }))}
                   placeholder="Search AZ..."
                 />
                 <PickupInput
@@ -1146,7 +1148,7 @@ export default function ProductDetail() {
                                 style={{ backgroundColor: regionColors[az.region] || '#64748b' }}
                               />
                               <span className="text-sm text-white">{az.name}</span>
-                              <span className="text-xs text-slate-500">{az.city}, {az.country}</span>
+                              <span className="text-xs text-slate-500">{az.code} — {az.city}, {az.country}</span>
                             </div>
                             <Badge
                               variant="outline"
@@ -1156,7 +1158,7 @@ export default function ProductDetail() {
                                 color: regionColors[az.region] || '#94a3b8',
                               }}
                             >
-                              {az.code}
+                              {az.region}
                             </Badge>
                           </div>
                         ))}
@@ -1181,7 +1183,7 @@ export default function ProductDetail() {
                         <div className="mt-2 flex flex-wrap gap-2 justify-center">
                           {uniqueAzs.map((az: any) => (
                             <span key={az.id} className="text-xs px-2 py-1 rounded bg-slate-900 text-slate-400 border border-slate-800">
-                              {az.code}
+                              {az.name}
                             </span>
                           ))}
                         </div>

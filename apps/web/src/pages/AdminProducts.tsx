@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { PickupList, productStatusPicklist } from '@/components/ui/pickup-list';
 import {
   useAdminProducts,
   useAdminCategories,
@@ -198,7 +199,7 @@ function ScheduleEditor({
               >
                 <option value="">Any AZ</option>
                 {azs?.map((az) => (
-                  <option key={az.id} value={az.id}>{az.code}</option>
+                  <option key={az.id} value={az.id}>{az.name} ({az.code})</option>
                 ))}
               </select>
             </div>
@@ -284,6 +285,7 @@ function ProductModal({
     isActive: editing?.isActive ?? true,
     initialReleaseDate: editing?.initialReleaseDate ? editing.initialReleaseDate.slice(0, 10) : '',
     productEOLDate: editing?.productEOLDate ? editing.productEOLDate.slice(0, 10) : '',
+    status: editing?.status || 'AVAILABLE',
     regionIds: editing?.regions?.map((r) => r.regionId) || [] as string[],
     availabilityZoneIds: editing?.availabilityZones?.map((az) => az.availabilityZoneId) || [] as string[],
     zoneIds: editing?.zones?.map((z) => z.zoneId) || [] as string[],
@@ -429,6 +431,14 @@ function ProductModal({
               <Input type="date" value={form.productEOLDate} onChange={(e) => setForm({ ...form, productEOLDate: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
             </div>
           </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-300">Status</label>
+            <PickupList
+              options={productStatusPicklist}
+              value={form.status}
+              onChange={(v) => setForm({ ...form, status: v })}
+            />
+          </div>
 
           <MultiSelectToggle
             label="Regions"
@@ -443,7 +453,7 @@ function ProductModal({
             options={filteredAzs}
             selectedIds={form.availabilityZoneIds}
             onToggle={toggleAz}
-            getLabel={(az) => az.code}
+            getLabel={(az) => (az.name ? `${az.name} (${az.code})` : az.code)}
           />
 
           <MultiSelectToggle
@@ -642,7 +652,7 @@ function VariantModal({
                       : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-600'
                   )}
                 >
-                  {az.code}
+                  {az.name ? `${az.name} (${az.code})` : az.code}
                 </button>
               ))}
             </div>
@@ -743,7 +753,7 @@ function ProductDrawer({
                               <div className="flex flex-wrap gap-1">
                                 {v.availabilityZones?.map((az) => (
                                   <span key={az.availabilityZoneId} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">
-                                    {az.availabilityZone?.code}
+                                    {az.availabilityZone?.name}
                                   </span>
                                 ))}
                               </div>
@@ -862,7 +872,7 @@ export default function AdminProducts() {
                 <td className="py-3">
                   <div className="flex flex-wrap gap-1">
                     {product.availabilityZones?.map((az) => (
-                      <span key={az.availabilityZoneId} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">{az.availabilityZone?.code}</span>
+                      <span key={az.availabilityZoneId} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">{az.availabilityZone?.name}</span>
                     ))}
                   </div>
                 </td>
