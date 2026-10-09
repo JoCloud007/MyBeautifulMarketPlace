@@ -1,4 +1,4 @@
-import { PrismaClient, DependencyType, ComputeType, PerformanceTargetType, VisibilityType } from '@prisma/client';
+import { PrismaClient, DependencyType, ComputeType, PerformanceTargetType, VisibilityType, Role } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -287,7 +287,7 @@ async function main() {
   async function ensureUser(
     email: string,
     name: string,
-    createData: { role: 'ADMIN' | 'USER'; roles: string[]; managerId?: string },
+    createData: { role: 'ADMIN' | 'USER'; roles: Role[]; managerId?: string },
   ) {
     await prisma.user.upsert({
       where: { email },
@@ -299,7 +299,7 @@ async function main() {
     if (missing.length > 0) {
       await prisma.user.update({
         where: { id: user.id },
-        data: { roles: { set: [...user.roles, ...missing] } },
+        data: { roles: { set: [...user.roles, ...(missing as Role[])] } },
       });
     }
     return user;
