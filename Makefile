@@ -62,7 +62,9 @@ build:
 ## all Docker images.
 deploy:
 	. "$(shell pwd)/.source.prisma" && \
-	rm -rf node_modules && npm install --force --legacy-peer-deps --no-package-lock $(NPM_PLATFORM_FLAGS) && \
+	for i in 1 2 3 4 5; do rm -rf node_modules 2>/dev/null && break || sleep 2; done; \
+	if [ -d node_modules ]; then echo "ERROR: cannot remove node_modules (a process keeps recreating files — close editors/language servers and retry)"; exit 1; fi && \
+	npm install --force --legacy-peer-deps --no-package-lock $(NPM_PLATFORM_FLAGS) && \
 	ESBUILD_VERSION=$$(node -p "require('./node_modules/esbuild/package.json').version") && \
 	npm pack @esbuild/linux-arm64@$$ESBUILD_VERSION && \
 	mkdir -p node_modules/@esbuild/linux-arm64 && tar -xzf esbuild-linux-arm64-$$ESBUILD_VERSION.tgz -C node_modules/@esbuild/linux-arm64 --strip-components=1 && rm esbuild-linux-arm64-$$ESBUILD_VERSION.tgz && \
