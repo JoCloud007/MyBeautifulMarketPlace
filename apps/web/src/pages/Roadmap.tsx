@@ -111,7 +111,7 @@ function productTransitions(product: Product): { to: string[]; from: string[] } 
 
 function productVariantToRoadmap(product: Product, variant: ProductVariant): RoadmapVersion {
   const transitions = productTransitions(product);
-  const azList = variant.availabilityZones?.map((z) => z.availabilityZone) || [];
+  const azList: AvailabilityZone[] = variant.availabilityZones?.map((z) => z.availabilityZone).filter(Boolean) || [];
   const zoneList = variant.zones?.map((z) => z.zone) || [];
   return {
     id: variant.id,
@@ -1441,7 +1441,7 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
       {showTodayBar && (
         <div
           className="absolute top-0 bottom-0 w-0.5 bg-white/70 z-10 pointer-events-none"
-          style={{ left: `${toPct(new Date())}%` }}
+          style={{ left: `${Math.max(0, Math.min(100, ((toPct(new Date()) - indentPct) / widthPct) * 100))}%` }}
         />
       )}
     </div>
@@ -1796,9 +1796,12 @@ export default function Roadmap() {
   const [perspective, setPerspective] = useState<RoadmapPerspective>('product');
   const { data: infraVersions } = useInfraVersions();
   const { data: regions } = useRegions();
-  useMemo(() => setRegionNameIndex(regions), [regions]);
 
   const allVersions = useMemo(() => {
+    // Rebuild the slug→name index inside this memo so region labels are always
+    // resolved against the regions data present at conversion time — the memo
+    // depends on `regions`, so a late/refetched regions list re-converts.
+    setRegionNameIndex(regions);
     const versions: RoadmapVersion[] = [];
     if (perspective === 'infra') {
       for (const iv of infraVersions || []) {
