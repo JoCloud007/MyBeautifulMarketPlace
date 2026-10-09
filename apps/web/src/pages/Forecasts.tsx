@@ -641,9 +641,14 @@ export default function Forecasts() {
   ];
 
   const hasError = forecastsError || statsError;
+  // Badge = real number of items waiting in the active user's queues
+  // (not the number of queues) — sum forecasts at each queued status.
+  const pendingItems = (forecasts || []).filter((f) =>
+    roleQueues.some((r) => ROLE_QUEUE_LABEL[r]!.status === f.status)
+  ).length;
   const tabs: { key: Tab; label: string; icon: typeof FileText; badge?: number }[] = [
     { key: 'mine', label: 'My requests', icon: FileText },
-    ...(roleQueues.length > 0 ? [{ key: 'queues' as Tab, label: 'Approval queues', icon: Inbox, badge: roleQueues.length }] : []),
+    ...(roleQueues.length > 0 ? [{ key: 'queues' as Tab, label: 'Approval queues', icon: Inbox, badge: pendingItems }] : []),
     { key: 'analytics', label: 'Analytics', icon: BarChart3 },
     { key: 'governance', label: 'Governance', icon: ShieldCheck },
   ];
