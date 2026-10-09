@@ -276,6 +276,63 @@ async function main() {
   }
   console.log('  🎯 Performance profiles upserted');
 
+  // ── Users (forecast lifecycle roles) ────────────────────────────────
+  // Idempotent upserts on the unique email — never deletes or downgrades
+  // existing users. Creates the governance roles needed by the forecast
+  // lifecycle (REQUESTER, TECH_LEAD, MANAGER, FINANCE, ADMIN).
+  // Roles are UNIONED into existing users (never removed), so users that
+  // predate the lifecycle feature (empty roles) are brought up to date.
+
+  /** Add roles a user is missing. Additive only — existing roles are kept. */
+  async function ensureUser(
+    email: string,
+    name: string,
+    createData: { role: 'ADMIN' | 'USER'; roles: string[]; managerId?: string },
+  ) {
+    await prisma.user.upsert({
+      where: { email },
+      update: {},
+      create: { email, name, ...createData },
+    });
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+    const missing = createData.roles.filter((r) => !user.roles.includes(r as never));
+    if (missing.length > 0) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { roles: { set: [...user.roles, ...missing] } },
+      });
+    }
+    return user;
+  }
+
+  await ensureUser('admin@cloudmarket.local', 'System Administrator', {
+    role: 'ADMIN',
+    roles: ['ADMIN', 'REQUESTER', 'TECH_LEAD', 'MANAGER', 'FINANCE'],
+  });
+
+  const managerUser = await ensureUser('manager@cloudmarket.local', 'Carol Manager', {
+    role: 'USER',
+    roles: ['MANAGER'],
+  });
+
+  await ensureUser('techlead@cloudmarket.local', 'Trevor TechLead', {
+    role: 'USER',
+    roles: ['TECH_LEAD'],
+  });
+
+  await ensureUser('finance@cloudmarket.local', 'Fiona Finance', {
+    role: 'USER',
+    roles: ['FINANCE'],
+  });
+
+  await ensureUser('user@cloudmarket.local', 'Demo User', {
+    role: 'USER',
+    roles: ['REQUESTER'],
+    managerId: managerUser.id,
+  });
+
+  console.log('  👥 Users with lifecycle roles upserted');
+
   // ── ProductVariant lifecycle dates ────────────────────────────────
   // Backfill releaseDate / support dates from OsVersion when missing
   const variantsWithoutDates = await prisma.productVariant.findMany({

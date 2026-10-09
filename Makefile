@@ -2,7 +2,7 @@
 # Simplifies build, deploy, and run workflows for both online (build)
 # and air-gapped (deploy) environments.
 
-.PHONY: clean build deploy run help backfill-variants restart-api seed-incremental
+.PHONY: clean build deploy run help backfill-variants restart-api seed-incremental update
 
 # Force bash — avoids POSIX/dash incompatibilities on Ubuntu
 SHELL := /bin/bash
@@ -24,7 +24,8 @@ help:
 	@echo "  make clean   — Remove node_modules, dist, and Docker artifacts"
 	@echo "  make build   — Generate Prisma binaries (requires internet)"
 	@echo "  make deploy  — Build images for air-gapped deployment"
-	@echo "  make run     — Start all containers"
+	@echo "  make run     — Start all containers (fresh dist)"
+	@echo "  make update  — Post-git-pull: backup + db push + recreate + seed"
 	@echo ""
 	@echo "Workflow:"
 	@echo "  1. On a machine WITH internet:    make build"
@@ -76,8 +77,11 @@ deploy:
 
 ## Run — Start all containers (db, api, web).
 ## Recreates containers to ensure the latest built images are used.
+## --renew-anon-volumes is REQUIRED: the api container mounts an anonymous
+## volume on /app/apps/api/dist, and without this flag the OLD compiled dist
+## survives recreation (symptom: runtime errors from stale pre-refactor code).
 run:
-	docker compose up -d --force-recreate
+	docker compose up -d --force-recreate --renew-anon-volumes
 	@echo ""
 	@echo "✓ Containers started:"
 	@echo "  Web:    http://localhost:5192"
@@ -88,7 +92,7 @@ run:
 ## Fixes "No roadmap data available" when variants lack releaseDate.
 ## Idempotent: safe to run multiple times.
 backfill-variants:
-	@docker compose exec db \
+	@docker compose exec -T db \
 		psql -U cloudmarket -d cloudmarket -c \
 		"UPDATE \"ProductVariant\" pv SET \"releaseDate\" = ov.\"releaseDate\", \"normalSupportEnd\" = ov.\"normalSupportEnd\", \"extendedSupportEnd\" = ov.\"extendedSupportEnd\", \"eolDate\" = ov.\"eolDate\", phase = ov.phase FROM \"OsVersion\" ov WHERE pv.\"osVersionId\" = ov.id;"
 	@echo ""
@@ -101,11 +105,28 @@ restart-api:
 	@echo ""
 	@echo "✓ API restarted"
 
+## Update — Standard post-git-pull procedure for an existing deployment.
+## make deploy + make run do NOT touch the database schema, and make run
+## alone leaves a stale dist. This target runs the full client-confirmed
+## runbook: backup, schema push, recreate, incremental seed.
+## Safe on a database with existing data: no destructive flags, no deletes.
+update:
+	@echo "==> 1/4 Backing up database to backup_`date +%F_%H%M`.sql"
+	@docker compose exec -T db pg_dump -U cloudmarket -d cloudmarket > backup_`date +%F_%H%M`.sql
+	@echo "==> 2/4 Recreating containers with fresh code and dist"
+	docker compose up -d --force-recreate --renew-anon-volumes api web
+	@echo "==> 3/4 Pushing Prisma schema (non-destructive db push, from the fresh image)"
+	. "$(shell pwd)/.source.prisma" && docker compose exec -T api npx prisma db push
+	@echo "==> 4/4 Running incremental seed"
+	$(MAKE) seed-incremental
+	@echo ""
+	@echo "✓ Deployment updated — schema, dist and seed are current"
+
 ## Incremental seed — adds new objects without wiping existing data.
 ## Safe to run on a database that already contains production data.
 ## Run after schema changes or when new seed data is added.
 seed-incremental:
-	@docker compose exec api npx tsx prisma/seed-incremental.ts
+	@docker compose exec -T api npx tsx prisma/seed-incremental.ts
 	@echo ""
 	@echo "✓ Incremental seed completed"
 	@echo "  Restart the API to clear caches: make restart-api"
