@@ -35,8 +35,12 @@ services:
       - .env
     environment:
       NODE_ENV: development
-      DATABASE_URL: ${DATABASE_URL}
-      PORT: ${PORT}
+      # Inside the compose network the db is the "db" service on 5432 —
+      # never "localhost:5433" (that only works from the host). Pinned with
+      # fallbacks so a stray or missing DATABASE_URL/POSTGRES_* in the shell
+      # env can't break the container's connection.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cloudmarket}:${POSTGRES_PASSWORD:-cloudmarket_secret}@db:5432/${POSTGRES_DB:-cloudmarket}?schema=public
+      PORT: ${PORT:-3001}
       HTTP_PROXY: ${COMPOSE_HTTP_PROXY:-}
       HTTPS_PROXY: ${COMPOSE_HTTPS_PROXY:-}
       NO_PROXY: ${COMPOSE_NO_PROXY:-}
