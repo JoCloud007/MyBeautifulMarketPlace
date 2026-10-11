@@ -32,7 +32,11 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.url.startsWith('/api/')) {
+  // Proxy the MCP endpoint(s) to the API container too, so MCP clients can
+  // use the SAME origin as the web app (the status page advertises
+  // <origin>/mcp). POST /mcp carries its own Bearer gate; /sse and /messages
+  // are the opt-in legacy fallback (404 while MCP_ENABLE_SSE is off).
+  if (req.url.startsWith('/api/') || req.url === '/mcp' || req.url.startsWith('/sse') || req.url.startsWith('/messages')) {
     // Proxy to API container
     const options = {
       hostname: API_HOST,
@@ -52,6 +56,10 @@ const server = http.createServer((req, res) => {
 
     proxyReq.on('error', (err) => {
       console.error(`[PROXY ERROR] ${req.method} ${req.url} -> ${API_HOST}:${API_PORT}: ${err.message}`);
+      if (res.headersSent) {
+        res.end();
+        return;
+      }
       res.writeHead(502, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'API unavailable', message: err.message }));
     });
@@ -60,10 +68,16 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Serve static files from dist/
-  let filePath = path.join(__dirname, 'dist', req.url.slice(1));
+  // Serve static files from dist/ (path-traversal-safe)
+  const distRoot = path.join(__dirname, 'dist');
+  let filePath = path.join(distRoot, req.url.slice(1));
   if (req.url === '/' || !path.extname(req.url)) {
-    filePath = path.join(__dirname, 'dist', 'index.html');
+    filePath = path.join(distRoot, 'index.html');
+  }
+  if (path.normalize(filePath) !== filePath || !path.normalize(filePath).startsWith(distRoot + path.sep)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' });
+    res.end('Forbidden');
+    return;
   }
 
   fs.readFile(filePath, (err, data) => {
@@ -90,5 +104,5 @@ const server = http.createServer((req, res) => {
 
 server.listen(parseInt(PORT, 10), '0.0.0.0', () => {
   console.log(`[WEB] Server listening on http://0.0.0.0:${PORT}`);
-  console.log(`[WEB] Proxying /api/* to http://${API_HOST}:${API_PORT}`);
+  console.log(`[WEB] Proxying /api/*, /mcp, /sse, /messages to http://${API_HOST}:${API_PORT}`);
 });

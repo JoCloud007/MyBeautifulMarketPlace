@@ -570,8 +570,10 @@ export default function Forecasts() {
   const selectedApp = applications?.find((a) => a.id === formData.applicationId);
   const appContinuityLevel = continuityLevels?.find((cl) => cl.id === selectedApp?.continuityLevelId);
 
+  // ADMIN sees every request; other roles only their own.
+  const isAdmin = (user?.roles || []).includes(Role.ADMIN);
   const myForecasts = (forecasts || []).filter(
-    (f) => user && (f.requesterEmail === user.email || f.requestedBy === user.name)
+    (f) => user && (isAdmin || f.requesterEmail === user.email || f.requestedBy === user.name)
   );
 
   const filteredMine = myForecasts.filter((f) => {
@@ -1136,7 +1138,7 @@ export default function Forecasts() {
                   {lines.map((line, idx) => {
                     const p = products?.find((pr) => pr.id === line.productId);
                     const f = allFlavors?.find((fl) => fl.id === line.flavorId);
-                    const lineCost = f ? (f.vcpu * 10 + f.ramGb * 3) * line.quantity : 0;
+                    const lineCost = f ? ((f.vcpu ?? 0) * 10 + (f.ramGb ?? 0) * 3) * line.quantity : 0;
                     return (
                       <div key={idx} className="space-y-1">
                         <div className="flex justify-between text-sm">
@@ -1157,7 +1159,7 @@ export default function Forecasts() {
                         <span className="text-lg font-bold text-blue-400">
                           {formatCost(lines.reduce((sum, l) => {
                             const f = allFlavors?.find((fl) => fl.id === l.flavorId);
-                            return sum + (f ? (f.vcpu * 10 + f.ramGb * 3) * l.quantity : 0);
+                            return sum + (f ? ((f.vcpu ?? 0) * 10 + (f.ramGb ?? 0) * 3) * l.quantity : 0);
                           }, 0))}
                         </span>
                       </div>

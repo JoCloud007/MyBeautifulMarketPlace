@@ -23,6 +23,7 @@
   - [Incremental Seeding](#incremental-seeding)
 - [Database Schema](#-database-schema)
 - [API Reference](#-api-reference)
+- [MCP Server (AI agents)](#-mcp-server-ai-agents)
 - [NPM Scripts](#-npm-scripts)
 - [Seed Data](#-seed-data)
 - [Design System](#-design-system)
@@ -174,6 +175,9 @@ Key variables in `.env` to review before running:
 | `DATABASE_URL` | `postgresql://...` | Full connection string (must match credentials above) |
 | `PORT` | `3001` | API server port |
 | `VITE_API_URL` | `http://localhost:3001` | Frontend API base URL |
+| `MCP_API_KEY` | *(empty)* | **Required to activate the MCP endpoint** (`POST /mcp`) — fails closed: unset/empty means every `/mcp` request gets 401 (see `.env.example`) |
+| `MCP_ENABLE_SSE` | `0` | Legacy SSE MCP fallback (`GET /sse`) — off by default; Streamable HTTP on `POST /mcp` is always available |
+| `ADMIN_API_KEY` | *(empty)* | When set, `/api/admin` requires the `x-admin-api-key` header — also needed by the MCP admin tools |
 | `PRISMA_CLI_BINARY_TARGETS` | `linux-arm64-openssl-3.0.x` | Prisma engine target platform (see `.env.example` for options) |
 | `REPO_URL` | *(empty)* | Corporate Docker registry mirror (optional) |
 | `API_IMAGE` | `node` | API container base image name (optional) |
@@ -438,6 +442,83 @@ User              (standalone)
 | 404 | Resource not found |
 | 409 | Conflict (unique/foreign key constraint) |
 | 500 | Internal error |
+
+## 🤖 MCP Server (AI agents)
+
+The API exposes a **remote MCP (Model Context Protocol) server** so AI agents (Claude Desktop, Tidet, any MCP client) can browse and operate the marketplace: catalog, infrastructure, operations, planning, and admin tools.
+
+- **Endpoint**: `http://<host>:3001/mcp` — Streamable HTTP transport, **stateless**, JSON responses (`POST` only; `GET`/`DELETE` answer `405`).
+- **Auth**: `Authorization: Bearer <MCP_API_KEY>` — **required**. If `MCP_API_KEY` is unset or empty the endpoint **fails closed**: every request is rejected with `401` and `/mcp` stays disabled.
+- **No new service, no new port, no Docker change**: `/mcp` is served by the existing `api` container on the already-published port `3001` (`make run` / `make deploy` unchanged). The SDK is pure JS, installed host-side and copied into the image — air-gapped safe.
+- **Legacy fallback**: an SSE transport (`GET /sse` + `POST /messages`) exists behind `MCP_ENABLE_SSE=1` (off by default).
+
+### 1. Configure the key
+
+```bash
+# In .env (never committed)
+MCP_API_KEY=<a-long-random-secret>   # e.g. openssl rand -hex 32
+```
+
+### 2. Connect from Tidet
+
+Register the remote server with the Tidet `mcp_server_add` command — type **HTTP**:
+
+```
+mcp_server_add cloudmarket --type http --url http://localhost:3001/mcp \
+  --header "Authorization: Bearer <MCP_API_KEY>"
+```
+
+- `cloudmarket` is the local server alias; `<MCP_API_KEY>` is the value configured in `.env`.
+- Replace `localhost` with the API host when connecting from another machine (`http://<host>:3001/mcp`).
+- Admin tools (`admin_*`) additionally require the key from `ADMIN_API_KEY`; see [Admin tools & `x-admin-api-key`](#admin-tools--x-admin-api-key) below.
+
+### 3. Connect from Claude Desktop (`.mcp.json`)
+
+```json
+{
+  "mcpServers": {
+    "cloudmarket": {
+      "type": "http",
+      "url": "http://localhost:3001/mcp",
+      "headers": {
+        "Authorization": "Bearer <MCP_API_KEY>"
+      }
+    }
+  }
+}
+```
+
+### 4. Test with curl (JSON-RPC)
+
+```bash
+# initialize — proves auth + transport work
+curl -s -X POST http://localhost:3001/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $MCP_API_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"1.0.0"}}}'
+# → {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"...","serverInfo":{"name":"cloudmarket-api",...}}}
+
+# tools/list
+curl -s -X POST http://localhost:3001/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $MCP_API_KEY" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+```
+
+Without the bearer token (or when `MCP_API_KEY` is unset) the same request answers `401` with a `WWW-Authenticate: Bearer` challenge.
+
+### Admin tools & `x-admin-api-key`
+
+Admin MCP tools (`admin_get_dashboard`, `admin_list_products`, `admin_create_product`, …) call the existing `/api/admin` routes, which require the **`x-admin-api-key` header**. The client must therefore also provide the admin key: set `ADMIN_API_KEY` in the API `.env` and use the **same value** in the `x-admin-api-key` header when calling admin routes directly. With a plain HTTP MCP client, send both headers:
+
+```
+Authorization: Bearer <MCP_API_KEY>
+x-admin-api-key: <ADMIN_API_KEY>
+```
+
+> The MCP server forwards `x-admin-api-key` (from the API's `ADMIN_API_KEY` environment variable) verbatim on every admin tool call, so clients that cannot send extra headers (e.g. some Claude Desktop builds) still work as long as `ADMIN_API_KEY` is configured on the API container.
+>
+> Without `ADMIN_API_KEY` the admin tools are not registered at all (absent from `tools/list`); with a wrong key the API answers `401` and the tool returns a readable "Unauthorized (401)" message.
 
 ## 🧪 NPM Scripts
 

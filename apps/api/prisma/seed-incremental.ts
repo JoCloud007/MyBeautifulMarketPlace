@@ -80,7 +80,6 @@ async function main() {
       slug: 'load-balancer',
       description: 'Layer 4/7 load balancer with SSL termination and health checks.',
       categoryId: network.id,
-      computeType: ComputeType.VIRTUAL,
       os: 'Linux',
       documentation: '# Load Balancer\n\nEnterprise-grade load balancing.',
       roadmap: '## Roadmap\n- Q3 2024: Auto-scaling integration',
@@ -112,7 +111,62 @@ async function main() {
     },
   });
 
-  console.log(`  Flavors: small=${small.id}, medium=${medium.id}`);
+  const large = await prisma.flavor.upsert({
+    where: { name: 'Large' },
+    update: {},
+    create: {
+      name: 'Large',
+      vcpu: 8,
+      ramGb: 16,
+      description: '8 vCPU / 16 GB — demanding applications',
+    },
+  });
+
+  const xl = await prisma.flavor.upsert({
+    where: { name: 'XL' },
+    update: {},
+    create: {
+      name: 'XL',
+      vcpu: 16,
+      ramGb: 32,
+      description: '16 vCPU / 32 GB — enterprise workloads',
+    },
+  });
+
+  const bmMedium = await prisma.flavor.upsert({
+    where: { name: 'BM Medium' },
+    update: {},
+    create: {
+      name: 'BM Medium',
+      vcpu: 16,
+      ramGb: 64,
+      description: 'Dedicated 16 cores / 64 GB — single-tenant',
+    },
+  });
+
+  const bmLarge = await prisma.flavor.upsert({
+    where: { name: 'BM Large' },
+    update: {},
+    create: {
+      name: 'BM Large',
+      vcpu: 32,
+      ramGb: 128,
+      description: 'Dedicated 32 cores / 128 GB — single-tenant',
+    },
+  });
+
+  const bmXl = await prisma.flavor.upsert({
+    where: { name: 'BM XL' },
+    update: {},
+    create: {
+      name: 'BM XL',
+      vcpu: 64,
+      ramGb: 256,
+      description: 'Dedicated 64 cores / 256 GB — single-tenant',
+    },
+  });
+
+  console.log(`  Flavors: small=${small.id}, medium=${medium.id}, large=${large.id}, xl=${xl.id}, bm=${bmMedium.id}/${bmLarge.id}/${bmXl.id}`);
 
   // ── Dependencies ────────────────────────────────────────────────────
   await prisma.dependency.upsert({
@@ -195,33 +249,106 @@ async function main() {
   console.log('  🎨 Presentation orders upserted');
 
   // ── Performance Profiles ────────────────────────────────────────────
+  // Note: VM/BM perf is expressed via per-FLAVOR profiles below; product-level
+  // profiles are only for products whose performance is not per-flavor.
   const perfSeedData = [
+    // ── Per-flavor profiles ──
     {
-      name: 'Virtual Machine — Small',
-      targetType: PerformanceTargetType.PRODUCT,
-      targetId: vmProduct.id,
-      overallScore: 72,
+      name: 'Small',
+      targetType: PerformanceTargetType.FLAVOR,
+      targetId: small.id,
+      overallScore: 58,
+      scoreLabel: 'Average',
+      colorTheme: 'blue',
+      visibility: VisibilityType.SHOW_ALL,
+      metrics: [
+        { name: 'vCPU Performance', value: 62, unit: 'index', comparison: '2 vCPU · entry', displayOrder: 0 },
+        { name: 'Memory Bandwidth', value: 48, unit: 'GB/s', comparison: '4 GB RAM', displayOrder: 1 },
+        { name: 'Network IOPS', value: 6400, unit: 'IOPS', comparison: 'baseline', displayOrder: 2 },
+      ],
+    },
+    {
+      name: 'Medium',
+      targetType: PerformanceTargetType.FLAVOR,
+      targetId: medium.id,
+      overallScore: 71,
       scoreLabel: 'Good',
       colorTheme: 'blue',
       visibility: VisibilityType.SHOW_ALL,
       metrics: [
-        { name: 'vCPU Performance', value: 65, unit: 'index', comparison: 'vs. Medium', displayOrder: 0 },
-        { name: 'Memory Bandwidth', value: 58, unit: 'GB/s', comparison: 'vs. Medium', displayOrder: 1 },
-        { name: 'Network IOPS', value: 8200, unit: 'IOPS', comparison: 'vs. Medium', displayOrder: 2 },
+        { name: 'vCPU Performance', value: 74, unit: 'index', comparison: '4 vCPU · balanced', displayOrder: 0 },
+        { name: 'Memory Bandwidth', value: 66, unit: 'GB/s', comparison: '8 GB RAM', displayOrder: 1 },
+        { name: 'Network IOPS', value: 9600, unit: 'IOPS', comparison: 'baseline ×1.5', displayOrder: 2 },
       ],
     },
     {
-      name: 'Virtual Machine — Medium',
-      targetType: PerformanceTargetType.PRODUCT,
-      targetId: vmProduct.id,
-      overallScore: 85,
+      name: 'Large',
+      targetType: PerformanceTargetType.FLAVOR,
+      targetId: large.id,
+      overallScore: 83,
       scoreLabel: 'Very Good',
       colorTheme: 'green',
       visibility: VisibilityType.SHOW_ALL,
       metrics: [
-        { name: 'vCPU Performance', value: 82, unit: 'index', comparison: 'vs. Large', displayOrder: 0 },
-        { name: 'Memory Bandwidth', value: 76, unit: 'GB/s', comparison: 'vs. Large', displayOrder: 1 },
-        { name: 'Network IOPS', value: 12500, unit: 'IOPS', comparison: 'vs. Large', displayOrder: 2 },
+        { name: 'vCPU Performance', value: 85, unit: 'index', comparison: '8 vCPU', displayOrder: 0 },
+        { name: 'Memory Bandwidth', value: 82, unit: 'GB/s', comparison: '16 GB RAM', displayOrder: 1 },
+        { name: 'Network IOPS', value: 14000, unit: 'IOPS', comparison: 'baseline ×2.2', displayOrder: 2 },
+      ],
+    },
+    {
+      name: 'XL',
+      targetType: PerformanceTargetType.FLAVOR,
+      targetId: xl.id,
+      overallScore: 91,
+      scoreLabel: 'Excellent',
+      colorTheme: 'green',
+      visibility: VisibilityType.SHOW_ALL,
+      metrics: [
+        { name: 'vCPU Performance', value: 93, unit: 'index', comparison: '16 vCPU', displayOrder: 0 },
+        { name: 'Memory Bandwidth', value: 95, unit: 'GB/s', comparison: '32 GB RAM', displayOrder: 1 },
+        { name: 'Network IOPS', value: 22000, unit: 'IOPS', comparison: 'baseline ×3.4', displayOrder: 2 },
+      ],
+    },
+    {
+      name: 'BM Medium',
+      targetType: PerformanceTargetType.FLAVOR,
+      targetId: bmMedium.id,
+      overallScore: 84,
+      scoreLabel: 'Very Good',
+      colorTheme: 'green',
+      visibility: VisibilityType.SHOW_ALL,
+      metrics: [
+        { name: 'vCPU Performance', value: 86, unit: 'index', comparison: '16 dedicated cores', displayOrder: 0 },
+        { name: 'Memory Bandwidth', value: 88, unit: 'GB/s', comparison: '64 GB RAM', displayOrder: 1 },
+        { name: 'Network Throughput', value: 10, unit: 'Gbps', comparison: 'uplink', displayOrder: 2 },
+      ],
+    },
+    {
+      name: 'BM Large',
+      targetType: PerformanceTargetType.FLAVOR,
+      targetId: bmLarge.id,
+      overallScore: 92,
+      scoreLabel: 'Excellent',
+      colorTheme: 'green',
+      visibility: VisibilityType.SHOW_ALL,
+      metrics: [
+        { name: 'vCPU Performance', value: 94, unit: 'index', comparison: '32 dedicated cores', displayOrder: 0 },
+        { name: 'Memory Bandwidth', value: 108, unit: 'GB/s', comparison: '128 GB RAM', displayOrder: 1 },
+        { name: 'Network Throughput', value: 25, unit: 'Gbps', comparison: 'uplink', displayOrder: 2 },
+      ],
+    },
+    {
+      name: 'BM XL',
+      targetType: PerformanceTargetType.FLAVOR,
+      targetId: bmXl.id,
+      overallScore: 97,
+      scoreLabel: 'Excellent',
+      colorTheme: 'green',
+      visibility: VisibilityType.SHOW_ALL,
+      metrics: [
+        { name: 'vCPU Performance', value: 98, unit: 'index', comparison: '64 dedicated cores', displayOrder: 0 },
+        { name: 'Memory Bandwidth', value: 122, unit: 'GB/s', comparison: '256 GB RAM', displayOrder: 1 },
+        { name: 'Network Throughput', value: 50, unit: 'Gbps', comparison: 'uplink ×2', displayOrder: 2 },
       ],
     },
     {

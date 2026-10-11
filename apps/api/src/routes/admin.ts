@@ -36,8 +36,10 @@ const productSchema = z.object({
 
 const flavorSchema = z.object({
   name: z.string().min(1),
-  vcpu: z.number().int().min(0),
-  ramGb: z.number().int().min(0),
+  categoryId: z.string().uuid().optional(),
+  vcpu: z.number().int().min(0).optional(),
+  ramGb: z.number().int().min(0).optional(),
+  attributes: z.record(z.union([z.string(), z.number()])).optional(),
   description: z.string().optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
   regionIds: z.array(z.string().uuid()).optional(),
@@ -54,6 +56,38 @@ const categorySchema = z.object({
   description: z.string().optional(),
   icon: z.string().optional(),
 });
+
+const fieldDefinitionSchema = z.object({
+  key: z.string().min(1).regex(/^[a-zA-Z][a-zA-Z0-9_]*$/, 'Key must be alphanumeric (starting with a letter)'),
+  label: z.string().min(1),
+  unit: z.string().optional(),
+  type: z.enum(['number', 'enum', 'string']),
+  required: z.boolean().optional(),
+  order: z.number().int().optional(),
+  options: z.array(z.string()).optional(),
+});
+
+// Validates a flavor's `attributes` object against the target category's field definitions.
+// Returns an error message string, or null when valid.
+async function validateFlavorAttributes(categoryId: string | undefined, attributes: Record<string, string | number> | undefined): Promise<string | null> {
+  if (!categoryId || !attributes) return null;
+  const defs = await prisma.flavorFieldDefinition.findMany({ where: { categoryId } });
+  for (const [key, value] of Object.entries(attributes)) {
+    const def = defs.find((d) => d.key === key);
+    if (!def) return `Unknown flavor attribute "${key}" for this category`;
+    if (def.type === 'number' && typeof value !== 'number') return `Attribute "${key}" must be a number`;
+    if (def.type === 'enum') {
+      if (typeof value !== 'string') return `Attribute "${key}" must be one of: ${(def.options as string[] | null)?.join(', ') || 'string'}`;
+      const options = (def.options as string[] | null) || [];
+      if (options.length > 0 && !options.includes(value)) return `Attribute "${key}" must be one of: ${options.join(', ')}`;
+    }
+  }
+  for (const def of defs) {
+    const v = attributes[def.key];
+    if (def.required && (v == null || v === '')) return `Missing required attribute "${def.key}" (${def.label})`;
+  }
+  return null;
+}
 
 const dependencySchema = z.object({
   productId: z.string().uuid(),
@@ -536,7 +570,7 @@ router.delete('/categories/:id', async (req, res, next) => {
 router.get('/flavors', async (_req, res, next) => {
   try {
     const flavors = await prisma.flavor.findMany({
-      include: { zones: { include: { zone: true } }, regions: { include: { region: true } }, availabilityZones: { include: { availabilityZone: true } }, _count: { select: { variants: true, forecastLines: true, instances: true } } },
+      include: { category: { include: { flavorFieldDefinitions: { orderBy: { order: 'asc' } } } }, zones: { include: { zone: true } }, regions: { include: { region: true } }, availabilityZones: { include: { availabilityZone: true } }, _count: { select: { variants: true, forecastLines: true, instances: true } } },
       orderBy: { createdAt: 'desc' },
     });
     res.json(flavors);
@@ -549,6 +583,8 @@ router.get('/flavors', async (_req, res, next) => {
 router.post('/flavors', async (req, res, next) => {
   try {
     const data = flavorSchema.parse(req.body);
+    const attrError = await validateFlavorAttributes(data.categoryId, data.attributes);
+    if (attrError) return res.status(400).json({ error: attrError });
     const { zoneIds, regionIds, availabilityZoneIds, schedules, ...flavorData } = data;
 
     const flavor = await prisma.flavor.create({
@@ -628,6 +664,15 @@ router.patch('/flavors/:id', async (req, res, next) => {
     }
 
     const { zoneIds, regionIds, availabilityZoneIds, schedules, ...flavorData } = data;
+
+    // Validate attributes against the flavor's category definitions
+    let effectiveCategoryId: string | undefined = data.categoryId ?? undefined;
+    if (!effectiveCategoryId) {
+      const existing = await prisma.flavor.findUnique({ where: { id }, select: { categoryId: true } });
+      effectiveCategoryId = existing?.categoryId ?? undefined;
+    }
+    const attrError = await validateFlavorAttributes(effectiveCategoryId, data.attributes);
+    if (attrError) return res.status(400).json({ error: attrError });
 
     // Handle relation updates
     if (zoneIds) {
@@ -717,6 +762,103 @@ router.delete('/flavors/:id', async (req, res, next) => {
     }
 
     await prisma.flavor.delete({ where: { id } });
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ===================== FLAVOR FIELD DEFINITIONS =====================
+
+// GET /api/admin/categories/:id/field-definitions
+router.get('/categories/:id/field-definitions', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    idParamSchema.parse(id);
+    const defs = await prisma.flavorFieldDefinition.findMany({
+      where: { categoryId: id },
+      orderBy: { order: 'asc' },
+    });
+    res.json(defs);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/admin/categories/:id/field-definitions
+router.post('/categories/:id/field-definitions', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    idParamSchema.parse(id);
+    const data = fieldDefinitionSchema.parse(req.body);
+
+    const category = await prisma.category.findUnique({ where: { id } });
+    if (!category) return res.status(404).json({ error: 'Category not found' });
+
+    const exists = await prisma.flavorFieldDefinition.findUnique({
+      where: { categoryId_key: { categoryId: id, key: data.key } },
+    });
+    if (exists) return res.status(409).json({ error: `Field "${data.key}" already exists for this category` });
+
+    const def = await prisma.flavorFieldDefinition.create({
+      data: { ...data, categoryId: id },
+    });
+    res.status(201).json(def);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/admin/categories/:id/field-definitions/:key
+router.patch('/categories/:id/field-definitions/:key', async (req, res, next) => {
+  try {
+    const { id, key } = req.params;
+    idParamSchema.parse(id);
+    const data = fieldDefinitionSchema.partial().parse(req.body);
+
+    const def = await prisma.flavorFieldDefinition.findUnique({
+      where: { categoryId_key: { categoryId: id, key } },
+    });
+    if (!def) return res.status(404).json({ error: 'Field definition not found' });
+
+    // Renaming the key would orphan existing flavor attributes — forbid it
+    if (data.key && data.key !== key) {
+      return res.status(400).json({ error: 'Key cannot be changed (existing flavors reference it). Delete and recreate instead.' });
+    }
+
+    const updated = await prisma.flavorFieldDefinition.update({
+      where: { categoryId_key: { categoryId: id, key } },
+      data,
+    });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/admin/categories/:id/field-definitions/:key
+router.delete('/categories/:id/field-definitions/:key', async (req, res, next) => {
+  try {
+    const { id, key } = req.params;
+    idParamSchema.parse(id);
+
+    const def = await prisma.flavorFieldDefinition.findUnique({
+      where: { categoryId_key: { categoryId: id, key } },
+    });
+    if (!def) return res.status(404).json({ error: 'Field definition not found' });
+
+    await prisma.flavorFieldDefinition.delete({ where: { categoryId_key: { categoryId: id, key } } });
+
+    // Strip the now-undefined key from existing flavors of this category
+    const flavors = await prisma.flavor.findMany({ where: { categoryId: id, NOT: { attributes: { equals: {} } } } });
+    for (const f of flavors) {
+      const attrs = (f.attributes as Record<string, unknown> | null) || {};
+      if (key in attrs) {
+        const { [key]: _removed, ...rest } = attrs;
+        await prisma.flavor.update({ where: { id: f.id }, data: { attributes: rest as any } });
+      }
+    }
+
     res.status(204).send();
   } catch (err) {
     next(err);

@@ -15,8 +15,27 @@ model Category {
   description String?
   icon        String?
   products    Product[]
+  flavors     Flavor[]
+  flavorFieldDefinitions FlavorFieldDefinition[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+model FlavorFieldDefinition {
+  id         String   @id @default(uuid())
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  key        String
+  label      String
+  unit       String?
+  type       String   @default("string")
+  required   Boolean  @default(false)
+  order      Int      @default(0)
+  options    Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([categoryId, key])
 }
 
 model Product {
@@ -187,8 +206,11 @@ model UpgradePath {
 model Flavor {
   id                  String                   @id @default(uuid())
   name                String                   @unique
-  vcpu                Int
-  ramGb               Int
+  categoryId          String?
+  category            Category?                @relation(fields: [categoryId], references: [id])
+  vcpu                Int?
+  ramGb               Int?
+  attributes          Json?
   description         String?
   releaseDate         DateTime?
   deprecationDate     DateTime?

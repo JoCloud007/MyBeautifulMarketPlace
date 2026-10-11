@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
-import type { Product, Category, Forecast, ForecastStats, ForecastTransition, GovernanceDefinition, ServiceNowStatus, Flavor, Dependency, User, AvailabilityZone, Zone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, ProductVersion, UpgradePath, Transition, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats, PresentationOrder, PresentationStepType, PerformanceProfile, Country, Region, InfraVersion } from '@cloudmarket/shared-types';
+import type { Product, Category, Forecast, ForecastStats, ForecastTransition, GovernanceDefinition, ServiceNowStatus, Flavor, FlavorFieldDefinition, Dependency, User, AvailabilityZone, Zone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, ProductVersion, UpgradePath, Transition, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats, PresentationOrder, PresentationStepType, PerformanceProfile, Country, Region, InfraVersion } from '@cloudmarket/shared-types';
 import type { ForecastStatus } from '@cloudmarket/shared-types';
 import { useAuthStore, type SimulatedUser } from '@/stores/useAuthStore';
 
@@ -286,6 +286,79 @@ export function useDeleteCategory() {
     },
     onError: (err: any) => {
       addToast(err.response?.data?.message || 'Unable to delete this category', 'error');
+    },
+  });
+}
+
+// ========== FLAVOR FIELD DEFINITIONS ==========
+
+export function useFlavorFieldDefinitions(categoryId: string | undefined | null) {
+  return useQuery<FlavorFieldDefinition[]>({
+    queryKey: ['field-definitions', categoryId],
+    queryFn: () => fetchJson(`/admin/categories/${categoryId}/field-definitions`),
+    enabled: !!categoryId,
+  });
+}
+
+export function useCreateFieldDefinition(categoryId: string) {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (payload: Partial<FlavorFieldDefinition>) => {
+      const { data } = await api.post(`/admin/categories/${categoryId}/field-definitions`, payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['field-definitions', categoryId] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-categories'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Flavor field added', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.error || 'Error during creation', 'error');
+    },
+  });
+}
+
+export function useUpdateFieldDefinition(categoryId: string) {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ key, ...payload }: { key: string } & Partial<FlavorFieldDefinition>) => {
+      const { data } = await api.patch(`/admin/categories/${categoryId}/field-definitions/${key}`, payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['field-definitions', categoryId] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-categories'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      addToast('Flavor field updated', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.error || 'Error during update', 'error');
+    },
+  });
+}
+
+export function useDeleteFieldDefinition(categoryId: string) {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (key: string) => {
+      await api.delete(`/admin/categories/${categoryId}/field-definitions/${key}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['field-definitions', categoryId] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-categories'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['flavors'] });
+      addToast('Flavor field deleted', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.error || 'Unable to delete this field', 'error');
     },
   });
 }
@@ -2026,7 +2099,8 @@ export function usePerformanceProfiles(targetType?: string, targetId?: string) {
   return useQuery<PerformanceProfile[]>({
     queryKey: ['performance-profiles', targetType, targetId],
     queryFn: () => fetchJson('/performance-profiles', { targetType, targetId }),
-    enabled: targetType === undefined || targetId !== undefined,
+    // Always enabled: the API supports querying by targetType alone,
+    // by targetId alone, both, or neither (returns all profiles).
     retry: 3,
     retryDelay: 2000,
   });

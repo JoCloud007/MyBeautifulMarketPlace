@@ -104,7 +104,7 @@ router.get('/', async (req, res, next) => {
     const products = await prisma.product.findMany({
       where,
       include: {
-        category: true,
+        category: { include: { flavorFieldDefinitions: { orderBy: { order: 'asc' } } } },
         variants: {
           where: { isActive: true },
           include: {
@@ -217,7 +217,7 @@ router.post('/', async (req, res, next) => {
           availabilityZones: availabilityZoneIds ? { create: availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) } : undefined,
         },
         include: {
-          category: true,
+          category: { include: { flavorFieldDefinitions: { orderBy: { order: 'asc' } } } },
           variants: {
             where: { isActive: true },
             include: {
@@ -302,13 +302,13 @@ router.post('/:id/variants', async (req, res, next) => {
 
     const product = await prisma.product.findUnique({
       where: { id },
-      include: { category: true },
+      include: { category: { include: { flavorFieldDefinitions: { orderBy: { order: 'asc' } } } } },
     });
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
-    if (product.category.name.toLowerCase() !== 'compute') {
-      return res.status(400).json({ error: 'Variants can only be created for Compute products' });
+    if ((product.category.flavorFieldDefinitions?.length ?? 0) === 0) {
+      return res.status(400).json({ error: 'Variants can only be created for products whose category defines flavor fields' });
     }
 
     const os = await prisma.operatingSystem.findUnique({ where: { id: data.osId } });
@@ -410,7 +410,7 @@ router.get('/:slug', async (req, res, next) => {
     const product = await prisma.product.findUnique({
       where: { slug },
       include: {
-        category: true,
+        category: { include: { flavorFieldDefinitions: { orderBy: { order: 'asc' } } } },
         variants: {
           where: { isActive: true },
           include: {
@@ -430,7 +430,7 @@ router.get('/:slug', async (req, res, next) => {
         },
         upgradeFrom: { include: { fromProduct: { select: { id: true, name: true, slug: true } } } },
         upgradeTo: { include: { toProduct: { select: { id: true, name: true, slug: true } } } },
-        zones: { include: { zone: true } },
+        zones: { include: { zone: { include: { availabilityZones: { include: { availabilityZone: true } } } } } },
         regions: { include: { region: true } },
         availabilityZones: { include: { availabilityZone: true } },
         productVersions: {
@@ -465,7 +465,7 @@ router.patch('/:id', async (req, res, next) => {
 
     const existingProduct = await prisma.product.findUnique({
       where: { id },
-      include: { category: true },
+      include: { category: { include: { flavorFieldDefinitions: { orderBy: { order: 'asc' } } } } },
     });
     if (!existingProduct) {
       return res.status(404).json({ error: 'Product not found' });
@@ -489,9 +489,9 @@ router.patch('/:id', async (req, res, next) => {
     }
 
     // Validate categoryId exists when provided
-    let targetCategory: typeof existingProduct.category | null = existingProduct.category;
+    let targetCategory: { id: string; name: string; slug: string } | null = existingProduct.category;
     if (data.categoryId) {
-      targetCategory = await prisma.category.findUnique({ where: { id: data.categoryId } });
+      targetCategory = await prisma.category.findUnique({ where: { id: data.categoryId }, select: { id: true, name: true, slug: true } });
       if (!targetCategory) {
         return res.status(400).json({ error: 'Category not found' });
       }
@@ -603,7 +603,7 @@ router.patch('/:id', async (req, res, next) => {
         availabilityZones: availabilityZoneIds ? { create: availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) } : undefined,
       },
       include: {
-        category: true,
+        category: { include: { flavorFieldDefinitions: { orderBy: { order: 'asc' } } } },
         variants: {
           where: { isActive: true },
           include: {
@@ -717,15 +717,15 @@ router.post('/:id/variants', async (req, res, next) => {
 
     const product = await prisma.product.findUnique({
       where: { id },
-      include: { category: true },
+      include: { category: { include: { flavorFieldDefinitions: { orderBy: { order: 'asc' } } } } },
     });
 
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    if (product.category?.name.toLowerCase() !== 'compute') {
-      return res.status(400).json({ error: 'Variants can only be created for Compute products' });
+    if ((product.category?.flavorFieldDefinitions?.length ?? 0) === 0) {
+      return res.status(400).json({ error: 'Variants can only be created for products whose category defines flavor fields' });
     }
 
     const os = await prisma.operatingSystem.findUnique({ where: { id: data.osId } });

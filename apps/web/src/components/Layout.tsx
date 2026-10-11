@@ -28,19 +28,13 @@ const navGroups = [
       { path: '/continuity', label: 'Continuity', icon: ShieldCheck },
     ],
   },
-  {
-    label: 'Planning',
-    icon: BarChart3,
-    items: [
-      { path: '/applications', label: 'Applications', icon: Layers },
-    ],
-  },
 ];
 
 const standalone = [
   { path: '/', label: 'Home', icon: Home },
   { path: '/forecasts', label: 'Forecast', icon: BarChart3 },
   { path: '/admin', label: 'Admin', icon: Shield },
+  { path: '/applications', label: 'Applications', icon: Layers },
 ];
 
 /* ── Helpers ───────────────────────────────────────────────────── */

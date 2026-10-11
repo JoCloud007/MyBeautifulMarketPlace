@@ -14,6 +14,10 @@ import {
   useCreateCategory,
   useUpdateCategory,
   useDeleteCategory,
+  useFlavorFieldDefinitions,
+  useCreateFieldDefinition,
+  useUpdateFieldDefinition,
+  useDeleteFieldDefinition,
   useCreateDependency,
   useUpdateDependency,
   useDeleteDependency,
@@ -123,8 +127,11 @@ import {
   X,
   ArrowRightLeft,
   Boxes,
+  Plug,
 } from 'lucide-react';
-import type { ForecastStatus, Product, Category, Flavor, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType, AvailabilitySchedule, ProductVersion, Region, Transition, InfraVersion } from '@cloudmarket/shared-types';
+import McpStatus from './McpStatus';
+import { formatFlavorAttrs } from '@/lib/utils';
+import type { ForecastStatus, Product, Category, Flavor, FlavorFieldDefinition, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType, AvailabilitySchedule, ProductVersion, Region, Transition, InfraVersion } from '@cloudmarket/shared-types';
 import { LifecyclePhase } from '@cloudmarket/shared-types';
 import { PerformanceTargetType, VisibilityType } from '@cloudmarket/shared-types';
 
@@ -792,7 +799,7 @@ function ProductsSection() {
 
   if (isError) return <QueryError message="Unable to load products." onRetry={refetch} />;
 
-  const isCompute = (p: Product) => p.category?.name.toLowerCase() === 'compute';
+  const isCompute = (p: Product) => (p.category?.flavorFieldDefinitions?.length ?? 0) > 0 || (p.variants?.length ?? 0) > 0;
 
   const mobileCards = products?.map((product) => (
     <MobileCard key={product.id}>
@@ -1185,7 +1192,7 @@ function TransitionsAdminSection() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300">From Product</label>
-                <Select value={form.fromProductId} onChange={(e) => setForm({ ...form, fromProductId: e.target.value })} required disabled={!!editing} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <Select value={form.fromProductId} onChange={(e) => setForm({ ...form, fromProductId: e.target.value, ...(e.target.value !== form.fromProductId ? { toProductId: '' } : {}) })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                   <option value="">Choose...</option>
                   {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </Select>
@@ -1194,7 +1201,7 @@ function TransitionsAdminSection() {
                 <label className="text-sm font-medium text-slate-300">To Product</label>
                 <Select value={form.toProductId} onChange={(e) => setForm({ ...form, toProductId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                   <option value="">Choose...</option>
-                  {products?.filter((p) => p.id !== form.fromProductId).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </Select>
               </div>
             </div>
@@ -1341,7 +1348,7 @@ function TransitionsSection({ productId }: { productId: string }) {
 }
 
 function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product; onClose: () => void }) {
-  const isCompute = product.category?.name.toLowerCase() === 'compute';
+  const isCompute = (product.category?.flavorFieldDefinitions?.length ?? 0) > 0;
   const { data: variants, isLoading: variantsLoading } = useProductVariants(product.id);
   const { data: allFlavors } = useFlavors();
   const { data: allOS } = useOperatingSystems();
@@ -1588,6 +1595,153 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
   );
 }
 
+// ============ FLAVOR FIELDS DIALOG ============
+type FieldDefForm = { key: string; label: string; unit: string; type: 'number' | 'enum' | 'string'; required: boolean; order: number; options: string };
+
+function FlavorFieldsDialog({ category, onClose }: { category: Category; onClose: () => void }) {
+  const { data: defs, isLoading } = useFlavorFieldDefinitions(category.id);
+  const createDef = useCreateFieldDefinition(category.id);
+  const updateDef = useUpdateFieldDefinition(category.id);
+  const deleteDef = useDeleteFieldDefinition(category.id);
+
+  const [form, setForm] = useState<FieldDefForm>({ key: '', label: '', unit: '', type: 'number', required: false, order: 0, options: '' });
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const resetForm = () => { setForm({ key: '', label: '', unit: '', type: 'number', required: false, order: 0, options: '' }); setEditingKey(null); };
+  const openEdit = (d: any) => {
+    setEditingKey(d.key);
+    setForm({ key: d.key, label: d.label, unit: d.unit || '', type: d.type, required: d.required, order: d.order ?? 0, options: Array.isArray(d.options) ? d.options.join(', ') : '' });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload: any = {
+      key: form.key,
+      label: form.label,
+      unit: form.unit || undefined,
+      type: form.type,
+      required: form.required,
+      order: form.order,
+      options: form.type === 'enum' && form.options.trim() ? form.options.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
+    };
+    try {
+      if (editingKey) await updateDef.mutateAsync({ key: editingKey, ...payload });
+      else await createDef.mutateAsync(payload);
+      resetForm();
+    } catch {
+      /* mutation error handled by hook onError */
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirmDelete) return;
+    try {
+      await deleteDef.mutateAsync(confirmDelete);
+    } catch {
+      /* handled by hook */
+    }
+    setConfirmDelete(null);
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-white">Flavor fields — {category.name}</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-slate-500">
+          Fields flavors of this category vary on (e.g. vCPU/RAM for compute, IOPS/capacity for storage). Used by the flavor form and product pages.
+        </p>
+
+        <div className="space-y-2">
+          {isLoading ? (
+            <Skeleton className="h-12 w-full bg-slate-800" />
+          ) : defs && defs.length > 0 ? (
+            defs.map((d: FlavorFieldDefinition) => (
+              <div key={d.id} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-white text-sm">{d.label}</span>
+                    <code className="text-[10px] text-slate-500">{d.key}</code>
+                    {d.required && <Badge variant="outline" className="text-[10px] border-red-500/30 text-red-400">required</Badge>}
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    {d.type}{d.unit ? ` · ${d.unit}` : ''}{d.type === 'enum' && Array.isArray(d.options) ? ` · ${d.options.join(' / ')}` : ''}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button size="sm" variant="ghost" onClick={() => openEdit(d)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(d.key)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-slate-500">No flavor fields yet. Flavors of this category have no category-specific attributes.</p>
+          )}
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+          <p className="text-sm font-medium text-slate-300">{editingKey ? `Edit field "${editingKey}"` : 'Add a field'}</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Key *</label>
+              <Input value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value })} disabled={!!editingKey} placeholder="iops" required className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Label *</label>
+              <Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="IOPS" required className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Type</label>
+              <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as FieldDefForm['type'] })} className="bg-slate-950 border-slate-700 text-white min-h-[40px]">
+                <option value="number">Number</option>
+                <option value="enum">Enum</option>
+                <option value="string">Text</option>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Unit</label>
+              <Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="GB, IOPS…" className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+            </div>
+            {form.type === 'enum' && (
+              <div className="space-y-1 col-span-2">
+                <label className="text-xs text-slate-400">Options (comma-separated)</label>
+                <Input value={form.options} onChange={(e) => setForm({ ...form, options: e.target.value })} placeholder="Standard, Cold, Archive" className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+              </div>
+            )}
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Display order</label>
+              <Input type="number" value={form.order} onChange={(e) => setForm({ ...form, order: parseInt(e.target.value, 10) || 0 })} className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+            </div>
+            <label className="flex items-end gap-2 pb-2 text-sm text-slate-300">
+              <input type="checkbox" checked={form.required} onChange={(e) => setForm({ ...form, required: e.target.checked })} className="accent-blue-500" />
+              Required
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            {editingKey && (
+              <Button type="button" variant="outline" onClick={resetForm} className="border-slate-700 text-slate-300 hover:bg-slate-800 min-h-[40px]">Cancel</Button>
+            )}
+            <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white min-h-[40px]">{editingKey ? 'Save' : 'Add field'}</Button>
+          </div>
+        </form>
+
+        <ConfirmDialog
+          open={!!confirmDelete}
+          onOpenChange={(open) => { if (!open) setConfirmDelete(null); }}
+          title="Delete flavor field"
+          description={`Delete "${confirmDelete}"? Existing flavors of this category lose this attribute (values are removed). This action cannot be undone.`}
+          onConfirm={handleDelete}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          variant="destructive"
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ============ CATEGORIES SECTION ============
 function CategoriesSection() {
   const { data: categories, isLoading, isError, refetch } = useAdminCategories();
@@ -1647,6 +1801,8 @@ function CategoriesSection() {
     </MobileCard>
   ));
 
+  const [fieldsFor, setFieldsFor] = useState<Category | null>(null);
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
@@ -1654,14 +1810,26 @@ function CategoriesSection() {
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Name', 'Description', 'Products']} isLoading={isLoading} emptyMessage="No categories" mobileCards={mobileCards}>
+          <ResponsiveTable headers={['Name', 'Description', 'Products', 'Flavor fields']} isLoading={isLoading} emptyMessage="No categories" mobileCards={mobileCards}>
             {categories?.map((cat) => (
               <tr key={cat.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{cat.name}</td>
                 <td className="py-3 text-slate-400 max-w-xs truncate">{cat.description || '—'}</td>
                 <td className="py-3 text-slate-400">{(cat as any)._count?.products ?? 0}</td>
+                <td className="py-3">
+                  {cat.flavorFieldDefinitions && cat.flavorFieldDefinitions.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {cat.flavorFieldDefinitions.map((d) => (
+                        <Badge key={d.id} variant="outline" className="text-[10px] border-slate-700 text-slate-400">{d.label}</Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-slate-600">—</span>
+                  )}
+                </td>
                 <td className="py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => setFieldsFor(cat)} title="Flavor fields" className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Layers className="h-4 w-4" /></Button>
                     <Button size="sm" variant="ghost" onClick={() => openEdit(cat)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
                     <Button size="sm" variant="ghost" onClick={() => handleDelete(cat.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
                   </div>
@@ -1671,6 +1839,10 @@ function CategoriesSection() {
           </ResponsiveTable>
         </CardContent>
       </Card>
+
+      {fieldsFor && (
+        <FlavorFieldsDialog category={fieldsFor} onClose={() => setFieldsFor(null)} />
+      )}
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
@@ -1869,18 +2041,50 @@ function FlavorsSection() {
   const updateFlavor = useUpdateFlavor();
   const deleteFlavor = useDeleteFlavor();
 
+  const { data: categories } = useAdminCategories();
+
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Flavor | null>(null);
-  const [form, setForm] = useState({ name: '', vcpu: 0, ramGb: 0, description: '', zoneIds: [] as string[], regionIds: [] as string[], availabilityZoneIds: [] as string[], schedules: [] as (Partial<AvailabilitySchedule> & { deleted?: boolean })[], releaseDate: '', deprecationDate: '', eolDate: '' });
+  const [form, setForm] = useState({ name: '', categoryId: '', attributes: {} as Record<string, string>, description: '', zoneIds: [] as string[], regionIds: [] as string[], availabilityZoneIds: [] as string[], schedules: [] as (Partial<AvailabilitySchedule> & { deleted?: boolean })[], releaseDate: '', deprecationDate: '', eolDate: '' });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
-  const resetForm = () => { setForm({ name: '', vcpu: 0, ramGb: 0, description: '', zoneIds: [], regionIds: [], availabilityZoneIds: [], schedules: [], releaseDate: '', deprecationDate: '', eolDate: '' }); setEditing(null); };
+  const selectedDefs = useMemo(
+    () => categories?.find((c) => c.id === form.categoryId)?.flavorFieldDefinitions ?? [],
+    [categories, form.categoryId]
+  );
+
+  const resetForm = () => { setForm({ name: '', categoryId: '', attributes: {}, description: '', zoneIds: [], regionIds: [], availabilityZoneIds: [], schedules: [], releaseDate: '', deprecationDate: '', eolDate: '' }); setEditing(null); };
   const openCreate = () => { resetForm(); setIsOpen(true); };
-  const openEdit = (f: Flavor) => { setEditing(f); setForm({ name: f.name, vcpu: f.vcpu, ramGb: f.ramGb, description: f.description || '', zoneIds: f.zones?.map((z: any) => z.zoneId) ?? [], regionIds: f.regions?.map((r: any) => r.regionId) ?? [], availabilityZoneIds: f.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [], schedules: f.availabilitySchedules ? [...f.availabilitySchedules] : [], releaseDate: f.releaseDate ? f.releaseDate.slice(0, 10) : '', deprecationDate: f.deprecationDate ? f.deprecationDate.slice(0, 10) : '', eolDate: f.eolDate ? f.eolDate.slice(0, 10) : '' }); setIsOpen(true); };
+  const openEdit = (f: Flavor) => {
+    const attrStrings: Record<string, string> = {};
+    Object.entries(f.attributes || {}).forEach(([k, v]) => { attrStrings[k] = String(v); });
+    setEditing(f);
+    setForm({ name: f.name, categoryId: (f as any).categoryId || '', attributes: attrStrings, description: f.description || '', zoneIds: f.zones?.map((z: any) => z.zoneId) ?? [], regionIds: f.regions?.map((r: any) => r.regionId) ?? [], availabilityZoneIds: f.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [], schedules: f.availabilitySchedules ? [...f.availabilitySchedules] : [], releaseDate: f.releaseDate ? f.releaseDate.slice(0, 10) : '', deprecationDate: f.deprecationDate ? f.deprecationDate.slice(0, 10) : '', eolDate: f.eolDate ? f.eolDate.slice(0, 10) : '' });
+    setIsOpen(true);
+  };
+
+  // Serialize attribute form values (strings) into typed values per field definitions
+  const buildAttributes = (): Record<string, string | number> => {
+    const attrs: Record<string, string | number> = {};
+    for (const def of selectedDefs) {
+      const raw = form.attributes[def.key];
+      if (raw == null || raw === '') continue;
+      if (def.type === 'number') {
+        const n = Number(raw);
+        if (!Number.isNaN(n)) attrs[def.key] = n;
+      } else {
+        attrs[def.key] = raw;
+      }
+    }
+    return attrs;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const payload: any = { ...form };
+    const payload: any = { ...form, attributes: buildAttributes() };
+    delete payload.attributesEmpty;
+    if (!payload.categoryId) delete payload.categoryId;
+    if (Object.keys(payload.attributes).length === 0) delete payload.attributes;
     if (payload.releaseDate) payload.releaseDate = new Date(payload.releaseDate).toISOString();
     else delete payload.releaseDate;
     if (payload.deprecationDate) payload.deprecationDate = new Date(payload.deprecationDate).toISOString();
@@ -1929,7 +2133,7 @@ function FlavorsSection() {
         </div>
       </div>
       <div className="mt-2 text-sm text-slate-500">
-        {flavor.vcpu} vCPU · {flavor.ramGb} GB RAM
+        {formatFlavorAttrs(flavor, (flavor as any).category?.flavorFieldDefinitions)}
       </div>
       <div className="mt-1 flex flex-wrap gap-1">
         {flavor.regions?.map((r: any) => (
@@ -1956,12 +2160,11 @@ function FlavorsSection() {
       </div>
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
-          <ResponsiveTable headers={['Name', 'vCPU', 'RAM', 'Used By', 'Regions', 'AZs', 'Zones', 'Description']} isLoading={isLoading} emptyMessage="No flavors" mobileCards={mobileCards}>
+          <ResponsiveTable headers={['Name', 'Attributes', 'Used By', 'Regions', 'AZs', 'Zones', 'Description']} isLoading={isLoading} emptyMessage="No flavors" mobileCards={mobileCards}>
             {flavors?.map((flavor) => (
               <tr key={flavor.id} className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{flavor.name}</td>
-                <td className="py-3 text-slate-400">{flavor.vcpu}</td>
-                <td className="py-3 text-slate-400">{flavor.ramGb} GB</td>
+                <td className="py-3 text-slate-400">{formatFlavorAttrs(flavor, (flavor as any).category?.flavorFieldDefinitions)}</td>
                 <td className="py-3 text-slate-400">{(flavor as any)._count?.variants ?? 0}</td>
                 <td className="py-3">
                   <div className="flex flex-wrap gap-1">
@@ -2002,10 +2205,36 @@ function FlavorsSection() {
           <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit flavor' : 'New flavor'}</DialogTitle></DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">vCPU</label><Input type="number" value={form.vcpu} onChange={(e) => setForm({ ...form, vcpu: parseInt(e.target.value) || 0 })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
-              <div className="space-y-2"><label className="text-sm font-medium text-slate-300">RAM (GB)</label><Input type="number" value={form.ramGb} onChange={(e) => setForm({ ...form, ramGb: parseInt(e.target.value) || 0 })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Category</label>
+              <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value, attributes: {} })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="">— None —</option>
+                {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
             </div>
+            {selectedDefs.length > 0 && (
+              <div className="grid grid-cols-2 gap-4">
+                {selectedDefs.map((def) => (
+                  <div key={def.id} className="space-y-2">
+                    <label className="text-sm font-medium text-slate-300">{def.label}{def.unit ? ` (${def.unit})` : ''}{def.required ? ' *' : ''}</label>
+                    {def.type === 'enum' && Array.isArray(def.options) ? (
+                      <Select value={form.attributes[def.key] ?? ''} onChange={(e) => setForm({ ...form, attributes: { ...form.attributes, [def.key]: e.target.value } })} required={def.required} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                        <option value="">—</option>
+                        {def.options.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+                      </Select>
+                    ) : (
+                      <Input
+                        type={def.type === 'number' ? 'number' : 'text'}
+                        value={form.attributes[def.key] ?? ''}
+                        onChange={(e) => setForm({ ...form, attributes: { ...form.attributes, [def.key]: e.target.value } })}
+                        required={def.required}
+                        className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Description</label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white" /></div>
             <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Release Date</label><Input type="date" value={form.releaseDate} onChange={(e) => setForm({ ...form, releaseDate: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
@@ -3424,7 +3653,7 @@ export function _InstancesSection() {
   };
 
   const selectedProduct = products?.find((p) => p.id === form.productId);
-  const isComputeProduct = selectedProduct?.category?.name.toLowerCase() === 'compute';
+  const isComputeProduct = (selectedProduct?.category?.flavorFieldDefinitions?.length ?? 0) > 0;
   const { data: productVariants } = useProductVariants(form.productId || '');
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -4036,6 +4265,7 @@ export default function Admin() {
     { value: 'availability-zones', label: 'Availability Zones', icon: MapPin },
     { value: 'performance-profiles', label: 'Performance', icon: BarChart3 },
     { value: 'presentation-orders', label: 'Presentation', icon: LayoutList },
+    { value: 'mcp', label: 'MCP', icon: Plug },
   ];
 
   return (
@@ -4081,6 +4311,7 @@ export default function Admin() {
         <TabsContent value="availability-zones" className="animate-fade-in"><AvailabilityZonesSection /></TabsContent>
         <TabsContent value="performance-profiles" className="animate-fade-in"><PerformanceProfilesSection /></TabsContent>
         <TabsContent value="presentation-orders" className="animate-fade-in"><AdminPresentationOrders /></TabsContent>
+        <TabsContent value="mcp" className="animate-fade-in"><McpStatus /></TabsContent>
       </Tabs>
     </div>
   );

@@ -17,6 +17,28 @@ const scheduleSchema = z.object({
   deleted: z.boolean().optional(),
 });
 
+// Validates a flavor's `attributes` object against the target category's field definitions.
+// Returns an error message string, or null when valid.
+async function validateFlavorAttributes(categoryId: string | undefined | null, attributes: Record<string, string | number> | undefined): Promise<string | null> {
+  if (!categoryId || !attributes) return null;
+  const defs = await prisma.flavorFieldDefinition.findMany({ where: { categoryId } });
+  for (const [key, value] of Object.entries(attributes)) {
+    const def = defs.find((d) => d.key === key);
+    if (!def) return `Unknown flavor attribute "${key}" for this category`;
+    if (def.type === 'number' && typeof value !== 'number') return `Attribute "${key}" must be a number`;
+    if (def.type === 'enum') {
+      if (typeof value !== 'string') return `Attribute "${key}" must be one of: ${(def.options as string[] | null)?.join(', ') || 'string'}`;
+      const options = (def.options as string[] | null) || [];
+      if (options.length > 0 && !options.includes(value)) return `Attribute "${key}" must be one of: ${options.join(', ')}`;
+    }
+  }
+  for (const def of defs) {
+    const v = attributes[def.key];
+    if (def.required && (v == null || v === '')) return `Missing required attribute "${def.key}" (${def.label})`;
+  }
+  return null;
+}
+
 async function validateScheduleRefs(schedules: any[]) {
   const regionIds = [...new Set(schedules.map((s) => s.regionId).filter(Boolean))];
   const azIds = [...new Set(schedules.map((s) => s.azId).filter(Boolean))];
@@ -44,8 +66,10 @@ async function validateScheduleRefs(schedules: any[]) {
 
 const createFlavorSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  vcpu: z.number().int().min(0, 'vCPU must be a non-negative integer'),
-  ramGb: z.number().int().min(0, 'RAM must be a non-negative integer'),
+  categoryId: z.string().uuid().optional(),
+  vcpu: z.number().int().min(0, 'vCPU must be a non-negative integer').optional(),
+  ramGb: z.number().int().min(0, 'RAM must be a non-negative integer').optional(),
+  attributes: z.record(z.union([z.string(), z.number()])).optional(),
   description: z.string().optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
   regionIds: z.array(z.string().uuid()).optional(),
@@ -58,8 +82,10 @@ const createFlavorSchema = z.object({
 
 const updateFlavorSchema = z.object({
   name: z.string().min(1).optional(),
+  categoryId: z.string().uuid().optional(),
   vcpu: z.number().int().min(0).optional(),
   ramGb: z.number().int().min(0).optional(),
+  attributes: z.record(z.union([z.string(), z.number()])).optional(),
   description: z.string().optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
   regionIds: z.array(z.string().uuid()).optional(),
@@ -75,6 +101,7 @@ router.get('/', async (_req, res, next) => {
   try {
     const flavors = await prisma.flavor.findMany({
       include: {
+        category: { include: { flavorFieldDefinitions: { orderBy: { order: 'asc' } } } },
         zones: { include: { zone: true } },
         regions: { include: { region: true } },
         availabilityZones: { include: { availabilityZone: true } },
@@ -133,6 +160,9 @@ router.post('/', async (req, res, next) => {
     }
 
     const { zoneIds, regionIds, availabilityZoneIds, schedules, ...flavorData } = data;
+
+    const attrError = await validateFlavorAttributes(data.categoryId, data.attributes);
+    if (attrError) return res.status(400).json({ error: attrError });
 
     const flavor = await prisma.flavor.create({
       data: {
@@ -259,6 +289,11 @@ router.patch('/:id', async (req, res, next) => {
     }
 
     const { zoneIds, regionIds, availabilityZoneIds, schedules, ...flavorData } = data;
+
+    // Validate attributes against the flavor's category definitions
+    const effectiveCategoryId = data.categoryId ?? existing.categoryId;
+    const attrError = await validateFlavorAttributes(effectiveCategoryId, data.attributes);
+    if (attrError) return res.status(400).json({ error: attrError });
 
     // Handle zone links update
     if (zoneIds) {

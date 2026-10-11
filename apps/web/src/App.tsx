@@ -15,6 +15,7 @@ import ApplicationDetail from './pages/ApplicationDetail';
 import Admin from './pages/Admin';
 import AdminPresentationOrders from './pages/AdminPresentationOrders';
 import AdminViewBuilder from './pages/AdminViewBuilder';
+import McpStatus from './pages/McpStatus';
 import MarketplaceGeo from './pages/MarketplaceGeo';
 import MarketplaceMatrix from './pages/MarketplaceMatrix';
 import NotFound from './pages/NotFound';
@@ -36,6 +37,7 @@ function App() {
             <Route path="/forecasts" element={<Forecasts />} />
             <Route path="/applications" element={<Applications />} />
             <Route path="/applications/:id" element={<ApplicationDetail />} />
+            <Route path="/mcp-status" element={<McpStatus />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/admin/presentation-orders" element={<AdminPresentationOrders />} />
             <Route path="/admin/view-builder/:id" element={<AdminViewBuilder />} />

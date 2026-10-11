@@ -1,12 +1,17 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import type { Product, Dependency, ProductVariant } from '@cloudmarket/shared-types';
-import { useProduct, useProducts, usePerformanceProfiles } from '@/hooks/useApi';
+import type { Product, Dependency, ProductVariant, Flavor } from '@cloudmarket/shared-types';
+import { formatFlavorAttrs } from '@/lib/utils';
+import { useProduct, useProducts, usePerformanceProfiles, useProductTransitions } from '@/hooks/useApi';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import PerformanceGauge from '@/components/PerformanceGauge';
-import LifecycleTimeline from '@/components/LifecycleTimeline';
+import WorldMap from '@/components/WorldMap';
+import GanttChart, { type GanttBarData } from '@/components/GanttChart';
+import OsLifecycleTab, { osVersionLabel } from '@/components/OsLifecycleTab';
+import UpgradesTransitionsTab from '@/components/UpgradesTransitionsTab';
+import { phaseLabel, phaseColorClass } from '@/components/LifecycleTimeline';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -22,7 +27,6 @@ import {
   FileText,
   GitBranch,
   ArrowUpRight,
-  ArrowRight,
   Calendar,
   Clock,
   Box,
@@ -35,7 +39,6 @@ import {
   X,
   Search,
   ChevronDown,
-  Shield,
   Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -72,12 +75,86 @@ function formatDate(dateStr: string) {
   });
 }
 
+// Compact date for tight spots (Gantt sublabels): "Aug 9, 2025" instead of "August 9, 2025"
+function formatShortDate(dateStr: string) {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return 'Invalid date';
+  return d.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function slugifyHeading(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+/* Table of contents tiles for product documentation */
+function DocTableOfContents({ text }: { text: string }) {
+  const sections = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith('## '))
+    .map((l) => l.slice(3).trim());
+  if (sections.length === 0) return null;
+
+  const iconFor = (title: string) => {
+    const t = title.toLowerCase();
+    if (t.includes('description') || t.includes('overview')) return FileText;
+    if (t.includes('access')) return Globe;
+    if (t.includes('api')) return Zap;
+    if (t.includes('code') || t.includes('terraform') || t.includes('iac')) return Cpu;
+    if (t.includes('limit')) return AlertTriangle;
+    return FileText;
+  };
+
+  const goTo = (title: string) => {
+    document.getElementById(`sec-${slugifyHeading(title)}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
+      {sections.map((s) => {
+        const Icon = iconFor(s);
+        return (
+          <button
+            key={s}
+            onClick={() => goTo(s)}
+            className="flex items-center gap-2 px-3 py-3 rounded-lg bg-slate-900 border border-slate-800 text-left text-sm text-slate-300 hover:border-blue-500/60 hover:text-blue-300 hover:bg-slate-800/60 transition-colors"
+          >
+            <Icon className="h-4 w-4 shrink-0 text-blue-500" />
+            <span className="truncate">{s}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* Simple markdown-like renderer for docs/roadmap */
 function MarkdownContent({ text }: { text: string }) {
   const lines = text.split('\n');
   const elements: React.ReactNode[] = [];
   let inList = false;
   let listItems: React.ReactNode[] = [];
+  let inCode = false;
+  let codeLines: string[] = [];
+  let codeLang = '';
+  let tableRows: string[][] = [];
+
+  const renderInline = (s: string): React.ReactNode => {
+    const parts = s.split(/(`[^`]+`)/g);
+    return parts.map((part, j) =>
+      part.startsWith('`') && part.endsWith('`') && part.length > 2 ? (
+        <code key={j} className="px-1.5 py-0.5 rounded bg-slate-800 text-blue-300 text-[0.85em] font-mono">
+          {part.slice(1, -1)}
+        </code>
+      ) : (
+        part
+      )
+    );
+  };
 
   const flushList = () => {
     if (listItems.length > 0) {
@@ -91,19 +168,101 @@ function MarkdownContent({ text }: { text: string }) {
     }
   };
 
+  const flushCode = () => {
+    if (!inCode) return;
+    if (codeLines.length > 0) {
+      elements.push(
+        <pre key={`pre-${elements.length}`} className="my-3 rounded-lg bg-slate-900 border border-slate-800 p-4 overflow-x-auto">
+          {codeLang && (
+            <div className="text-xs text-slate-500 font-mono mb-2">{codeLang}</div>
+          )}
+          <code className="text-sm text-slate-200 font-mono leading-relaxed whitespace-pre">
+            {codeLines.join('\n')}
+          </code>
+        </pre>
+      );
+    }
+    codeLines = [];
+    codeLang = '';
+    inCode = false;
+  };
+
+  const flushTable = () => {
+    if (tableRows.length === 0) return;
+    const [header, ...body] = tableRows;
+    elements.push(
+      <div key={`tbl-${elements.length}`} className="my-3 overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr>
+              {header.map((cell, j) => (
+                <th key={j} className="text-left px-3 py-2 bg-slate-900 border border-slate-800 text-white font-semibold">
+                  {renderInline(cell)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {body.map((row, r) => (
+              <tr key={r}>
+                {row.map((cell, j) => (
+                  <td key={j} className="text-left px-3 py-2 border border-slate-800 text-slate-300">
+                    {renderInline(cell)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+    tableRows = [];
+  };
+
   lines.forEach((line, i) => {
     const trimmed = line.trim();
+
+    // Code fences
+    if (trimmed.startsWith('```')) {
+      if (inCode) {
+        flushCode();
+      } else {
+        flushList();
+        flushTable();
+        inCode = true;
+        codeLang = trimmed.slice(3).trim();
+      }
+      return;
+    }
+    if (inCode) {
+      codeLines.push(line);
+      return;
+    }
+
+    // Tables
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      const cells = trimmed.slice(1, -1).split('|').map((c) => c.trim());
+      if (cells.every((c) => /^:?-{2,}:?$/.test(c))) return; // separator row
+      if (tableRows.length === 0) flushList();
+      tableRows.push(cells);
+      return;
+    } else if (tableRows.length > 0) {
+      flushTable();
+    }
+
     if (!trimmed) {
       flushList();
+      flushTable();
       elements.push(<div key={`sp-${i}`} className="h-3" />);
       return;
     }
 
     if (trimmed.startsWith('## ')) {
       flushList();
+      const heading = trimmed.slice(3);
       elements.push(
-        <h2 key={`h2-${i}`} className="text-xl font-bold text-white mt-6 mb-3">
-          {trimmed.slice(3)}
+        <h2 key={`h2-${i}`} id={`sec-${slugifyHeading(heading)}`} className="text-xl font-bold text-white mt-6 mb-3 scroll-mt-24">
+          {heading}
         </h2>
       );
       return;
@@ -121,7 +280,7 @@ function MarkdownContent({ text }: { text: string }) {
       inList = true;
       listItems.push(
         <li key={`li-${i}`} className="text-slate-300">
-          {trimmed.slice(2)}
+          {renderInline(trimmed.slice(2))}
         </li>
       );
       return;
@@ -133,12 +292,14 @@ function MarkdownContent({ text }: { text: string }) {
     flushList();
     elements.push(
       <p key={`p-${i}`} className="text-slate-300 leading-relaxed">
-        {trimmed}
+        {renderInline(trimmed)}
       </p>
     );
   });
 
   flushList();
+  flushCode();
+  flushTable();
 
   return <div className="space-y-1">{elements}</div>;
 }
@@ -322,8 +483,8 @@ function PickupInput({
   );
 }
 
-/* Variant branch card — left flavor, right 3 tiles */
-function VariantBranchCard({ variant, product }: { variant: ProductVariant; product: Product }) {
+/* Variant row — compact one-line-per-variant */
+function VariantRow({ variant, product, count = 1, osEntries = [], flavorFieldDefs = [] }: { variant: ProductVariant; product: Product; count?: number; osEntries?: { id: string; label: string; availabilityType?: string }[]; flavorFieldDefs?: any[] }) {
   // Derive all unique zones for this variant from: variant zones, product zones, flavor zones, OS zones
   const variantZoneMap = new Map((variant.zones || []).map((vz: any) => [vz.zoneId, vz.zone]));
   const productZoneMap = new Map((product.zones || []).map((pz: any) => [pz.zoneId, pz.zone]));
@@ -333,88 +494,77 @@ function VariantBranchCard({ variant, product }: { variant: ProductVariant; prod
   const uniqueZones = Array.from(new Map(allZoneEntries).values());
 
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
-      <div className="flex flex-col lg:flex-row gap-4">
-        {/* Left — Flavor */}
-        <div className="lg:w-48 shrink-0 flex flex-col items-center justify-center rounded-lg bg-slate-900 border border-slate-800 p-4 text-center">
-          <Cpu className="h-8 w-8 text-blue-500 mb-2" />
-          <span className="font-bold text-white text-lg">{variant.flavor?.name}</span>
-          <span className="text-sm text-slate-400 mt-1">{variant.flavor?.vcpu} vCPU · {variant.flavor?.ramGb} GB</span>
-        </div>
-        {/* Right — 3 tiles */}
-        <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {/* Zones tile */}
-          <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <Box className="h-4 w-4 text-indigo-400" />
-              <span className="text-sm font-medium text-white">Zones</span>
-            </div>
-            <div className="space-y-2">
-              {uniqueZones.length === 0 ? (
-                <p className="text-xs text-slate-500">No zones assigned</p>
-              ) : (
-                uniqueZones.map((zone: any) => {
-                  const zoneAzIds = new Set((zone.availabilityZones || []).map((zaz: any) => zaz.availabilityZoneId));
-                  const intersectingAzs = (variant.availabilityZones || []).filter((az: any) => zoneAzIds.has(az.availabilityZoneId));
-                  return (
-                    <div key={zone.id} className="space-y-1">
-                      <p className="text-xs font-medium text-slate-300">{zone.name}</p>
-                      <div className="flex flex-wrap gap-1">
-                        {intersectingAzs.length === 0 ? (
-                          <span className="text-[10px] text-slate-600">No shared AZs</span>
-                        ) : (
-                          intersectingAzs.map((az: any) => (
-                            <Badge key={az.availabilityZoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">
-                              <MapPin className="h-2.5 w-2.5 mr-0.5" />
-                              {az.availabilityZone?.name}
-                            </Badge>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-          {/* Continuity tile */}
-          <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <Shield className="h-4 w-4 text-rose-400" />
-              <span className="text-sm font-medium text-white">Continuity</span>
-            </div>
-            {variant.continuityLevel ? (
-              <div className="space-y-1">
-                <Badge variant="outline" className="text-xs" style={{ color: variant.continuityLevel.color, borderColor: `${variant.continuityLevel.color}40` }}>
-                  {variant.continuityLevel.name}
-                </Badge>
-                <p className="text-xs text-slate-400">RTO {variant.continuityLevel.rtoMinutes}m · RPO {variant.continuityLevel.rpoMinutes}m</p>
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500">No continuity level</p>
+    <div className="flex flex-col gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-1.5 transition-colors hover:border-slate-700 md:min-h-14 md:flex-row md:items-center md:gap-4">
+      {/* Flavor */}
+      <div className="flex items-center gap-2 md:w-40 md:shrink-0">
+        <Cpu className="h-4 w-4 shrink-0 text-blue-500" />
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-white">
+            {variant.flavor?.name}
+            {count > 1 && (
+              <Badge variant="outline" className="shrink-0 border-blue-500/20 bg-blue-500/10 px-1.5 py-0 text-[10px] text-blue-400">
+                ×{count}
+              </Badge>
             )}
-          </div>
-          {/* OS tile */}
-          <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <Monitor className="h-4 w-4 text-cyan-400" />
-              <span className="text-sm font-medium text-white">OS</span>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-white">{variant.os?.name} {variant.osVersion?.version}</p>
-              {variant.availabilityType && variant.availabilityType !== 'STANDARD' && (
-                <Badge variant="outline" className={cn(
-                  'text-xs',
-                  variant.availabilityType === 'RECOMMENDED' && 'border-emerald-500/20 text-emerald-500 bg-emerald-500/10',
-                  variant.availabilityType === 'RESTRICTED' && 'border-red-500/20 text-red-500 bg-red-500/10',
-                  variant.availabilityType === 'ON_DEMAND' && 'border-amber-500/20 text-amber-500 bg-amber-500/10',
-                )}>
-                  {variant.availabilityType.replace('_', ' ')}
-                </Badge>
-              )}
-            </div>
-          </div>
+          </p>
+          <p className="text-[11px] text-slate-500">{formatFlavorAttrs(variant.flavor as Flavor, flavorFieldDefs)}</p>
         </div>
+      </div>
+      {/* OS — compact tags; when the OS column is hidden, shows all OS versions the
+          row covers (aggregated for ×N groups), with a colored dot for the availability type
+          (legend under the filters: green = Recommended, red = Restricted, amber = On demand) */}
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
+        <Monitor className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+        {osEntries.map((entry) => (
+          <span
+            key={entry.id}
+            title={entry.availabilityType && entry.availabilityType !== 'STANDARD' ? entry.availabilityType.replace('_', ' ') : undefined}
+            className="inline-flex max-w-full items-center gap-1 rounded-full border border-slate-800 bg-slate-900 px-2 py-0.5 text-[10px] text-slate-300"
+          >
+            {entry.availabilityType && entry.availabilityType !== 'STANDARD' && (
+              <span className={cn(
+                'h-1.5 w-1.5 shrink-0 rounded-full',
+                entry.availabilityType === 'RECOMMENDED' && 'bg-emerald-500',
+                entry.availabilityType === 'RESTRICTED' && 'bg-red-500',
+                entry.availabilityType === 'ON_DEMAND' && 'bg-amber-500',
+              )} />
+            )}
+            <span className="truncate">{entry.label}</span>
+          </span>
+        ))}
+      </div>
+      {/* Zones + AZs — single line, truncated, so all rows keep the same height */}
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden whitespace-nowrap px-1">
+        {uniqueZones.length === 0 ? (
+          <span className="text-[11px] text-slate-600">No zones assigned</span>
+        ) : (
+          uniqueZones.map((zone: any) => {
+            const zoneAzIds = new Set((zone.availabilityZones || []).map((zaz: any) => zaz.availabilityZoneId));
+            const intersectingAzs = (variant.availabilityZones || []).filter((az: any) => zoneAzIds.has(az.availabilityZoneId));
+            return (
+              <span key={zone.id} className="inline-flex max-w-full items-center gap-1 rounded-full border border-slate-800 bg-slate-900 px-2 py-0.5 text-[10px] text-slate-300">
+                <Box className="h-2.5 w-2.5 shrink-0 text-indigo-400" />
+                <span className="truncate">{zone.name}</span>
+                {intersectingAzs.length > 0 && (
+                  <span className="truncate text-slate-500">· {intersectingAzs.map((az: any) => az.availabilityZone?.name).join(', ')}</span>
+                )}
+              </span>
+            );
+          })
+        )}
+      </div>
+      {/* Continuity */}
+      <div className="flex items-center gap-2 md:shrink-0 md:justify-end">
+        {variant.continuityLevel ? (
+          <>
+            <Badge variant="outline" className="text-[10px]" style={{ color: variant.continuityLevel.color, borderColor: `${variant.continuityLevel.color}40` }}>
+              {variant.continuityLevel.name}
+            </Badge>
+            <span className="hidden text-[11px] text-slate-500 xl:inline">RTO {variant.continuityLevel.rtoMinutes}m · RPO {variant.continuityLevel.rpoMinutes}m</span>
+          </>
+        ) : (
+          <span className="text-[11px] text-slate-600">No continuity level</span>
+        )}
       </div>
     </div>
   );
@@ -430,10 +580,23 @@ export default function ProductDetail() {
     product?.id
   );
 
+  // Per-flavor performance profiles: derive the flavor ids from this product's variants,
+  // then fetch all FLAVOR-targeted profiles and keep those flavors.
+  const flavorIds = Array.from(
+    new Set((product?.variants || []).map((v: any) => v.flavor?.id).filter(Boolean))
+  ) as string[];
+  const { data: allFlavorProfiles } = usePerformanceProfiles(
+    flavorIds.length > 0 ? 'FLAVOR' : undefined
+  );
+  const flavorProfiles = (allFlavorProfiles || []).filter((p) => flavorIds.includes(p.targetId));
+
   // Fetch related products (same category, excluding current)
   const { data: relatedProducts } = useProducts(
     product ? { category: product.category?.slug } : undefined
   );
+
+  // Fetch declared transitions (used by the compute-only OS tab)
+  const { data: productTransitions } = useProductTransitions(product?.id || '');
 
   // Variant filters for compute products
   const [osFilter, setOsFilter] = useState('');
@@ -441,6 +604,13 @@ export default function ProductDetail() {
   const [flavorFilter, setFlavorFilter] = useState('');
   const [azFilter, setAzFilter] = useState('');
   const [zoneFilter, setZoneFilter] = useState('');
+  // Presentation option: OS column hidden by default in the Variants list (lighter rows)
+  const [showOsColumn, setShowOsColumn] = useState(false);
+  const [selectedMapZone, setSelectedMapZone] = useState<any>(null);
+  // Active tab (controlled) — used to show the variant filters only on the Variants tab.
+  // Initial value matches the Tabs defaultValue ('variants' for compute, 'overview' otherwise);
+  // Tabs syncs it on mount via onValueChange when the user first switches.
+  const [activeTab, setActiveTab] = useState<string>('variants');
 
   // Reset filters when product changes
   useEffect(() => {
@@ -492,9 +662,22 @@ export default function ProductDetail() {
     );
   }
 
-  const isCompute = product.category?.name.toLowerCase() === 'compute';
-  const Icon = iconMap[product.category?.icon || ''] || Server;
   const variants: ProductVariant[] = product.variants || [];
+  const flavorFieldDefs: any[] = product.category?.flavorFieldDefinitions ?? [];
+  const isCompute = flavorFieldDefs.length > 0 || variants.length > 0;
+  const Icon = iconMap[product.category?.icon || ''] || Server;
+  // Merge outgoing + incoming transitions; a self-transition (fromProduct === toProduct)
+  // appears in both lists, so deduplicate by id.
+  const allTransitions = productTransitions
+    ? Array.from(
+        new Map(
+          [...(productTransitions.outgoing || []), ...(productTransitions.incoming || [])].map((t) => [t.id, t])
+        ).values()
+      )
+    : [];
+  // All declared transitions (merged outgoing + incoming) — used by the unified
+  // Upgrades & Transitions tab, which classifies Platform vs OS itself.
+
 
   // Compute unique filter options from variants
   const osOptions = Array.from(new Map(variants.map(v => [v.osId, v.os])).values());
@@ -517,6 +700,47 @@ export default function ProductDetail() {
     return true;
   });
 
+  // When the OS column is hidden, rows that differ only by OS become visually identical.
+  // Collapse them into one row per unique (flavor + zones + AZs + continuity) combo, with a ×N badge.
+  const dedupeKey = (v: ProductVariant) => {
+    // Key on what the row actually DISPLAYS: merged zones (variant + product + flavor + OS),
+    // otherwise rows with identical pills but different underlying zone links stay split.
+    const zoneIds = Array.from(new Set([
+      ...(v.zones || []).map((z: any) => z.zoneId),
+      ...(product.zones || []).map((z: any) => z.zoneId),
+      ...(v.flavor?.zones || []).map((z: any) => z.zoneId),
+      ...(v.os?.zones || []).map((z: any) => z.zoneId),
+    ])).sort().join(',');
+    const azIds = (v.availabilityZones || []).map((az: any) => az.availabilityZoneId).sort().join(',');
+    return [v.flavorId, zoneIds, azIds, v.continuityLevelId || ''].join('|');
+  };
+  const displayVariants: { variant: ProductVariant; count: number; osEntries: { id: string; label: string; availabilityType?: string }[] }[] = showOsColumn
+    ? filteredVariants.map((v) => ({
+        variant: v,
+        count: 1,
+        osEntries: v.osVersion
+          ? [{ id: v.osVersion.id, label: osVersionLabel(v.os?.name, v.osVersion.version), availabilityType: v.availabilityType }]
+          : [],
+      }))
+    : Object.values(
+        filteredVariants.reduce<Record<string, { variant: ProductVariant; count: number; osEntries: { id: string; label: string; availabilityType?: string }[] }>>((acc, v) => {
+          const key = dedupeKey(v);
+          if (!acc[key]) {
+            acc[key] = { variant: v, count: 1, osEntries: [] };
+          }
+          acc[key].count += 1;
+          if (v.osVersion && !acc[key].osEntries.some((e) => e.id === v.osVersion.id)) {
+            // Use THIS variant's OS name — grouped variants may reference different OSes
+            acc[key].osEntries.push({
+              id: v.osVersion.id,
+              label: osVersionLabel(v.os?.name, v.osVersion.version),
+              availabilityType: v.availabilityType,
+            });
+          }
+          return acc;
+        }, {})
+      );
+
   // Available versions based on selected OS — build full labels with OS name
   const availableVersions = osFilter
     ? variants.filter(v => v.osId === osFilter).map(v => v.osVersion)
@@ -529,11 +753,16 @@ export default function ProductDetail() {
     }
   }
 
-  // Collect all AZs from all variants
-  const allAzs = variants.flatMap((v) =>
-    (v.availabilityZones || []).map((az: any) => az.availabilityZone)
-  );
-  const uniqueAzs = Array.from(new Map(allAzs.map((az: any) => [az.id, az])).values());
+  // Collect all AZs from every declared path: variant links, product links,
+  // and the product's Zones (each logical Zone aggregates its own AZs).
+  const allAzs: any[] = [
+    ...variants.flatMap((v) => (v.availabilityZones || []).map((az: any) => az.availabilityZone)),
+    ...(product.availabilityZones || []).map((az: any) => az.availabilityZone),
+    ...(product.zones || []).flatMap((pz: any) =>
+      ((pz.zone?.availabilityZones as any[]) || []).map((zaz) => zaz.availabilityZone)
+    ),
+  ];
+  const uniqueAzs = Array.from(new Map(allAzs.filter(Boolean).map((az: any) => [az.id, az])).values());
 
   // Collect all Zones from all variants (variant zones + product zones + flavor zones + OS zones)
   const allZones = variants.flatMap((v) => {
@@ -546,6 +775,104 @@ export default function ProductDetail() {
   const uniqueZones = Array.from(new Map(allZones.map((z: any) => [z.id, z])).values());
 
   const related = relatedProducts?.filter((p: Product) => p.id !== product.id).slice(0, 3) ?? [];
+
+  // Phase color segments shared by both Gantt views (blue = normal, amber = extended, rose = no support)
+  const phaseSegments = (dates: { normalSupportEnd?: string | null; extendedSupportEnd?: string | null; eolDate?: string | null }) => {
+    const segs: GanttBarData['segments'] = [];
+    if (dates.normalSupportEnd && dates.extendedSupportEnd) {
+      segs.push({ end: new Date(dates.normalSupportEnd), className: 'bg-blue-500', label: 'Normal support' });
+      segs.push({ end: new Date(dates.extendedSupportEnd), className: 'bg-amber-500', label: 'Extended support' });
+      if (dates.eolDate) {
+        segs.push({ end: new Date(dates.eolDate), className: 'bg-rose-500', label: 'No support' });
+      }
+    }
+    return segs;
+  };
+
+  // Shared time range so the Roadmap and Release Timeline charts use the same scale —
+  // tick positions and the "today" marker line up vertically between the two tiles.
+  const ganttRange = (() => {
+    const all = [...(product.productVersions || []), ...variants.map((v) => v.osVersion)];
+    const starts = all.filter((pv) => pv?.releaseDate).map((pv) => new Date(pv.releaseDate!).getTime());
+    const ends = all.filter((pv) => pv?.eolDate).map((pv) => new Date(pv.eolDate!).getTime());
+    return {
+      min: starts.length ? new Date(Math.min(...starts)) : undefined,
+      max: ends.length ? new Date(Math.max(...ends)) : undefined,
+    };
+  })();
+
+  // "Upcoming releases" is auto-generated from ProductVersions whose release date is in the
+  // future — announced versions appear both as Gantt bars and in the release list, no manual
+  // roadmap markdown needed.
+  const upcomingReleases = (product.productVersions || [])
+    .filter((pv) => pv.releaseDate && new Date(pv.releaseDate).getTime() > Date.now())
+    .sort((a, b) => new Date(a.releaseDate!).getTime() - new Date(b.releaseDate!).getTime());
+
+  // Gantt 1 — product versions (Roadmap tab). Rows are expandable: clicking one reveals
+  // the version's changelog and its variants (content formerly in "Versions & Lifecycle").
+  const productVersionBars: GanttBarData[] = (product.productVersions || [])
+    .filter((pv) => pv.releaseDate && pv.eolDate)
+    .sort((a, b) => new Date(b.releaseDate!).getTime() - new Date(a.releaseDate!).getTime())
+    .map((pv) => {
+      const pvVariants: ProductVariant[] = pv.variants || [];
+      return {
+        id: pv.id,
+        label: `Version ${pv.version}`,
+        sublabel: `Released ${formatShortDate(pv.releaseDate ?? '')} · EOL ${formatShortDate(pv.eolDate ?? '')}`,
+        badge: { label: phaseLabel(pv.phase), className: phaseColorClass(pv.phase) },
+        start: new Date(pv.releaseDate!),
+        end: new Date(pv.eolDate!),
+        segments: phaseSegments(pv),
+        detail: (
+          <div className="space-y-3 text-xs">
+            {pv.changelog && (
+              <div>
+                <p className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-slate-300">
+                  <FileText className="h-3 w-3 text-blue-500" /> Changelog
+                </p>
+                <MarkdownContent text={pv.changelog} />
+              </div>
+            )}
+            <div>
+              <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-slate-300">
+                <Box className="h-3 w-3 text-blue-500" /> Variants ({pvVariants.length})
+              </p>
+              {pvVariants.length === 0 ? (
+                <p className="text-slate-500">No variants associated with this version.</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {pvVariants.map((v) => (
+                    <span key={v.id} className="inline-flex items-center gap-1 rounded-full border border-slate-800 bg-slate-950 px-2 py-0.5 text-[10px] text-slate-300">
+                      <Cpu className="h-2.5 w-2.5 text-blue-500" />
+                      {v.flavor?.name} — {osVersionLabel(v.os?.name, v.osVersion?.version || '')}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ),
+      };
+    });
+
+  // Gantt 2 — OS versions backing this product's variants (Release Timeline tab, compute only).
+  // Grouped per OS so OS releases are visually distinct from product versions.
+  // NOTE: osVersion.os is not included in the API payload, so take the OS name from the variant.
+  const osNameById = new Map(variants.map((v) => [v.osVersionId, v.os?.name]));
+  const osVersionBars: GanttBarData[] = Array.from(
+    new Map(variants.filter((v) => v.osVersion?.releaseDate && v.osVersion?.eolDate).map((v) => [v.osVersionId, v.osVersion])).values()
+  )
+    .sort((a, b) => new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime())
+    .map((osv) => ({
+      id: osv.id,
+      label: osVersionLabel(osNameById.get(osv.id), osv.version),
+      sublabel: `Released ${formatShortDate(osv.releaseDate)} · EOL ${formatShortDate(osv.eolDate)}`,
+      badge: { label: phaseLabel(osv.phase), className: phaseColorClass(osv.phase) },
+      start: new Date(osv.releaseDate),
+      end: new Date(osv.eolDate),
+      segments: phaseSegments(osv),
+      barClass: 'bg-indigo-500/70',
+    }));
 
   return (
     <div className="space-y-6 sm:space-y-8">
@@ -654,97 +981,110 @@ export default function ProductDetail() {
         </div>
       </AnimatedSection>
 
-      {/* Filters — always visible for compute products */}
-      {isCompute && (
-        <AnimatedSection delay={150}>
-          <Card className="bg-slate-900 border-slate-800">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base text-white">
-                <Filter className="h-4 w-4 text-blue-500" />
-                Filter Variants
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <PickupInput
-                  label="Operating System"
-                  value={osFilter}
-                  onChange={(val) => { setOsFilter(val); setVersionFilter(''); }}
-                  options={osOptions.map((os) => ({ id: os.id, label: `${os.name} (${os.family})` }))}
-                  placeholder="Search OS..."
-                />
-                <PickupInput
-                  label="Version"
-                  value={versionFilter}
-                  onChange={setVersionFilter}
-                  options={versionOptions.map((v) => ({ id: v.id, label: versionLabels.get(v.id) || v.version }))}
-                  placeholder="Search version..."
-                />
-                <PickupInput
-                  label="Flavor"
-                  value={flavorFilter}
-                  onChange={setFlavorFilter}
-                  options={flavorOptions.map((f) => ({ id: f.id, label: `${f.name} (${f.vcpu}vCPU, ${f.ramGb}GB)` }))}
-                  placeholder="Search flavor..."
-                />
-                <PickupInput
-                  label="Availability Zone"
-                  value={azFilter}
-                  onChange={setAzFilter}
-                  options={uniqueAzs.map((az: any) => ({ id: az.id, label: `${az.name} (${az.code})` }))}
-                  placeholder="Search AZ..."
-                />
-                <PickupInput
-                  label="Zone"
-                  value={zoneFilter}
-                  onChange={setZoneFilter}
-                  options={uniqueZones.map((z: any) => ({ id: z.id, label: z.name }))}
-                  placeholder="Search zone..."
-                />
-                {(osFilter || versionFilter || flavorFilter || azFilter || zoneFilter) && (
-                  <div className="flex items-end">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => { setOsFilter(''); setVersionFilter(''); setFlavorFilter(''); setAzFilter(''); setZoneFilter(''); }}
-                      className="text-slate-400 hover:text-white min-h-[40px]"
-                    >
-                      <X className="h-4 w-4 mr-1" />
-                      Reset
-                    </Button>
-                  </div>
-                )}
-              </div>
-              <div className="mt-3 text-sm text-slate-500">
-                Showing <span className="text-slate-300 font-medium">{filteredVariants.length}</span> of{' '}
-                <span className="text-slate-300 font-medium">{variants.length}</span> variants
-              </div>
-            </CardContent>
-          </Card>
-        </AnimatedSection>
-      )}
-
       {/* Tabs */}
-      <AnimatedSection delay={150}>
-        <Tabs defaultValue={isCompute ? 'variants' : 'overview'} className="w-full">
+      <div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} defaultValue={isCompute ? 'variants' : 'overview'} className="w-full">
           <TabsList className="bg-slate-900 border border-slate-800 flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="overview" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Overview</TabsTrigger>
-            {isCompute && (
-              <TabsTrigger value="variants" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Variants</TabsTrigger>
-            )}
-            <TabsTrigger value="versions-lifecycle" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Versions &amp; Lifecycle</TabsTrigger>
             <TabsTrigger value="documentation" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Documentation</TabsTrigger>
-            <TabsTrigger value="roadmap" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Roadmap</TabsTrigger>
             {isCompute && (
               <TabsTrigger value="variants" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Variants</TabsTrigger>
             )}
-            <TabsTrigger value="upgrade-paths" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Upgrade Paths</TabsTrigger>
+            {isCompute && (
+              <TabsTrigger value="os" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">OS</TabsTrigger>
+            )}
+            <TabsTrigger value="roadmap" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Roadmap</TabsTrigger>
+            <TabsTrigger value="upgrade-paths" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Upgrades &amp; Transitions</TabsTrigger>
             <TabsTrigger value="dependencies" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Dependencies</TabsTrigger>
             {uniqueAzs.length > 0 && (
               <TabsTrigger value="availability" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Availability</TabsTrigger>
             )}
             <TabsTrigger value="performance" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Performance</TabsTrigger>
           </TabsList>
+
+          {/* Variant filters — shown only while the Variants tab is active */}
+          {isCompute && activeTab === 'variants' && (
+            <div className="mt-4">
+              <Card className="bg-slate-900 border-slate-800">
+                <CardContent className="pt-4">
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <PickupInput
+                      label="Operating System"
+                      value={osFilter}
+                      onChange={(val) => { setOsFilter(val); setVersionFilter(''); }}
+                      options={osOptions.map((os) => ({ id: os.id, label: `${os.name} (${os.family})` }))}
+                      placeholder="Search OS..."
+                    />
+                    <PickupInput
+                      label="Version"
+                      value={versionFilter}
+                      onChange={setVersionFilter}
+                      options={versionOptions.map((v) => ({ id: v.id, label: versionLabels.get(v.id) || v.version }))}
+                      placeholder="Search version..."
+                    />
+                    <PickupInput
+                      label="Flavor"
+                      value={flavorFilter}
+                      onChange={setFlavorFilter}
+                      options={flavorOptions.map((f) => {
+                        const attrs = formatFlavorAttrs(f as Flavor, flavorFieldDefs);
+                        return { id: f.id, label: attrs !== '—' ? `${f.name} (${attrs})` : f.name };
+                      })}
+                      placeholder="Search flavor..."
+                    />
+                    <PickupInput
+                      label="Availability Zone"
+                      value={azFilter}
+                      onChange={setAzFilter}
+                      options={uniqueAzs.map((az: any) => ({ id: az.id, label: `${az.name} (${az.code})` }))}
+                      placeholder="Search AZ..."
+                    />
+                    <PickupInput
+                      label="Zone"
+                      value={zoneFilter}
+                      onChange={setZoneFilter}
+                      options={uniqueZones.map((z: any) => ({ id: z.id, label: z.name }))}
+                      placeholder="Search zone..."
+                    />
+                    {(osFilter || versionFilter || flavorFilter || azFilter || zoneFilter) && (
+                      <div className="flex items-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => { setOsFilter(''); setVersionFilter(''); setFlavorFilter(''); setAzFilter(''); setZoneFilter(''); }}
+                          className="text-slate-400 hover:text-white min-h-[40px]"
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Reset
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-slate-500">
+                    <span>
+                      Showing <span className="text-slate-300 font-medium">{filteredVariants.length}</span> of{' '}
+                      <span className="text-slate-300 font-medium">{variants.length}</span> variants
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowOsColumn((s) => !s)}
+                      className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-slate-700 px-2.5 py-1 text-xs text-slate-400 transition-colors hover:border-slate-600 hover:text-white"
+                    >
+                      <Monitor className="h-3 w-3" />
+                      {showOsColumn ? 'Hide OS' : 'Show OS'}
+                    </button>
+                  </div>
+                  {/* OS availability legend — the colored dots on OS tags (green = Recommended, red = Restricted, amber = On demand) */}
+                  <div className="mt-2 flex flex-wrap items-center gap-4 border-t border-slate-800 pt-2 text-[10px] text-slate-500">
+                    <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" />Recommended</span>
+                    <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-red-500" />Restricted</span>
+                    <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-amber-500" />On demand</span>
+                    <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-slate-600" />Standard (no dot)</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
           {/* Overview */}
           <TabsContent value="overview" className="mt-4 space-y-6 animate-fade-in">
@@ -783,7 +1123,7 @@ export default function ProductDetail() {
                           <div className="sm:w-48 shrink-0 flex flex-col items-center justify-center rounded-lg bg-slate-900 border border-slate-800 p-4 text-center">
                             <Cpu className="h-8 w-8 text-blue-500 mb-2" />
                             <span className="font-bold text-white text-lg">{flavor.name}</span>
-                            <span className="text-sm text-slate-400 mt-1">{flavor.vcpu} vCPU · {flavor.ramGb} GB</span>
+                            <span className="text-sm text-slate-400 mt-1">{formatFlavorAttrs(flavor as Flavor, flavorFieldDefs)}</span>
                           </div>
                           {/* OS options - small rectangles on the right */}
                           <div className="flex-1 flex flex-wrap gap-2 items-center content-center">
@@ -820,7 +1160,10 @@ export default function ProductDetail() {
               </CardHeader>
               <CardContent>
                 {product.documentation ? (
-                  <MarkdownContent text={product.documentation} />
+                  <>
+                    <DocTableOfContents text={product.documentation} />
+                    <MarkdownContent text={product.documentation} />
+                  </>
                 ) : (
                   <div className="text-center py-12">
                     <FileText className="mx-auto h-10 w-10 text-slate-700" />
@@ -837,11 +1180,35 @@ export default function ProductDetail() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-white">
                   <Calendar className="h-5 w-5 text-blue-500" />
-                  Roadmap
+                  Product Roadmap
                 </CardTitle>
+                <CardDescription className="text-slate-400">
+                  Product version lifecycle timeline — click a row to see its changelog and variants
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                {product.roadmap ? (
+                {productVersionBars.length > 0 ? (
+                  <>
+                    {upcomingReleases.length > 0 && (
+                      <div className="mb-4 border-b border-slate-800 pb-4">
+                        <p className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-white">
+                          <Clock className="h-4 w-4 text-blue-500" /> Upcoming releases
+                        </p>
+                        <ul className="space-y-1 text-xs text-slate-400">
+                          {upcomingReleases.map((pv) => (
+                            <li key={pv.id} className="flex items-center gap-2">
+                              <span className="font-medium text-slate-200">{pv.version}</span>
+                              <span className="text-slate-500">
+                                {formatShortDate(pv.releaseDate!)} — {pv.changelog ? pv.changelog.split('\n').filter((l) => l && !l.startsWith('#')).map((l) => l.replace(/^- /, '')).join(' · ') : 'Announced'}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <GanttChart bars={productVersionBars} minDate={ganttRange.min} maxDate={ganttRange.max} />
+                  </>
+                  ) : product.roadmap ? (
                   <MarkdownContent text={product.roadmap} />
                 ) : (
                   <div className="text-center py-12">
@@ -857,50 +1224,14 @@ export default function ProductDetail() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-white">
                     <Clock className="h-5 w-5 text-blue-500" />
-                    Release Timeline
+                    OS Roadmap
                   </CardTitle>
                   <CardDescription className="text-slate-400">
-                    OS version release history for this product
+                    OS version support windows for this product, grouped by operating system
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-0">
-                    {Array.from(new Map(variants.map(v => [v.osVersionId, v])).values())
-                      .filter((v: any) => v.osVersion?.releaseDate)
-                      .sort((a: any, b: any) => new Date(b.osVersion.releaseDate).getTime() - new Date(a.osVersion.releaseDate).getTime())
-                      .map((v: any, idx: number, arr: any[]) => (
-                        <div key={v.osVersionId} className="flex gap-4 relative">
-                          {/* Timeline line */}
-                          {idx < arr.length - 1 && (
-                            <div className="absolute left-[7px] top-6 bottom-0 w-px bg-slate-700" />
-                          )}
-                          <div className="flex flex-col items-center">
-                            <div className="h-3.5 w-3.5 rounded-full bg-blue-500 border-2 border-slate-900" />
-                          </div>
-                          <div className="pb-6 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-medium text-white">{v.os?.name} {v.osVersion?.version}</span>
-                              <span className="text-xs text-slate-500">
-                                Released {formatDate(v.osVersion.releaseDate)}
-                              </span>
-                            </div>
-                            <div className="mt-1 flex items-center gap-2 text-xs">
-                              <span className={cn(
-                                v.osVersion.phase === 'EOL' ? 'text-red-400' :
-                                v.osVersion.phase === 'NO_SUPPORT' ? 'text-orange-400' :
-                                v.osVersion.phase === 'EXTENDED_SUPPORT' ? 'text-amber-400' :
-                                v.osVersion.phase === 'NORMAL_SUPPORT' ? 'text-blue-400' :
-                                'text-emerald-400'
-                              )}>
-                                {v.osVersion.phase.replace('_', ' ')}
-                              </span>
-                              <span className="text-slate-600">·</span>
-                              <span className="text-slate-500">EOL {formatDate(v.osVersion.eolDate)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                  </div>
+                  <GanttChart bars={osVersionBars} minDate={ganttRange.min} maxDate={ganttRange.max} />
                 </CardContent>
               </Card>
             )}
@@ -908,74 +1239,13 @@ export default function ProductDetail() {
 
           {/* Variants (Compute only) */}
           {isCompute && (
-            <TabsContent value="variants" className="mt-4 space-y-6 animate-fade-in">
+            <TabsContent value="variants" className="mt-4 space-y-6">
               {filteredVariants.length > 0 ? (
-                <div className="space-y-8">
-                  {/* Grouped by zone */}
-                  {uniqueZones.filter((z: any) => filteredVariants.some((v) => {
-                    const derivedZoneIds = new Set([
-                      ...(v.zones || []).map((vz: any) => vz.zoneId),
-                      ...(product.zones || []).map((pz: any) => pz.zoneId),
-                      ...(v.flavor?.zones || []).map((fz: any) => fz.zoneId),
-                      ...(v.os?.zones || []).map((oz: any) => oz.zoneId),
-                    ]);
-                    return derivedZoneIds.has(z.id);
-                  })).map((zone: any) => {
-                    const zoneVariants = filteredVariants.filter((v) => {
-                      const derivedZoneIds = new Set([
-                        ...(v.zones || []).map((vz: any) => vz.zoneId),
-                        ...(product.zones || []).map((pz: any) => pz.zoneId),
-                        ...(v.flavor?.zones || []).map((fz: any) => fz.zoneId),
-                        ...(v.os?.zones || []).map((oz: any) => oz.zoneId),
-                      ]);
-                      return derivedZoneIds.has(zone.id);
-                    });
-                    return (
-                      <div key={zone.id} className="space-y-4">
-                        <div className="flex items-center gap-2">
-                          <Box className="h-5 w-5 text-indigo-400" />
-                          <h3 className="text-lg font-semibold text-white">{zone.name}</h3>
-                          <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">{zoneVariants.length} variant{zoneVariants.length !== 1 ? 's' : ''}</Badge>
-                        </div>
-                        <div className="space-y-4">
-                          {zoneVariants.map((variant) => (
-                            <VariantBranchCard key={variant.id} variant={variant} product={product} />
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Ungrouped variants */}
-                  {filteredVariants.some((v) => {
-                    const derivedZoneIds = new Set([
-                      ...(v.zones || []).map((vz: any) => vz.zoneId),
-                      ...(product.zones || []).map((pz: any) => pz.zoneId),
-                      ...(v.flavor?.zones || []).map((fz: any) => fz.zoneId),
-                      ...(v.os?.zones || []).map((oz: any) => oz.zoneId),
-                    ]);
-                    return derivedZoneIds.size === 0;
-                  }) && (
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-2">
-                        <Layers className="h-5 w-5 text-slate-400" />
-                        <h3 className="text-lg font-semibold text-white">Other / Ungrouped</h3>
-                      </div>
-                      <div className="space-y-4">
-                        {filteredVariants.filter((v) => {
-                          const derivedZoneIds = new Set([
-                            ...(v.zones || []).map((vz: any) => vz.zoneId),
-                            ...(product.zones || []).map((pz: any) => pz.zoneId),
-                            ...(v.flavor?.zones || []).map((fz: any) => fz.zoneId),
-                            ...(v.os?.zones || []).map((oz: any) => oz.zoneId),
-                          ]);
-                          return derivedZoneIds.size === 0;
-                        }).map((variant) => (
-                          <VariantBranchCard key={variant.id} variant={variant} product={product} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                /* Flat list — zone/flavor info stays on each row's tags */
+                <div className="space-y-4">
+                  {displayVariants.map(({ variant, count, osEntries }) => (
+                    <VariantRow key={variant.id} variant={variant} product={product} count={count} osEntries={osEntries} flavorFieldDefs={flavorFieldDefs} />
+                  ))}
                 </div>
               ) : (
                 <div className="text-center py-12 rounded-lg border border-slate-800 bg-slate-950">
@@ -994,49 +1264,16 @@ export default function ProductDetail() {
             </TabsContent>
           )}
 
-          {/* Upgrade Paths */}
+          {/* OS (Compute only) */}
+          {isCompute && (
+            <TabsContent value="os">
+              <OsLifecycleTab product={product} variants={variants} />
+            </TabsContent>
+          )}
+
+          {/* Upgrades & Transitions — unified view (platform + OS migrations) */}
           <TabsContent value="upgrade-paths" className="mt-4 animate-fade-in">
-            <Card className="bg-slate-900 border-slate-800">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-white">
-                  <ArrowUpRight className="h-5 w-5 text-blue-500" />
-                  Upgrade Paths
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {((product as any).upgradeFrom?.length > 0 || (product as any).upgradeTo?.length > 0) ? (
-                  <div className="space-y-3">
-                    {(product as any).upgradeFrom?.map((up: any) => (
-                      <div key={up.id} className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 px-4 py-3">
-                        <span className="text-slate-400 text-sm">{up.fromVersion}</span>
-                        <ArrowRight className="h-4 w-4 text-cyan-500" />
-                        <span className="text-white font-medium text-sm">{up.toVersion}</span>
-                        <Badge variant="outline" className="text-xs text-slate-400 border-slate-700 ml-2">{up.migrationType}</Badge>
-                        {up.toProduct && up.toProduct.id !== product.id && (
-                          <Link to={`/products/${up.toProduct.slug}`} className="ml-auto text-xs text-blue-400 hover:underline">{up.toProduct.name}</Link>
-                        )}
-                      </div>
-                    ))}
-                    {(product as any).upgradeTo?.map((up: any) => (
-                      <div key={up.id} className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950 px-4 py-3">
-                        <span className="text-slate-400 text-sm">{up.fromVersion}</span>
-                        <ArrowRight className="h-4 w-4 text-cyan-500" />
-                        <span className="text-white font-medium text-sm">{up.toVersion}</span>
-                        <Badge variant="outline" className="text-xs text-slate-400 border-slate-700 ml-2">{up.migrationType}</Badge>
-                        {up.fromProduct && up.fromProduct.id !== product.id && (
-                          <span className="ml-auto text-xs text-slate-500">from {up.fromProduct.name}</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <ArrowUpRight className="mx-auto h-10 w-10 text-slate-700" />
-                    <p className="mt-3 text-slate-500">No upgrade paths declared for this product.</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <UpgradesTransitionsTab product={product} variants={variants} transitions={allTransitions} />
           </TabsContent>
 
           {/* Dependencies */}
@@ -1176,18 +1413,12 @@ export default function ProductDetail() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="p-0">
-                    <div className="relative h-[300px] w-full bg-slate-950 flex items-center justify-center">
-                      <div className="text-center">
-                        <Globe className="mx-auto h-12 w-12 text-slate-700" />
-                        <p className="mt-3 text-sm text-slate-500">{uniqueAzs.length} availability zones</p>
-                        <div className="mt-2 flex flex-wrap gap-2 justify-center">
-                          {uniqueAzs.map((az: any) => (
-                            <span key={az.id} className="text-xs px-2 py-1 rounded bg-slate-900 text-slate-400 border border-slate-800">
-                              {az.name}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
+                    <div className="h-[300px] w-full bg-slate-950">
+                      <WorldMap
+                        zones={uniqueAzs as any}
+                        selectedZone={selectedMapZone}
+                        onSelectZone={setSelectedMapZone}
+                      />
                     </div>
                   </CardContent>
                 </Card>
@@ -1197,27 +1428,34 @@ export default function ProductDetail() {
 
           {/* Performance */}
           <TabsContent value="performance" className="mt-4 space-y-6 animate-fade-in">
+            {flavorProfiles.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Performance by flavor</h3>
+                {flavorProfiles.map((profile) => (
+                  <PerformanceGauge key={profile.id} profile={profile} />
+                ))}
+              </div>
+            )}
             {perfProfiles && perfProfiles.length > 0 ? (
               <div className="space-y-4">
+                {flavorProfiles.length > 0 && (
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Product performance</h3>
+                )}
                 {perfProfiles.map((profile) => (
                   <PerformanceGauge key={profile.id} profile={profile} />
                 ))}
               </div>
-            ) : (
+            ) : flavorProfiles.length === 0 ? (
               <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-12 text-center">
                 <Zap className="mx-auto h-12 w-12 text-slate-600" />
                 <p className="mt-4 text-lg font-medium text-slate-300">No performance data</p>
                 <p className="mt-1 text-slate-500">Performance profiles for this product will appear here.</p>
               </div>
-            )}
+            ) : null}
           </TabsContent>
 
-          {/* Versions & Lifecycle */}
-          <TabsContent value="versions-lifecycle" className="mt-4 space-y-6 animate-fade-in">
-            <LifecycleTimeline product={product} />
-          </TabsContent>
         </Tabs>
-      </AnimatedSection>
+      </div>
 
       {/* Related Products */}
       {related.length > 0 && (
@@ -1227,7 +1465,7 @@ export default function ProductDetail() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {related.map((rel: Product) => {
                 const RelIcon = iconMap[rel.category?.icon || ''] || Server;
-                const relIsCompute = rel.category?.name.toLowerCase() === 'compute';
+                const relIsCompute = (rel.category?.flavorFieldDefinitions?.length ?? 0) > 0 || (rel.variants?.length ?? 0) > 0;
                 const relVariantCount = rel.variants?.length ?? 0;
                 return (
                   <Link key={rel.id} to={`/products/${rel.slug}`} className="group">

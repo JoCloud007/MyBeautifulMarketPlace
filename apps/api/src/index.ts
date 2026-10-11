@@ -33,6 +33,9 @@ import { geoRoutes } from './routes/geo';
 import { infraVersionRoutes } from './routes/infra-versions';
 import { serviceNowRoutes } from './routes/servicenow';
 import { startCronJobs } from './cron';
+import { mcpStatusRouter } from './routes/mcp-status';
+import { createMcpRouter } from './mcp/http';
+import { createSseRouter } from './mcp/sse';
 
 dotenv.config();
 
@@ -49,6 +52,15 @@ app.use(rateLimit({
   legacyHeaders: false,
 }));
 app.use(express.json());
+
+// MCP transports (Streamable HTTP + opt-in legacy SSE).
+// The routers carry absolute paths (/mcp, /sse, /messages) and enforce their
+// own mcpAuth bearer gate, so they are mounted bare after the global
+// rate-limit middleware: rate-limit -> mcpAuth -> transport.
+app.use(createMcpRouter());
+
+// Legacy SSE fallback: disabled by default (404 unless MCP_ENABLE_SSE=1).
+app.use(createSseRouter());
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -82,6 +94,7 @@ app.use('/api/performance-profiles', performanceProfileRoutes);
 app.use('/api', geoRoutes);
 app.use('/api/infra-versions', infraVersionRoutes);
 app.use('/api/servicenow', serviceNowRoutes);
+app.use('/api', mcpStatusRouter);
 
 // Conditional admin API key protection (fail-closed: requires key if set)
 const adminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {

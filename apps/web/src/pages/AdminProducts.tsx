@@ -293,7 +293,7 @@ function ProductModal({
   });
 
   const selectedCategory = categories?.find((c) => c.id === form.categoryId);
-  const isCompute = selectedCategory?.name.toLowerCase() === 'compute';
+  const isCompute = (selectedCategory?.flavorFieldDefinitions?.length ?? 0) > 0;
 
   const selectedRegionIds = form.regionIds;
   const selectedAzIds = form.availabilityZoneIds;
@@ -686,7 +686,7 @@ function ProductDrawer({
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
-  const isCompute = product.category?.name.toLowerCase() === 'compute';
+  const isCompute = (product.category?.flavorFieldDefinitions?.length ?? 0) > 0 || (product.variants?.length ?? 0) > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">

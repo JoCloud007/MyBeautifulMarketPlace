@@ -17,7 +17,7 @@ function formatDate(dateStr: string | null) {
   });
 }
 
-function phaseLabel(phase: LifecyclePhase) {
+export function phaseLabel(phase: LifecyclePhase) {
   switch (phase) {
     case LifecyclePhase.RELEASED:
       return 'Released';
@@ -34,7 +34,7 @@ function phaseLabel(phase: LifecyclePhase) {
   }
 }
 
-function phaseColorClass(phase: LifecyclePhase) {
+export function phaseColorClass(phase: LifecyclePhase) {
   switch (phase) {
     case LifecyclePhase.RELEASED:
       return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
@@ -154,7 +154,8 @@ function VariantRow({ variant, version }: { variant: ProductVariant; version: Pr
 }
 
 function VersionCard({ version, variants }: { version: ProductVersion; variants: ProductVariant[] }) {
-  const [open, setOpen] = React.useState(true);
+  const [open, setOpen] = React.useState(false);
+  const hasDetails = variants.length > 0 || Boolean(version.changelog);
 
   return (
     <Card className="bg-slate-900 border-slate-800">
@@ -166,11 +167,11 @@ function VersionCard({ version, variants }: { version: ProductVersion; variants:
               {phaseLabel(version.phase)}
             </Badge>
           </div>
-          {variants.length > 0 && (
+          {hasDetails && (
             <button
               onClick={() => setOpen((o) => !o)}
               className="text-slate-400 hover:text-white"
-              aria-label={open ? 'Collapse variants' : 'Expand variants'}
+              aria-label={open ? 'Collapse details' : 'Expand details'}
             >
               {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </button>
@@ -205,13 +206,13 @@ function VersionCard({ version, variants }: { version: ProductVersion; variants:
         <LifecycleProgressBar version={version} />
       </CardHeader>
       <CardContent className="space-y-3">
-        {version.changelog && (
+        {open && version.changelog && (
           <div className="rounded-md border border-slate-800 bg-slate-950 p-3">
             <p className="text-xs font-medium text-slate-300 mb-1">Changelog</p>
             <p className="text-xs text-slate-400 whitespace-pre-line">{version.changelog}</p>
           </div>
         )}
-        {variants.length > 0 && open && (
+        {open && variants.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-medium text-slate-300 flex items-center gap-2">
               <Box className="h-3 w-3" />
@@ -222,7 +223,7 @@ function VersionCard({ version, variants }: { version: ProductVersion; variants:
             ))}
           </div>
         )}
-        {variants.length === 0 && (
+        {open && variants.length === 0 && !version.changelog && (
           <p className="text-xs text-slate-500">No variants associated with this version.</p>
         )}
       </CardContent>

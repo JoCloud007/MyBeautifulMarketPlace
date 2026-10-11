@@ -16,7 +16,7 @@ import {
   Minimize2,
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
-import { useAppStore } from '@/stores/useAppStore';
+import { useAppStore, type CompactMode } from '@/stores/useAppStore';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,7 +56,23 @@ function AnimatedCard({ children, delay = 0 }: { children: React.ReactNode; dela
 }
 
 export default function Marketplace() {
-  const { filters, sortBy, viewMode, compactMode, setFilters, removeFilter, clearFilters, setSortBy, setViewMode, setCompactMode } = useAppStore();
+  const { filters, sortBy, viewMode, compactMode, setFilters, removeFilter, clearFilters, setSortBy, setViewMode, cycleCompactMode } = useAppStore();
+
+  const compactLabels: Record<CompactMode, string> = {
+    off: 'Compact',
+    rows: 'Compact · Rows',
+    mini: 'Compact · Mini',
+    tiles: 'Compact · Tiles',
+  };
+
+  const gridClass = cn(
+    compactMode === 'rows'
+      ? 'flex flex-col gap-1.5'
+      : cn('grid gap-2 sm:gap-3', compactMode === 'off' ? 'sm:grid-cols-2 lg:grid-cols-3' : 'sm:grid-cols-3 lg:grid-cols-6')
+  );
+
+  const skeletonClass =
+    compactMode === 'rows' ? 'h-11' : compactMode === 'mini' ? 'h-20' : compactMode === 'tiles' ? 'h-24' : 'h-56';
   const [products, setProducts] = useState<any[] | null>(null);
   const [categories, setCategories] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -179,58 +195,122 @@ export default function Marketplace() {
       });
   };
 
+  const productBadges = (product: any, variantCount: number) => {
+    return (
+      <>
+        {product.computeType && (
+          <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
+            {product.computeType}
+          </Badge>
+        )}
+        {variantCount > 0 && (
+          <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
+            {variantCount} variant{variantCount !== 1 ? 's' : ''}
+          </Badge>
+        )}
+        {product.dependencies && product.dependencies.length > 0 && (
+          <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
+            {product.dependencies.length} dependenc{product.dependencies.length > 1 ? 'ies' : 'y'}
+          </Badge>
+        )}
+      </>
+    );
+  };
+
+  const renderProductRow = (product: any) => {
+    const Icon = iconMap[product.category?.icon || ''] || Server;
+    const variantCount = product.variants?.length ?? 0;
+    return (
+      <Link
+        key={product.id}
+        to={`/products/${product.slug}`}
+        className="group flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 transition-all duration-200 hover:border-blue-500/40 hover:bg-slate-800/50"
+      >
+        <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
+          <Icon className="h-3.5 w-3.5 text-blue-500" />
+        </div>
+        <span className="w-44 flex-shrink-0 truncate text-sm font-semibold text-white transition-colors group-hover:text-blue-400">
+          {product.name}
+        </span>
+        <span className="hidden flex-1 truncate text-xs text-slate-500 md:block">
+          {product.description}
+        </span>
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <Badge variant="secondary" className="text-xs bg-slate-800 text-slate-300 border-slate-700">
+            {product.category?.name}
+          </Badge>
+          {productBadges(product, variantCount)}
+        </div>
+        <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-slate-600 transition-all group-hover:translate-x-0.5 group-hover:text-blue-400" />
+      </Link>
+    );
+  };
+
   const renderProductCard = (product: any, index: number) => {
     const Icon = iconMap[product.category?.icon || ''] || Server;
-    const isCompute = product.category?.name.toLowerCase() === 'compute';
     const variantCount = product.variants?.length ?? 0;
+    if (compactMode === 'rows') {
+      return renderProductRow(product);
+    }
+    if (compactMode === 'mini' || compactMode === 'tiles') {
+      return (
+        <Link
+          key={product.id}
+          to={`/products/${product.slug}`}
+          className="group block"
+        >
+          <div className="h-full rounded-lg border border-slate-800 bg-slate-900 p-2.5 transition-all duration-200 hover:border-blue-500/40 hover:bg-slate-800/50">
+            <div className="flex items-center justify-between">
+              <div className={cn(
+                'flex items-center justify-center rounded-md bg-blue-500/10 transition-colors group-hover:bg-blue-500/20',
+                compactMode === 'mini' ? 'h-5 w-5' : 'h-7 w-7'
+              )}>
+                <Icon className={cn('text-blue-500', compactMode === 'mini' ? 'h-3 w-3' : 'h-3.5 w-3.5')} />
+              </div>
+              <span className="rounded-full bg-slate-800 px-1.5 py-0.5 text-[9px] text-slate-300 border border-slate-700">
+                {product.category?.name}
+              </span>
+            </div>
+            <div className="mt-1.5 truncate text-xs font-semibold text-white transition-colors group-hover:text-blue-400">
+              {product.name}
+            </div>
+            {compactMode === 'tiles' && (
+              <div className="mt-1 truncate text-[10px] text-slate-500">
+                {product.description}
+              </div>
+            )}
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {productBadges(product, variantCount)}
+            </div>
+          </div>
+        </Link>
+      );
+    }
     return (
       <AnimatedCard key={product.id} delay={Math.min(index * 80, 400)}>
         <Link to={`/products/${product.slug}`} className="group block h-full">
-          <Card className={cn(
-            'h-full bg-slate-900 border-slate-800 transition-all duration-300 hover:border-blue-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-1',
-            compactMode && 'p-3'
-          )}>
-            <CardHeader className={cn('pb-3', compactMode && 'p-0 pb-2')}>
+          <Card className="h-full bg-slate-900 border-slate-800 transition-all duration-300 hover:border-blue-500/40 hover:bg-slate-800/50 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-1">
+            <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <div className={cn(
-                  'flex items-center justify-center rounded-lg bg-blue-500/10 transition-colors group-hover:bg-blue-500/20',
-                  compactMode ? 'h-8 w-8' : 'h-10 w-10'
-                )}>
-                  <Icon className={cn('text-blue-500 transition-transform group-hover:scale-110', compactMode ? 'h-4 w-4' : 'h-5 w-5')} />
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
+                  <Icon className="h-5 w-5 text-blue-500 transition-transform group-hover:scale-110" />
                 </div>
                 <Badge variant="secondary" className="text-xs bg-slate-800 text-slate-300 border-slate-700">
                   {product.category?.name}
                 </Badge>
               </div>
-              <CardTitle className={cn('text-white group-hover:text-blue-400 transition-colors', compactMode ? 'text-sm mt-2' : 'text-lg mt-3')}>
+              <CardTitle className="mt-3 text-lg text-white transition-colors group-hover:text-blue-400">
                 {product.name}
               </CardTitle>
-              <CardDescription className={cn('text-slate-400', compactMode ? 'text-xs line-clamp-1' : 'line-clamp-2')}>
+              <CardDescription className="line-clamp-2 text-slate-400">
                 {product.description}
               </CardDescription>
             </CardHeader>
-            <CardContent className={cn('pt-0', compactMode && 'p-0')}>
+            <CardContent className="pt-0">
               <div className="flex flex-wrap items-center gap-2">
-                {isCompute && product.computeType && (
-                  <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
-                    {product.computeType}
-                  </Badge>
-                )}
-                {isCompute && (
-                  <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
-                    {variantCount} variant{variantCount !== 1 ? 's' : ''}
-                  </Badge>
-                )}
-                {product.dependencies && product.dependencies.length > 0 && (
-                  <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">
-                    {product.dependencies.length} dependency{product.dependencies.length > 1 ? 's' : ''}
-                  </Badge>
-                )}
+                {productBadges(product, variantCount)}
               </div>
-              <div className={cn(
-                'flex items-center text-xs text-blue-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300',
-                compactMode ? 'mt-2' : 'mt-4'
-              )}>
+              <div className="mt-4 flex items-center text-xs font-medium text-blue-400 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
                 View details
                 <ChevronRight className="ml-1 h-3 w-3 transition-transform group-hover:translate-x-0.5" />
               </div>
@@ -311,17 +391,17 @@ export default function Marketplace() {
                 </Button>
                 <Button
                   size="sm"
-                  variant={compactMode ? 'default' : 'outline'}
-                  onClick={() => setCompactMode(!compactMode)}
+                  variant={compactMode !== 'off' ? 'default' : 'outline'}
+                  onClick={cycleCompactMode}
                   className={cn(
                     'min-h-[36px]',
-                    compactMode
+                    compactMode !== 'off'
                       ? 'bg-blue-500 hover:bg-blue-600 text-white'
                       : 'border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white'
                   )}
                 >
                   <Minimize2 className="h-3.5 w-3.5 mr-1.5" />
-                  Compact
+                  {compactLabels[compactMode]}
                 </Button>
                 <Button
                   size="sm"
@@ -471,9 +551,9 @@ export default function Marketplace() {
 
           {/* Product Grid / Grouped View */}
           {loading ? (
-            <div className={cn('grid gap-4 sm:gap-6', compactMode ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3')}>
-              {Array.from({ length: compactMode ? 8 : 6 }).map((_, i) => (
-                <Skeleton key={i} className={cn('rounded-lg bg-slate-800 animate-pulse-soft', compactMode ? 'h-44' : 'h-56')} />
+            <div className={gridClass}>
+              {Array.from({ length: compactMode === 'off' ? 6 : 12 }).map((_, i) => (
+                <Skeleton key={i} className={cn('rounded-lg bg-slate-800 animate-pulse-soft', skeletonClass)} />
               ))}
             </div>
           ) : sortedProducts.length === 0 ? (
@@ -497,14 +577,14 @@ export default function Marketplace() {
                       {catProducts.length}
                     </Badge>
                   </h2>
-                  <div className={cn('grid gap-4 sm:gap-6', compactMode ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3')}>
+                  <div className={gridClass}>
                     {catProducts.map((product, i) => renderProductCard(product, i))}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className={cn('grid gap-4 sm:gap-6', compactMode ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3')}>
+            <div className={gridClass}>
               {sortedProducts.map((product, i) => renderProductCard(product, i))}
             </div>
           )}

@@ -112,6 +112,24 @@ export interface Category {
   slug: string;
   description: string | null;
   icon: string | null;
+  flavorFieldDefinitions?: FlavorFieldDefinition[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type FlavorFieldType = 'number' | 'enum' | 'string';
+
+export interface FlavorFieldDefinition {
+  id: string;
+  categoryId: string;
+  key: string;
+  label: string;
+  unit: string | null;
+  type: FlavorFieldType;
+  required: boolean;
+  order: number;
+  options: string[] | null;
+  category?: Category;
   createdAt: string;
   updatedAt: string;
 }
@@ -403,8 +421,9 @@ export interface ProductVersionAvailabilityZone {
 export interface Flavor {
   id: string;
   name: string;
-  vcpu: number;
-  ramGb: number;
+  vcpu: number | null;
+  ramGb: number | null;
+  attributes?: Record<string, string | number> | null;
   description: string | null;
   releaseDate: string | null;
   deprecationDate: string | null;
