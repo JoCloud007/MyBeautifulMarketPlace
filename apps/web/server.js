@@ -36,7 +36,13 @@ const server = http.createServer((req, res) => {
   // use the SAME origin as the web app (the status page advertises
   // <origin>/mcp). POST /mcp carries its own Bearer gate; /sse and /messages
   // are the opt-in legacy fallback (404 while MCP_ENABLE_SSE is off).
-  if (req.url.startsWith('/api/') || req.url === '/mcp' || req.url.startsWith('/sse') || req.url.startsWith('/messages')) {
+  // /mcp matches the MCP endpoint EXACTLY or with sub-paths (/mcp/) — some
+  // clients (opencode) call /mcp/ with a trailing slash; an exact match
+  // would fall through to the SPA fallback and answer text/html. But the
+  // internal page /mcp-status must stay OUT of the proxy (it is served by
+  // the SPA), hence the boundary check on the next character.
+  const isMcpEndpoint = /^\/mcp(\/|\?|$)/.test(req.url);
+  if (req.url.startsWith('/api/') || isMcpEndpoint || req.url.startsWith('/sse') || req.url.startsWith('/messages')) {
     // Proxy to API container
     const options = {
       hostname: API_HOST,
@@ -69,9 +75,14 @@ const server = http.createServer((req, res) => {
   }
 
   // Serve static files from dist/ (path-traversal-safe)
+  // Strip the query string and hash BEFORE resolving: req.url keeps them
+  // (e.g. "/assets/app.js?v=123"), and a path containing "?" makes
+  // fs.readFile fail → the SPA fallback would answer text/html for a JS
+  // asset (the exact failure class the MCP proxy routing fixes).
   const distRoot = path.join(__dirname, 'dist');
-  let filePath = path.join(distRoot, req.url.slice(1));
-  if (req.url === '/' || !path.extname(req.url)) {
+  const pathname = req.url.split('?')[0].split('#')[0];
+  let filePath = path.join(distRoot, pathname.slice(1));
+  if (pathname === '/' || !path.extname(pathname)) {
     filePath = path.join(distRoot, 'index.html');
   }
   if (path.normalize(filePath) !== filePath || !path.normalize(filePath).startsWith(distRoot + path.sep)) {
