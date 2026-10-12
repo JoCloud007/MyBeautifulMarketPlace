@@ -124,6 +124,22 @@ update:
 	@echo ""
 	@echo "✓ Deployment updated — schema, dist and seed are current"
 
+## Fix client DB — applies the missing flavor-fields schema (one shot).
+## For databases provisioned by db push (no _prisma_migrations table),
+## where `prisma migrate deploy` fails with P3005. Non-destructive:
+## adds nullable columns + FlavorFieldDefinition table only, then
+## backfills attribute definitions. Idempotent: safe to re-run.
+fix-client-db:
+	@echo "==> 1/3 Backing up database"
+	@docker compose exec -T db pg_dump -U cloudmarket -d cloudmarket > backup_flavor_fix_`date +%F_%H%M`.sql
+	@echo "==> 2/3 Applying flavor-fields schema patch"
+	@docker compose exec -T db psql -U cloudmarket -d cloudmarket -v ON_ERROR_STOP=1 \
+		< apps/api/prisma/migrations/202610121700_add_flavor_fields/migration.sql
+	@echo "==> 3/3 Seeding flavor field definitions + backfilling attributes"
+	@docker compose exec -T api npx tsx prisma/migrate-flavor-fields.ts
+	@echo ""
+	@echo "✓ Done. Restart API to clear caches: make restart-api"
+
 ## Incremental seed — adds new objects without wiping existing data.
 ## Safe to run on a database that already contains production data.
 ## Run after schema changes or when new seed data is added.
