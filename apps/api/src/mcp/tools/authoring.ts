@@ -16,7 +16,7 @@
  */
 import { z } from 'zod';
 import type { McpToolDefinition, McpToolGroup } from '../tools';
-import { apiDelete, apiPatch, apiPost, apiPut, toToolResult } from '../api-client';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut, toToolResult } from '../api-client';
 
 const uuidSchema = z.string().uuid();
 
@@ -252,6 +252,92 @@ function buildExtraTools(): McpToolDefinition[] {
       handler: async (args) => {
         const { id, body } = (args ?? {}) as { id: string; body?: Record<string, unknown> };
         return toToolResult(await apiPut(`/api/presentation-orders/${id}/steps`, body ?? {}));
+      },
+    },
+
+    // Bulk: apply an OS (and optional version) to EVERY variant of a product —
+    // the "make this OS available to all VMs" workflow in ONE tool call
+    // instead of N update calls the model would have to orchestrate.
+    {
+      name: 'authoring_apply_os_to_product',
+      description:
+        'Apply an OS — and optionally one of its versions — to EVERY variant of a product ' +
+        '(e.g. make a new OS available to all Virtual Machine sizes). Lists the product ' +
+        "variants, sets osId/osVersionId on each via PUT /api/variants/:id, and returns a " +
+        'per-variant summary. Use authoring_create_product_variant first if a product has ' +
+        'no variants yet.',
+      inputSchema: z.object({
+        productId: uuidSchema.describe('Product whose variants are updated'),
+        osId: uuidSchema.describe('OS UUID to apply (see catalog_list_os)'),
+        osVersionId: uuidSchema
+          .optional()
+          .describe('OS version UUID to apply (see catalog_list_os → versions)'),
+      }),
+      handler: async (args) => {
+        const { productId, osId, osVersionId } = (args ?? {}) as {
+          productId: string;
+          osId: string;
+          osVersionId?: string;
+        };
+
+        // The REST API has no GET /api/products/:id — variants come from
+        // /api/products/:id/variants and the display name from the list.
+        const variantsResult = await apiGet(`/api/products/${productId}/variants`);
+        if (!variantsResult.ok) {
+          return toToolResult(variantsResult);
+        }
+        const variants = (variantsResult.data as Array<{ id: string; name: string }>) ?? [];
+        const listResult = await apiGet('/api/products');
+        const productList =
+          listResult.ok ? ((listResult.data as Array<{ id: string; name: string }>) ?? []) : [];
+        const product = {
+          name: productList.find((p) => p.id === productId)?.name ?? productId,
+          variants,
+        };
+        if (variants.length === 0) {
+          return toToolResult({
+            ok: true,
+            status: 200,
+            data: {
+              product: product.name ?? productId,
+              updated: 0,
+              message:
+                'This product has no variants yet — create one with authoring_create_product_variant first.',
+            },
+          });
+        }
+
+        const results: Array<{ variant: string; ok: boolean; error?: string }> = [];
+        for (const variant of variants) {
+          const body: Record<string, unknown> = { osId };
+          if (osVersionId) body.osVersionId = osVersionId;
+          const updated = await apiPut(`/api/variants/${variant.id}`, body);
+          results.push(
+            updated.ok
+              ? { variant: variant.name, ok: true }
+              : { variant: variant.name, ok: false, error: updated.error },
+          );
+        }
+
+        const failed = results.filter((r) => !r.ok);
+        if (failed.length > 0) {
+          return toToolResult({
+            ok: false,
+            status: 200,
+            error: `${failed.length} of ${results.length} variants failed to update: ${failed
+              .map((f) => `${f.variant}: ${f.error}`)
+              .join('; ')}`,
+          });
+        }
+        return toToolResult({
+          ok: true,
+          status: 200,
+          data: {
+            product: product.name ?? productId,
+            updated: results.length,
+            details: results,
+          },
+        });
       },
     },
 
