@@ -27,6 +27,7 @@ import express, { NextFunction, Request, Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { buildMcpServer } from './server';
 import { mcpAuth } from './auth';
+import { isSseTransportEnabled, openSseSession } from './sse';
 
 /** Absolute path of the MCP endpoint on the API. */
 export const MCP_ENDPOINT_PATH = '/mcp';
@@ -118,7 +119,29 @@ export function createMcpRouter(): express.Router {
     },
   );
 
-  // Stateless server: no GET (SSE) stream, no session termination.
+  // Stateless server: no GET (SSE) stream by default, no session termination.
+  //
+  // GET /mcp CO-LOCATION (opencode 1.x compatibility): when the legacy SSE
+  // transport is enabled (MCP_ENABLE_SSE=1) AND the client explicitly asks
+  // for an event stream, GET /mcp opens a legacy SSE session instead of
+  // answering 405. opencode 1.x's transport inference only tries SSE on the
+  // exact configured URL, so url=.../mcp works for BOTH generations:
+  // opencode 2.x / SDK clients use POST (Streamable HTTP, untouched), 1.x
+  // clients open the SSE stream on the same path. Without
+  // "text/event-stream" in the Accept header (browser, plain curl), the
+  // answer stays the plain 405.
+  router.get(MCP_ENDPOINT_PATH, mcpAuth, (req: Request, res: Response) => {
+    const wantsEventStream = String(req.headers.accept ?? '').includes(
+      'text/event-stream',
+    );
+    if (isSseTransportEnabled() && wantsEventStream) {
+      openSseSession(res);
+      return;
+    }
+    res.status(405).set('Allow', 'POST').json({
+      error: 'Method Not Allowed: the CloudMarket MCP endpoint is stateless and only accepts POST /mcp',
+    });
+  });
   const methodNotAllowed = (req: Request, res: Response, next: NextFunction) => {
     mcpAuth(req, res, (error?: unknown) => {
       if (error || res.headersSent) {
@@ -130,7 +153,6 @@ export function createMcpRouter(): express.Router {
       });
     });
   };
-  router.get(MCP_ENDPOINT_PATH, methodNotAllowed);
   router.delete(MCP_ENDPOINT_PATH, methodNotAllowed);
 
   // Body-parser failures become JSON-RPC parse errors (no stack traces).

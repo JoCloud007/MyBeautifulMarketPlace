@@ -58,12 +58,75 @@ interface SseSession {
   server: ReturnType<typeof buildMcpServer>;
 }
 
+/** Live SSE sessions, keyed by the transport-generated sessionId. */
+const sessions = new Map<string, SseSession>();
+
 /** 404 answer used whenever the transport is disabled (it does not exist). */
 function respondSseDisabled(res: Response): void {
   res.status(404).json({
     error:
       'Not Found: the legacy SSE MCP transport is disabled (set MCP_ENABLE_SSE=1 to enable it)',
   });
+}
+
+/**
+ * Open one legacy SSE session on ANY response object (the stream is the
+ * session). Used by GET /sse (legacy endpoint) and, when
+ * MCP_ENABLE_SSE=1, by GET /mcp as a co-located fallback so opencode 1.x
+ * clients — whose transport inference only tries SSE first on the exact
+ * configured URL — can connect with url=.../mcp just like their other
+ * servers. The announced message URL is always /messages (already proxied).
+ */
+export function openSseSession(res: Response): void {
+  const server = buildMcpServer();
+  const transport = new SSEServerTransport(SSE_MESSAGES_PATH, res);
+  sessions.set(transport.sessionId, { transport, server });
+
+  // Cleanup when the SSE stream closes (client disconnect or shutdown).
+  res.on('close', () => {
+    if (sessions.get(transport.sessionId)?.transport === transport) {
+      sessions.delete(transport.sessionId);
+    }
+    void transport.close().catch(() => undefined);
+    void server.close().catch(() => undefined);
+  });
+
+  server.connect(transport).catch((error: unknown) => {
+    // Message only — never a stack trace on the wire or in the logs.
+    const message =
+      error instanceof Error && error.message ? error.message : String(error);
+    console.error(`CloudMarket MCP SSE session failed to start: ${message}`);
+    sessions.delete(transport.sessionId);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to start the MCP SSE session' });
+    } else {
+      res.destroy();
+    }
+  });
+}
+
+/**
+ * Route one client-to-server message to its open SSE session. Resolves
+ * once the transport has handled the POST (or answers 404 itself when the
+ * session is unknown/closed).
+ */
+export function handleSseMessage(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  sessionId: string | undefined,
+): void {
+  const session = sessionId ? sessions.get(sessionId) : undefined;
+
+  if (!session) {
+    res.status(404).json({
+      error:
+        'Unknown or closed SSE session: open GET /sse first and POST to the /messages?sessionId=... URL it announces',
+    });
+    return;
+  }
+
+  session.transport.handlePostMessage(req, res, req.body).catch(next);
 }
 
 /**
@@ -77,9 +140,6 @@ function respondSseDisabled(res: Response): void {
 export function createSseRouter(): express.Router {
   const router = express.Router();
 
-  // Live SSE sessions, keyed by the transport-generated sessionId.
-  const sessions = new Map<string, SseSession>();
-
   // Per-route gate: 404 unless MCP_ENABLE_SSE=1 (checked at request time).
   const sseGate = (_req: Request, res: Response, next: NextFunction): void => {
     if (!isSseTransportEnabled()) {
@@ -91,31 +151,7 @@ export function createSseRouter(): express.Router {
 
   // GET /sse — open one SSE stream and bind a fresh MCP server to it.
   router.get(SSE_ENDPOINT_PATH, sseGate, mcpAuth, (req: Request, res: Response) => {
-    const server = buildMcpServer();
-    const transport = new SSEServerTransport(SSE_MESSAGES_PATH, res);
-    sessions.set(transport.sessionId, { transport, server });
-
-    // Cleanup when the SSE stream closes (client disconnect or shutdown).
-    res.on('close', () => {
-      if (sessions.get(transport.sessionId)?.transport === transport) {
-        sessions.delete(transport.sessionId);
-      }
-      void transport.close().catch(() => undefined);
-      void server.close().catch(() => undefined);
-    });
-
-    server.connect(transport).catch((error: unknown) => {
-      // Message only — never a stack trace on the wire or in the logs.
-      const message =
-        error instanceof Error && error.message ? error.message : String(error);
-      console.error(`CloudMarket MCP SSE session failed to start: ${message}`);
-      sessions.delete(transport.sessionId);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Failed to start the MCP SSE session' });
-      } else {
-        res.destroy();
-      }
-    });
+    openSseSession(res);
   });
 
   // POST /messages?sessionId=... — messages for one open SSE session.
@@ -130,17 +166,7 @@ export function createSseRouter(): express.Router {
     (req: Request, res: Response, next: NextFunction): void => {
       const rawSessionId = req.query.sessionId;
       const sessionId = typeof rawSessionId === 'string' ? rawSessionId : undefined;
-      const session = sessionId ? sessions.get(sessionId) : undefined;
-
-      if (!session) {
-        res.status(404).json({
-          error:
-            'Unknown or closed SSE session: open GET /sse first and POST to the /messages?sessionId=... URL it announces',
-        });
-        return;
-      }
-
-      session.transport.handlePostMessage(req, res, req.body).catch(next);
+      handleSseMessage(req, res, next, sessionId);
     },
   );
 
