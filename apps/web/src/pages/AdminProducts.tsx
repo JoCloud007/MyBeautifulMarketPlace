@@ -377,8 +377,8 @@ function ProductModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-2xl max-h-[90vh]">
+        <DialogHeader className="sticky top-0 z-10 bg-slate-900 pb-2 border-b border-slate-800">
           <DialogTitle className="text-white">{editing ? 'Edit Product' : 'New Product'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -476,7 +476,7 @@ function ProductModal({
             <input type="checkbox" id="prod-active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="rounded border-slate-700 bg-slate-950" />
             <label htmlFor="prod-active" className="text-sm text-slate-300">Active</label>
           </div>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
+          <DialogFooter className="sticky bottom-0 z-10 bg-slate-900 flex-col sm:flex-row gap-2 pt-2 border-t border-slate-800">
             <Button type="button" variant="outline" onClick={onClose} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
             <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
           </DialogFooter>
@@ -549,8 +549,8 @@ function VariantModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh]">
+        <DialogHeader className="sticky top-0 z-10 bg-slate-900 pb-2 border-b border-slate-800">
           <DialogTitle className="text-white">{editing ? 'Edit Variant' : 'New Variant'}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -661,7 +661,7 @@ function VariantModal({
             <input type="checkbox" id="variant-active" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="rounded border-slate-700 bg-slate-950" />
             <label htmlFor="variant-active" className="text-sm text-slate-300">Active</label>
           </div>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
+          <DialogFooter className="sticky bottom-0 z-10 bg-slate-900 flex-col sm:flex-row gap-2 pt-2 border-t border-slate-800">
             <Button type="button" variant="outline" onClick={onClose} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
             <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
           </DialogFooter>

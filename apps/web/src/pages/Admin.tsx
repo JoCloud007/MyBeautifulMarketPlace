@@ -910,8 +910,8 @@ function ProductsSection() {
 
       {/* Product Detail Drawer */}
       <Dialog open={!!detailProduct} onOpenChange={(open) => !open && setDetailProduct(null)}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-3xl max-h-[90vh]">
+          <DialogHeader className="sticky top-0 z-10 bg-slate-900">
             <DialogTitle className="text-white flex items-center gap-2">
               <Box className="h-5 w-5 text-blue-500" />
               {detailProduct?.name}
@@ -928,8 +928,8 @@ function ProductsSection() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh]">
+          <DialogHeader className="sticky top-0 z-10 bg-slate-900 pb-2 border-b border-slate-800">
             <DialogTitle className="text-white">{editing ? 'Edit product' : 'New product'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -1013,7 +1013,7 @@ function ProductsSection() {
               <input type="checkbox" id="isActive" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />
               <label htmlFor="isActive" className="text-sm text-slate-300">Active</label>
             </div>
-            <DialogFooter className="flex-col sm:flex-row gap-2">
+            <DialogFooter className="sticky bottom-0 z-10 bg-slate-900 flex-col sm:flex-row gap-2 pt-2 border-t border-slate-800">
               <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
               <Button type="submit" disabled={createProduct.isPending || updateProduct.isPending} className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">
                 {editing ? 'Save' : 'Create'}

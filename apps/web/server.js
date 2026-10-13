@@ -91,19 +91,24 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  const isHtml = pathname === '/' || !path.extname(pathname) || filePath === path.join(distRoot, 'index.html');
   fs.readFile(filePath, (err, data) => {
     if (err) {
       // SPA fallback: serve index.html for unknown routes
-      const indexPath = path.join(__dirname, 'dist', 'index.html');
+      const indexPath = path.join(distRoot, 'index.html');
       fs.readFile(indexPath, (err2, indexData) => {
         if (err2) {
           res.writeHead(404, { 'Content-Type': 'text/plain' });
           res.end('Not found');
         } else {
-          res.writeHead(200, { 'Content-Type': 'text/html' });
+          res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' });
           res.end(indexData);
         }
       });
+    } else if (isHtml) {
+      // index.html must never be cached: it references hashed asset bundles
+      res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' });
+      res.end(data);
     } else {
       const ext = path.extname(filePath);
       const contentType = mimeTypes[ext] || 'application/octet-stream';
