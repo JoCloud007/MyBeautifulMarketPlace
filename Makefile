@@ -70,6 +70,15 @@ deploy:
 	mkdir -p node_modules/@esbuild/linux-arm64 && tar -xzf esbuild-linux-arm64-$$ESBUILD_VERSION.tgz -C node_modules/@esbuild/linux-arm64 --strip-components=1 && rm esbuild-linux-arm64-$$ESBUILD_VERSION.tgz && \
 	npm pack @esbuild/linux-x64@$$ESBUILD_VERSION && \
 	mkdir -p node_modules/@esbuild/linux-x64 && tar -xzf esbuild-linux-x64-$$ESBUILD_VERSION.tgz -C node_modules/@esbuild/linux-x64 --strip-components=1 && rm esbuild-linux-x64-$$ESBUILD_VERSION.tgz && \
+	ROLLUP_VERSION=$$(node -p "require('./node_modules/rollup/package.json').version") && \
+	npm pack @rollup/rollup-linux-arm64-gnu@$$ROLLUP_VERSION && \
+	mkdir -p node_modules/@rollup/rollup-linux-arm64-gnu && tar -xzf rollup-rollup-linux-arm64-gnu-$$ROLLUP_VERSION.tgz -C node_modules/@rollup/rollup-linux-arm64-gnu --strip-components=1 && rm rollup-rollup-linux-arm64-gnu-$$ROLLUP_VERSION.tgz && \
+	npm pack @rollup/rollup-linux-x64-gnu@$$ROLLUP_VERSION && \
+	mkdir -p node_modules/@rollup/rollup-linux-x64-gnu && tar -xzf rollup-rollup-linux-x64-gnu-$$ROLLUP_VERSION.tgz -C node_modules/@rollup/rollup-linux-x64-gnu --strip-components=1 && rm rollup-rollup-linux-x64-gnu-$$ROLLUP_VERSION.tgz && \
+	npm pack @rollup/rollup-darwin-arm64@$$ROLLUP_VERSION && \
+	mkdir -p node_modules/@rollup/rollup-darwin-arm64 && tar -xzf rollup-rollup-darwin-arm64-$$ROLLUP_VERSION.tgz -C node_modules/@rollup/rollup-darwin-arm64 --strip-components=1 && rm rollup-rollup-darwin-arm64-$$ROLLUP_VERSION.tgz && \
+	npm pack @rollup/rollup-darwin-x64@$$ROLLUP_VERSION && \
+	mkdir -p node_modules/@rollup/rollup-darwin-x64 && tar -xzf rollup-rollup-darwin-x64-$$ROLLUP_VERSION.tgz -C node_modules/@rollup/rollup-darwin-x64 --strip-components=1 && rm rollup-rollup-darwin-x64-$$ROLLUP_VERSION.tgz && \
 	npm run build -w packages/shared-types && \
 	npx prisma generate --schema=apps/api/prisma/schema.prisma && \
 	npm run build -w apps/web && \
