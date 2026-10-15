@@ -92,6 +92,7 @@ import {
   type ResiliencyScopeRule,
 } from '@/hooks/useApi';
 import PickerList from '@/components/PickerList';
+import FlavorProductLinks from '@/components/FlavorProductLinks';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -2361,6 +2362,7 @@ function FlavorsSection() {
               azs={allAzs || []}
               zones={allZones || []}
             />
+            {editing && <FlavorProductLinks flavor={editing} />}
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
               <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>

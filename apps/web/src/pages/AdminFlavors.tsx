@@ -8,6 +8,7 @@ import {
   useAvailabilityZones,
   useZones,
 } from '@/hooks/useApi';
+import FlavorProductLinks from '@/components/FlavorProductLinks';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -402,6 +403,10 @@ function FlavorModal({
             azs={azList || []}
             zones={zoneList || []}
           />
+
+          {editing && (
+            <FlavorProductLinks flavor={editing} />
+          )}
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button type="button" variant="outline" onClick={onClose} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
