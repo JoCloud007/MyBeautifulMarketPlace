@@ -85,18 +85,17 @@ deploy:
 	echo "==> Native bundler binaries source: $$NATIVE_SRC" && \
 	ESBUILD_VERSION=$$(node -p "require('./node_modules/esbuild/package.json').version") && \
 	ROLLUP_VERSION=$$(node -p "require('./node_modules/rollup/package.json').version") && \
-	for spec in @esbuild/linux-arm64 @esbuild/linux-x64 @esbuild/darwin-arm64 @esbuild/darwin-x64; do \
-		plat=$${spec#@esbuild/}; \
-		tgz="esbuild-$$plat-$$ESBUILD_VERSION.tgz"; \
-		if [ "$$NATIVE_SRC" = "lib/native" ] && [ -f "lib/native/$$tgz" ]; then cp "lib/native/$$tgz" .; \
-		else npm pack $$spec@$$ESBUILD_VERSION >/dev/null 2>&1 || { echo "ERROR: cannot obtain $$tgz (not in lib/native/, registry failed). Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
-		mkdir -p node_modules/@esbuild/$$plat && tar -xzf "$$tgz" -C node_modules/@esbuild/$$plat --strip-components=1 && rm -f "$$tgz"; \
+	for plat in linux-arm64 linux-x64 darwin-arm64 darwin-x64; do \
+		tgz=$$(ls lib/native/esbuild-$$plat-*.tgz 2>/dev/null | head -1 || true); \
+		if [ -n "$$tgz" ]; then cp "$$tgz" lib/native/.extract.tgz; \
+		else npm pack @esbuild/$$plat@$$ESBUILD_VERSION --pack-destination lib/native >/dev/null 2>&1 && tgz="lib/native/esbuild-$$plat-$$ESBUILD_VERSION.tgz" && cp "$$tgz" lib/native/.extract.tgz || { echo "ERROR: cannot obtain esbuild-$$plat tarball (not in lib/native/, registry failed). Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
+		mkdir -p node_modules/@esbuild/$$plat && tar -xzf lib/native/.extract.tgz -C node_modules/@esbuild/$$plat --strip-components=1 && rm -f lib/native/.extract.tgz; \
 	done && \
 	for spec in rollup-linux-arm64-gnu rollup-linux-x64-gnu rollup-darwin-arm64 rollup-darwin-x64; do \
-		tgz="rollup-$$spec-$$ROLLUP_VERSION.tgz"; \
-		if [ "$$NATIVE_SRC" = "lib/native" ] && [ -f "lib/native/$$tgz" ]; then cp "lib/native/$$tgz" .; \
-		else npm pack @rollup/$$spec@$$ROLLUP_VERSION >/dev/null 2>&1 || { echo "ERROR: cannot obtain $$tgz (not in lib/native/, registry failed). Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
-		mkdir -p node_modules/@rollup/$$spec && tar -xzf "$$tgz" -C node_modules/@rollup/$$spec --strip-components=1 && rm -f "$$tgz"; \
+		tgz=$$(ls lib/native/rollup-$$spec-*.tgz 2>/dev/null | head -1 || true); \
+		if [ -n "$$tgz" ]; then cp "$$tgz" lib/native/.extract.tgz; \
+		else npm pack @rollup/$$spec@$$ROLLUP_VERSION --pack-destination lib/native >/dev/null 2>&1 && tgz="lib/native/rollup-$$spec-$$ROLLUP_VERSION.tgz" && cp "$$tgz" lib/native/.extract.tgz || { echo "ERROR: cannot obtain rollup-$$spec tarball (not in lib/native/, registry failed). Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
+		mkdir -p node_modules/@rollup/$$spec && tar -xzf lib/native/.extract.tgz -C node_modules/@rollup/$$spec --strip-components=1 && rm -f lib/native/.extract.tgz; \
 	done && \
 	npm run build -w packages/shared-types && \
 	npx prisma generate --schema=apps/api/prisma/schema.prisma && \

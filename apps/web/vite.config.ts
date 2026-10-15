@@ -8,6 +8,13 @@ const API_TARGET = process.env.API_HOST
 
 export default defineConfig({
   plugins: [react()],
+  // esbuild >= 0.25 no longer lowers destructuring for legacy targets; the
+  // Vite 5 default target ("modules" = chrome87/firefox78/safari14) triggers
+  // "Transforming destructuring ... is not supported yet". es2020 is native
+  // for every supported browser and keeps the bundler agnostic.
+  build: {
+    target: 'es2020',
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
