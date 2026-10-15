@@ -86,8 +86,8 @@ deploy:
 		for i in 1 2 3; do rm -rf $$ws/node_modules 2>/dev/null && break || sleep 2; done; \
 		if [ -d $$ws/node_modules ]; then echo "ERROR: cannot remove $$ws/node_modules"; exit 1; fi; \
 	done && \
-	echo "==> All node_modules (root + workspaces) removed" && \
-	echo "==> Staging native bundler binaries (extracted into node_modules AFTER install)" && \
+	echo "ETAPE 1/9 OK — node_modules (root + workspaces) removed" && \
+	echo "ETAPE 2/9 — staging native bundler binaries" && \
 	ESBUILD_PIN=$$(node -p "require('./package.json').overrides.esbuild") && \
 	ROLLUP_PIN=$$(node -p "require('./package.json').overrides.rollup") && \
 	echo "    pinned versions (package.json overrides): esbuild $$ESBUILD_PIN / rollup $$ROLLUP_PIN" && \
@@ -103,7 +103,9 @@ deploy:
 		else npm pack @rollup/$$spec@$$ROLLUP_PIN --pack-destination .native-cache >/dev/null 2>&1 || { echo "ERROR: cannot obtain rollup-$$spec@$$ROLLUP_PIN tarball. Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
 	done && \
 	ls .native-cache/ && \
+	echo "ETAPE 3/9 OK — natives staged" && \
 	npm install --force --legacy-peer-deps --no-package-lock --omit=optional $(NPM_PLATFORM_FLAGS) && \
+	echo "ETAPE 4/9 OK — npm install" && \
 	for ws in apps/web apps/api packages/shared-types; do \
 		rm -rf $$ws/node_modules/esbuild $$ws/node_modules/@esbuild $$ws/node_modules/rollup $$ws/node_modules/@rollup 2>/dev/null; \
 	done && \
@@ -124,10 +126,16 @@ deploy:
 		mkdir -p node_modules/@rollup/$$spec && tar -xzf "$$tgz" -C node_modules/@rollup/$$spec --strip-components=1; \
 	done && \
 	rm -rf .native-cache && \
+	echo "ETAPE 5/9 OK — natives extracted" && \
 	npm run build -w packages/shared-types && \
+	echo "ETAPE 6/9 OK — shared-types built" && \
 	npx prisma generate --schema=apps/api/prisma/schema.prisma && \
+	echo "ETAPE 7/9 OK — prisma generated" && \
 	npm run build -w apps/web && \
-	docker compose build --no-cache
+	echo "ETAPE 8/9 OK — web built" && \
+	echo "ETAPE 9/9 — docker compose build (final, can take minutes)" && \
+	docker compose build --no-cache && \
+	echo "ETAPE 9/9 OK — images built"
 	@echo ""
 	@echo "✓ Images built. Run 'make run' to start containers."
 
