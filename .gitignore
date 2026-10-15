@@ -27,3 +27,4 @@ apps/web/dist/
 
 # Build outputs
 packages/shared-types/dist/
+deploy.log

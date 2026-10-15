@@ -78,6 +78,7 @@ build:
 ## all Docker images.
 deploy:
 	@echo "==> git $$(git rev-parse --short HEAD) / npm $$(npm -v) — expect overrides esbuild 0.28.1 / rollup 4.62.3 (>= commit d6a0b377)"
+	exec > >(tee deploy.log) 2>&1; \
 	. "$(shell pwd)/.source.prisma" && \
 	for i in 1 2 3 4 5; do rm -rf node_modules 2>/dev/null && break || sleep 2; done; \
 	if [ -d node_modules ]; then echo "ERROR: cannot remove node_modules (a process keeps recreating files — close editors/language servers and retry)"; exit 1; fi && \
