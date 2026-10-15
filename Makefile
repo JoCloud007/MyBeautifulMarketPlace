@@ -130,6 +130,18 @@ deploy:
 	@echo ""
 	@echo "✓ Images built. Run 'make run' to start containers."
 
+## Check natives — diagnose esbuild/rollup service failures in 2 seconds.
+## Runs on the deployment host after make deploy: verifies the esbuild and
+## rollup JS packages agree with their native binaries (the "Host version
+## does not match binary" / "The service was stopped" class of failures).
+check-natives:
+	@echo "==> arch: $$(uname -m) / node $$(node -v) / npm $$(npm -v)"
+	@node -p "'==> esbuild JS: ' + require('./node_modules/esbuild/package.json').version"
+	@node -p "'==> rollup JS:  ' + require('./node_modules/rollup/package.json').version"
+	@echo "==> esbuild binary: $$(./node_modules/.bin/esbuild --version 2>&1)"
+	@echo "==> rollup native:  $$(node -e "console.log(require('rollup/dist/native.js') ? 'loads' : 'loaded')" 2>&1 | tail -1)"
+	@node -e "const fs=require('fs');const d='node_modules/@esbuild/darwin-'+process.arch;console.log('==> installed @esbuild variants: '+fs.readdirSync('node_modules/@esbuild').join(', '));console.log('==> expected for this host: @esbuild/darwin-'+process.arch);if(fs.existsSync(d+'/bin/esbuild')){const st=fs.statSync(d+'/bin/esbuild');console.log('==> binary executable: '+(st.mode&0o111?'yes':'NO — run: chmod +x '+d+'/bin/esbuild'))}else{console.log('==> MISSING: '+d+'/bin/esbuild')}"
+
 ## Run — Start all containers (db, api, web).
 ## Recreates containers to ensure the latest built images are used.
 ## --renew-anon-volumes is REQUIRED: the api container mounts an anonymous
