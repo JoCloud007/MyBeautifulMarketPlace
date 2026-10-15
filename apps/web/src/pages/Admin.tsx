@@ -1496,7 +1496,11 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
       {/* Resiliency levels available for this product (same editor as the admin tab) */}
       <ProductResiliencyInline product={product} />
 
-      {isCompute ? (
+      {/* Variants bind flavors to the product (and feed the Marketplace
+          Matrix, which is built from product.variants). Always visible —
+          a product with 0 variants is invisible in the Matrix, so every
+          product needs this entry point, not only compute ones. */}
+      {(
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-white">Variants</h3>
@@ -1544,7 +1548,9 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
             </div>
           )}
         </div>
-      ) : (
+      )}
+
+      {!isCompute && (
         <div className="space-y-6">
           <h3 className="text-lg font-semibold text-white">Product Details</h3>
           <div className="space-y-2 text-sm text-slate-400">

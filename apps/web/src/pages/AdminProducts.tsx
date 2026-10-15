@@ -703,17 +703,23 @@ function ProductDrawer({
         </div>
 
         <div className="p-6 space-y-6">
-          {isCompute ? (
+          {(
             <>
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className="border-blue-500/20 text-blue-400">
-                  {product.computeType}
-                </Badge>
+                {product.computeType && (
+                  <Badge variant="outline" className="border-blue-500/20 text-blue-400">
+                    {product.computeType}
+                  </Badge>
+                )}
                 <Badge variant="outline" className={product.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
                   {product.isActive ? 'Active' : 'Inactive'}
                 </Badge>
               </div>
 
+              {/* Variants bind flavors to the product and feed the Marketplace
+                  Matrix (built from product.variants). Always visible: a
+                  product with 0 variants is invisible in the Matrix and must
+                  be able to create its first variant from here. */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -778,21 +784,23 @@ function ProductDrawer({
                 </Card>
               </div>
             </>
-          ) : (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">Description</label>
-                <p className="text-sm text-slate-400">{product.description || '—'}</p>
-              </div>
+          )}
 
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Description</label>
+              <p className="text-sm text-slate-400">{product.description || '—'}</p>
+            </div>
+
+            {!isCompute && (
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300">Status</label>
                 <Badge variant="outline" className={product.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
                   {product.isActive ? 'Active' : 'Inactive'}
                 </Badge>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
