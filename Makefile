@@ -86,8 +86,8 @@ deploy:
 		for i in 1 2 3; do rm -rf $$ws/node_modules 2>/dev/null && break || sleep 2; done; \
 		if [ -d $$ws/node_modules ]; then echo "ERROR: cannot remove $$ws/node_modules"; exit 1; fi; \
 	done && \
-	echo "ETAPE 1/9 OK — node_modules (root + workspaces) removed" && \
-	echo "ETAPE 2/9 — staging native bundler binaries" && \
+	echo "ETAPE 1/10 OK — node_modules (root + workspaces) removed" && \
+	echo "ETAPE 2/10 — staging native bundler binaries" && \
 	ESBUILD_PIN=$$(node -p "require('./package.json').overrides.esbuild") && \
 	ROLLUP_PIN=$$(node -p "require('./package.json').overrides.rollup") && \
 	echo "    pinned versions (package.json overrides): esbuild $$ESBUILD_PIN / rollup $$ROLLUP_PIN" && \
@@ -103,9 +103,9 @@ deploy:
 		else npm pack @rollup/$$spec@$$ROLLUP_PIN --pack-destination .native-cache >/dev/null 2>&1 || { echo "ERROR: cannot obtain rollup-$$spec@$$ROLLUP_PIN tarball. Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
 	done && \
 	ls .native-cache/ && \
-	echo "ETAPE 3/9 OK — natives staged" && \
+	echo "ETAPE 3/10 OK — natives staged" && \
 	npm install --force --legacy-peer-deps --no-package-lock --omit=optional $(NPM_PLATFORM_FLAGS) && \
-	echo "ETAPE 4/9 OK — npm install" && \
+	echo "ETAPE 4/10 OK — npm install" && \
 	for ws in apps/web apps/api packages/shared-types; do \
 		rm -rf $$ws/node_modules/esbuild $$ws/node_modules/@esbuild $$ws/node_modules/rollup $$ws/node_modules/@rollup 2>/dev/null; \
 	done && \
@@ -126,16 +126,16 @@ deploy:
 		mkdir -p node_modules/@rollup/$$spec && tar -xzf "$$tgz" -C node_modules/@rollup/$$spec --strip-components=1; \
 	done && \
 	rm -rf .native-cache && \
-	echo "ETAPE 5/9 OK — natives extracted" && \
+	echo "ETAPE 5/10 OK — natives extracted" && \
 	npm run build -w packages/shared-types && \
-	echo "ETAPE 6/9 OK — shared-types built" && \
+	echo "ETAPE 6/10 OK — shared-types built" && \
 	npx prisma generate --schema=apps/api/prisma/schema.prisma && \
-	echo "ETAPE 7/9 OK — prisma generated" && \
-	npm run build -w apps/web && \
-	echo "ETAPE 8/9 OK — web built" && \
-	echo "ETAPE 9/9 — docker compose build (final, can take minutes)" && \
+	echo "ETAPE 7/10 OK — prisma generated" && \
+	(cd apps/web && npx tsc --noEmit > /tmp/vite-tsc-out.txt 2>&1) && echo "ETAPE 8/10 OK — web type-check" || { echo "ETAPE 8/10 FAIL — tsc errors below"; head -15 /tmp/vite-tsc-out.txt; exit 1; } && \
+	(cd apps/web && npx vite build > /tmp/vite-build-out.txt 2>&1) && echo "ETAPE 9/10 OK — web built" || { echo "ETAPE 9/10 FAIL — vite build. Context: $$(uname -m) / node $$(node -v) / npm $$(npm -v)"; tail -25 /tmp/vite-build-out.txt; echo "ETAPE 9/10 FAIL — end of error"; exit 1; } && \
+	echo "ETAPE 10/10 — docker compose build (final, can take minutes)" && \
 	docker compose build --no-cache && \
-	echo "ETAPE 9/9 OK — images built"
+	echo "ETAPE 10/10 OK — images built"
 	@echo ""
 	@echo "✓ Images built. Run 'make run' to start containers."
 
@@ -162,7 +162,7 @@ test-vite:
 	@echo "PROBE 1 (direct binary): $$(./node_modules/@esbuild/darwin-$$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')/bin/esbuild --version 2>&1 | tail -1)"
 	@node -e "require('./node_modules/esbuild/lib/main.js').transform('const a: number = 1', { loader: 'ts' }).then(() => { console.log('PROBE 2 (esbuild service + TS): OK'); process.exit(0) }).catch(e => { console.log('PROBE 2 (esbuild service + TS): FAIL — ' + String(e.message).split('\n')[0]); process.exit(1) })"
 	@node -e "try { require('rollup/dist/native.js'); console.log('PROBE 3 (rollup native): OK') } catch (e) { console.log('PROBE 3 (rollup native): FAIL — ' + String(e.message).split('\n')[0]); process.exit(1) }"
-	@cd apps/web && npx vite build 2>&1 | tail -3 && echo "PROBE 4 (web build): OK" || echo "PROBE 4 (web build): FAIL — see lines above"
+	@(cd apps/web && npx vite build > /tmp/vite-build-out.txt 2>&1) && echo "PROBE 4 (web build): OK" || { echo "PROBE 4 (web build): FAIL — last lines:"; tail -15 /tmp/vite-build-out.txt; }
 
 ## Run — Start all containers (db, api, web).
 ## Recreates containers to ensure the latest built images are used.
