@@ -80,17 +80,25 @@ deploy:
 	. "$(shell pwd)/.source.prisma" && \
 	for i in 1 2 3 4 5; do rm -rf node_modules 2>/dev/null && break || sleep 2; done; \
 	if [ -d node_modules ]; then echo "ERROR: cannot remove node_modules (a process keeps recreating files — close editors/language servers and retry)"; exit 1; fi && \
+	for ws in apps/web apps/api packages/shared-types; do \
+		for i in 1 2 3; do rm -rf $$ws/node_modules 2>/dev/null && break || sleep 2; done; \
+		if [ -d $$ws/node_modules ]; then echo "ERROR: cannot remove $$ws/node_modules"; exit 1; fi; \
+	done && \
+	echo "==> All node_modules (root + workspaces) removed" && \
 	echo "==> Staging native bundler binaries (extracted into node_modules AFTER install)" && \
+	ESBUILD_PIN=$$(node -p "require('./package.json').overrides.esbuild") && \
+	ROLLUP_PIN=$$(node -p "require('./package.json').overrides.rollup") && \
+	echo "    pinned versions (package.json overrides): esbuild $$ESBUILD_PIN / rollup $$ROLLUP_PIN" && \
 	mkdir -p .native-cache && \
 	for plat in linux-arm64 linux-x64 darwin-arm64 darwin-x64; do \
 		tgz=$$(ls lib/native/esbuild-$$plat-*.tgz 2>/dev/null | head -1 || true); \
 		if [ -n "$$tgz" ]; then cp "$$tgz" .native-cache/; \
-		else npm pack @esbuild/$$plat@0.28.1 --pack-destination .native-cache >/dev/null 2>&1 || { echo "ERROR: cannot obtain esbuild-$$plat tarball. Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
+		else npm pack @esbuild/$$plat@$$ESBUILD_PIN --pack-destination .native-cache >/dev/null 2>&1 || { echo "ERROR: cannot obtain esbuild-$$plat@$$ESBUILD_PIN tarball. Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
 	done && \
 	for spec in rollup-linux-arm64-gnu rollup-linux-x64-gnu rollup-darwin-arm64 rollup-darwin-x64; do \
 		tgz=$$(ls lib/native/rollup-$$spec-*.tgz 2>/dev/null | head -1 || true); \
 		if [ -n "$$tgz" ]; then cp "$$tgz" .native-cache/; \
-		else npm pack @rollup/$$spec@4.62.3 --pack-destination .native-cache >/dev/null 2>&1 || { echo "ERROR: cannot obtain rollup-$$spec tarball. Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
+		else npm pack @rollup/$$spec@$$ROLLUP_PIN --pack-destination .native-cache >/dev/null 2>&1 || { echo "ERROR: cannot obtain rollup-$$spec@$$ROLLUP_PIN tarball. Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
 	done && \
 	ls .native-cache/ && \
 	npm install --force --legacy-peer-deps --no-package-lock --omit=optional $(NPM_PLATFORM_FLAGS) && \
@@ -98,10 +106,16 @@ deploy:
 	ROLLUP_VERSION=$$(node -p "require('./node_modules/rollup/package.json').version") && \
 	echo "==> Installed esbuild $$ESBUILD_VERSION / rollup $$ROLLUP_VERSION — extracting staged natives" && \
 	for plat in linux-arm64 linux-x64 darwin-arm64 darwin-x64; do \
-		mkdir -p node_modules/@esbuild/$$plat && tar -xzf .native-cache/esbuild-$$plat-*.tgz -C node_modules/@esbuild/$$plat --strip-components=1; \
+		tgz=$$(ls .native-cache/esbuild-$$plat-*.tgz | head -1); \
+		tgzname=$$(basename "$$tgz"); \
+		if [ "$$tgzname" != "esbuild-$$plat-$$ESBUILD_VERSION.tgz" ]; then echo "ERROR: staged esbuild-$$plat tarball version does not match installed esbuild $$ESBUILD_VERSION ($$tgzname). Re-run 'make build' on a connected machine and commit lib/native/."; exit 1; fi; \
+		mkdir -p node_modules/@esbuild/$$plat && tar -xzf "$$tgz" -C node_modules/@esbuild/$$plat --strip-components=1; \
 	done && \
 	for spec in rollup-linux-arm64-gnu rollup-linux-x64-gnu rollup-darwin-arm64 rollup-darwin-x64; do \
-		mkdir -p node_modules/@rollup/$$spec && tar -xzf .native-cache/rollup-$$spec-*.tgz -C node_modules/@rollup/$$spec --strip-components=1; \
+		tgz=$$(ls .native-cache/rollup-$$spec-*.tgz | head -1); \
+		tgzname=$$(basename "$$tgz"); \
+		if [ "$$tgzname" != "rollup-$$spec-$$ROLLUP_VERSION.tgz" ]; then echo "ERROR: staged rollup-$$spec tarball version does not match installed rollup $$ROLLUP_VERSION ($$tgzname). Re-run 'make build' on a connected machine and commit lib/native/."; exit 1; fi; \
+		mkdir -p node_modules/@rollup/$$spec && tar -xzf "$$tgz" -C node_modules/@rollup/$$spec --strip-components=1; \
 	done && \
 	rm -rf .native-cache && \
 	npm run build -w packages/shared-types && \
