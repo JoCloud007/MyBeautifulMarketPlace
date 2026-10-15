@@ -55,6 +55,22 @@ build:
 	@echo ""
 	@echo "✓ Prisma binaries generated in lib/prisma/"
 	@echo "  Next step: git add lib/prisma/ && git commit"
+	@echo ""
+	@echo "==> Packing native bundler binaries into lib/native/ (commit them)"
+	mkdir -p lib/native && rm -f lib/native/*.tgz
+	ESBUILD_VERSION=$$(node -p "require('./node_modules/esbuild/package.json').version") && \
+	for plat in linux-arm64 linux-x64 darwin-arm64 darwin-x64; do \
+		npm pack @esbuild/$$plat@$$ESBUILD_VERSION --pack-destination lib/native >/dev/null 2>&1 || echo "  (warn) @esbuild/$$plat@$$ESBUILD_VERSION non packé"; \
+	done && \
+	ROLLUP_VERSION=$$(node -p "require('./node_modules/rollup/package.json').version") && \
+	for plat in rollup-linux-arm64-gnu rollup-linux-x64-gnu rollup-darwin-arm64 rollup-darwin-x64; do \
+		npm pack @rollup/$$plat@$$ROLLUP_VERSION --pack-destination lib/native >/dev/null 2>&1 || echo "  (warn) @rollup/$$plat@$$ROLLUP_VERSION non packé"; \
+	done && \
+	ls -la lib/native/
+	@echo ""
+	@echo "✓ Native tarballs in lib/native/ — commit them: git add lib/native/ && git commit"
+	@echo "  (the air-gapped mirror may not serve these packages; deploy will"
+	@echo "   extract the committed tarballs instead of hitting the registry)"
 
 ## Deploy — Prepare for air-gapped deployment.
 ## Sources .source.prisma (offline env vars), installs platform-native
@@ -65,24 +81,23 @@ deploy:
 	for i in 1 2 3 4 5; do rm -rf node_modules 2>/dev/null && break || sleep 2; done; \
 	if [ -d node_modules ]; then echo "ERROR: cannot remove node_modules (a process keeps recreating files — close editors/language servers and retry)"; exit 1; fi && \
 	npm install --force --legacy-peer-deps --no-package-lock $(NPM_PLATFORM_FLAGS) && \
+	NATIVE_SRC=$$( [ -d lib/native ] && ls lib/native/*.tgz >/dev/null 2>&1 && echo "lib/native" || echo "registry" ) && \
+	echo "==> Native bundler binaries source: $$NATIVE_SRC" && \
 	ESBUILD_VERSION=$$(node -p "require('./node_modules/esbuild/package.json').version") && \
-	npm pack @esbuild/linux-arm64@$$ESBUILD_VERSION && \
-	mkdir -p node_modules/@esbuild/linux-arm64 && tar -xzf esbuild-linux-arm64-$$ESBUILD_VERSION.tgz -C node_modules/@esbuild/linux-arm64 --strip-components=1 && rm esbuild-linux-arm64-$$ESBUILD_VERSION.tgz && \
-	npm pack @esbuild/linux-x64@$$ESBUILD_VERSION && \
-	mkdir -p node_modules/@esbuild/linux-x64 && tar -xzf esbuild-linux-x64-$$ESBUILD_VERSION.tgz -C node_modules/@esbuild/linux-x64 --strip-components=1 && rm esbuild-linux-x64-$$ESBUILD_VERSION.tgz && \
-	npm pack @esbuild/darwin-arm64@$$ESBUILD_VERSION && \
-	mkdir -p node_modules/@esbuild/darwin-arm64 && tar -xzf esbuild-darwin-arm64-$$ESBUILD_VERSION.tgz -C node_modules/@esbuild/darwin-arm64 --strip-components=1 && rm esbuild-darwin-arm64-$$ESBUILD_VERSION.tgz && \
-	npm pack @esbuild/darwin-x64@$$ESBUILD_VERSION && \
-	mkdir -p node_modules/@esbuild/darwin-x64 && tar -xzf esbuild-darwin-x64-$$ESBUILD_VERSION.tgz -C node_modules/@esbuild/darwin-x64 --strip-components=1 && rm esbuild-darwin-x64-$$ESBUILD_VERSION.tgz && \
 	ROLLUP_VERSION=$$(node -p "require('./node_modules/rollup/package.json').version") && \
-	npm pack @rollup/rollup-linux-arm64-gnu@$$ROLLUP_VERSION && \
-	mkdir -p node_modules/@rollup/rollup-linux-arm64-gnu && tar -xzf rollup-rollup-linux-arm64-gnu-$$ROLLUP_VERSION.tgz -C node_modules/@rollup/rollup-linux-arm64-gnu --strip-components=1 && rm rollup-rollup-linux-arm64-gnu-$$ROLLUP_VERSION.tgz && \
-	npm pack @rollup/rollup-linux-x64-gnu@$$ROLLUP_VERSION && \
-	mkdir -p node_modules/@rollup/rollup-linux-x64-gnu && tar -xzf rollup-rollup-linux-x64-gnu-$$ROLLUP_VERSION.tgz -C node_modules/@rollup/rollup-linux-x64-gnu --strip-components=1 && rm rollup-rollup-linux-x64-gnu-$$ROLLUP_VERSION.tgz && \
-	npm pack @rollup/rollup-darwin-arm64@$$ROLLUP_VERSION && \
-	mkdir -p node_modules/@rollup/rollup-darwin-arm64 && tar -xzf rollup-rollup-darwin-arm64-$$ROLLUP_VERSION.tgz -C node_modules/@rollup/rollup-darwin-arm64 --strip-components=1 && rm rollup-rollup-darwin-arm64-$$ROLLUP_VERSION.tgz && \
-	npm pack @rollup/rollup-darwin-x64@$$ROLLUP_VERSION && \
-	mkdir -p node_modules/@rollup/rollup-darwin-x64 && tar -xzf rollup-rollup-darwin-x64-$$ROLLUP_VERSION.tgz -C node_modules/@rollup/rollup-darwin-x64 --strip-components=1 && rm rollup-rollup-darwin-x64-$$ROLLUP_VERSION.tgz && \
+	for spec in @esbuild/linux-arm64 @esbuild/linux-x64 @esbuild/darwin-arm64 @esbuild/darwin-x64; do \
+		plat=$${spec#@esbuild/}; \
+		tgz="esbuild-$$plat-$$ESBUILD_VERSION.tgz"; \
+		if [ "$$NATIVE_SRC" = "lib/native" ] && [ -f "lib/native/$$tgz" ]; then cp "lib/native/$$tgz" .; \
+		else npm pack $$spec@$$ESBUILD_VERSION >/dev/null 2>&1 || { echo "ERROR: cannot obtain $$tgz (not in lib/native/, registry failed). Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
+		mkdir -p node_modules/@esbuild/$$plat && tar -xzf "$$tgz" -C node_modules/@esbuild/$$plat --strip-components=1 && rm -f "$$tgz"; \
+	done && \
+	for spec in rollup-linux-arm64-gnu rollup-linux-x64-gnu rollup-darwin-arm64 rollup-darwin-x64; do \
+		tgz="rollup-$$spec-$$ROLLUP_VERSION.tgz"; \
+		if [ "$$NATIVE_SRC" = "lib/native" ] && [ -f "lib/native/$$tgz" ]; then cp "lib/native/$$tgz" .; \
+		else npm pack @rollup/$$spec@$$ROLLUP_VERSION >/dev/null 2>&1 || { echo "ERROR: cannot obtain $$tgz (not in lib/native/, registry failed). Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
+		mkdir -p node_modules/@rollup/$$spec && tar -xzf "$$tgz" -C node_modules/@rollup/$$spec --strip-components=1 && rm -f "$$tgz"; \
+	done && \
 	npm run build -w packages/shared-types && \
 	npx prisma generate --schema=apps/api/prisma/schema.prisma && \
 	npm run build -w apps/web && \
