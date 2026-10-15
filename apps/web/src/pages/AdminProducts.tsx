@@ -524,6 +524,10 @@ function VariantModal({
     try {
       const payload = {
         ...form,
+        // Empty strings are not valid UUIDs — normalize optional relations
+        // to null so storage products can create variants without an OS.
+        osId: form.osId || null,
+        osVersionId: form.osVersionId || null,
         continuityLevelId: form.continuityLevelId || null,
         productVersionId: form.productVersionId || null,
       };
@@ -559,14 +563,13 @@ function VariantModal({
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-300">Operating System</label>
+            <label className="text-sm font-medium text-slate-300">Operating System <span className="text-slate-500 font-normal">(optional — storage products have none)</span></label>
             <select
               value={form.osId}
               onChange={(e) => setForm({ ...form, osId: e.target.value, osVersionId: '' })}
-              required
               className="w-full h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
             >
-              <option value="">Select OS...</option>
+              <option value="">None</option>
               {osList?.map((os) => (
                 <option key={os.id} value={os.id}>
                   {os.name}
@@ -575,15 +578,14 @@ function VariantModal({
             </select>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-300">OS Version</label>
+            <label className="text-sm font-medium text-slate-300">OS Version <span className="text-slate-500 font-normal">(optional)</span></label>
             <select
               value={form.osVersionId}
               onChange={(e) => setForm({ ...form, osVersionId: e.target.value })}
-              required
               disabled={!form.osId}
               className="w-full h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white disabled:opacity-50"
             >
-              <option value="">Select Version...</option>
+              <option value="">None</option>
               {versions?.map((v) => (
                 <option key={v.id} value={v.id}>
                   {v.version}

@@ -9,8 +9,10 @@ const idParamSchema = z.string().uuid();
 
 const createVariantSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  osId: z.string().uuid('Invalid OS ID'),
-  osVersionId: z.string().uuid('Invalid OS version ID'),
+  // OS fields are optional: storage products (NAS, Object Storage) bind a
+  // flavor through their variant without any operating system.
+  osId: z.string().uuid('Invalid OS ID').optional().nullable(),
+  osVersionId: z.string().uuid('Invalid OS version ID').optional().nullable(),
   flavorId: z.string().uuid('Invalid flavor ID'),
   availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
   continuityLevelId: z.string().uuid().optional().nullable(),
@@ -82,14 +84,17 @@ router.put('/:id', async (req, res, next) => {
       }
     }
 
-    // Verify OS version belongs to the target OS
-    const finalOsId = data.osId || existing.osId;
-    const finalOsVersionId = data.osVersionId || existing.osVersionId;
-    const osVersion = await prisma.osVersion.findFirst({
-      where: { id: finalOsVersionId, osId: finalOsId },
-    });
-    if (!osVersion) {
-      return res.status(404).json({ error: 'OS version not found or does not belong to the specified OS' });
+    // Verify OS version belongs to the target OS (skipped for storage
+    // products whose variant carries no OS at all)
+    const finalOsId = data.osId ?? existing.osId ?? undefined;
+    const finalOsVersionId = data.osVersionId ?? existing.osVersionId ?? undefined;
+    if (finalOsId && finalOsVersionId) {
+      const osVersion = await prisma.osVersion.findFirst({
+        where: { id: finalOsVersionId, osId: finalOsId },
+      });
+      if (!osVersion) {
+        return res.status(404).json({ error: 'OS version not found or does not belong to the specified OS' });
+      }
     }
 
     // Verify flavor if changing

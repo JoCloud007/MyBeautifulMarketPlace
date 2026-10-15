@@ -44,8 +44,10 @@ const idParamSchema = z.string().uuid();
 
 const createVariantSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  osId: z.string().uuid('Invalid OS ID'),
-  osVersionId: z.string().uuid('Invalid OS version ID'),
+  // OS fields are optional: storage products (NAS, Object Storage) bind a
+  // flavor through their variant without any operating system.
+  osId: z.string().uuid('Invalid OS ID').optional().nullable(),
+  osVersionId: z.string().uuid('Invalid OS version ID').optional().nullable(),
   flavorId: z.string().uuid('Invalid flavor ID'),
   availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
   zoneIds: z.array(z.string().uuid()).optional(),
@@ -307,20 +309,24 @@ router.post('/:id/variants', async (req, res, next) => {
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
-    if ((product.category.flavorFieldDefinitions?.length ?? 0) === 0) {
-      return res.status(400).json({ error: 'Variants can only be created for products whose category defines flavor fields' });
+    // Any product can carry variants — that is how a flavor is bound to a
+    // product (and how the product appears in the Marketplace Matrix).
+    // Storage products (NAS, Object Storage) have flavors but no OS.
+
+    if (data.osId) {
+      const os = await prisma.operatingSystem.findUnique({ where: { id: data.osId } });
+      if (!os) {
+        return res.status(404).json({ error: 'OS not found' });
+      }
     }
 
-    const os = await prisma.operatingSystem.findUnique({ where: { id: data.osId } });
-    if (!os) {
-      return res.status(404).json({ error: 'OS not found' });
-    }
-
-    const osVersion = await prisma.osVersion.findFirst({
-      where: { id: data.osVersionId, osId: data.osId },
-    });
-    if (!osVersion) {
-      return res.status(404).json({ error: 'OS version not found or does not belong to the specified OS' });
+    if (data.osId && data.osVersionId) {
+      const osVersion = await prisma.osVersion.findFirst({
+        where: { id: data.osVersionId, osId: data.osId },
+      });
+      if (!osVersion) {
+        return res.status(404).json({ error: 'OS version not found or does not belong to the specified OS' });
+      }
     }
 
     const flavor = await prisma.flavor.findUnique({ where: { id: data.flavorId } });
@@ -372,8 +378,8 @@ router.post('/:id/variants', async (req, res, next) => {
       data: {
         productId: id,
         name: data.name,
-        osId: data.osId,
-        osVersionId: data.osVersionId,
+        osId: data.osId ?? undefined,
+        osVersionId: data.osVersionId ?? undefined,
         flavorId: data.flavorId,
         continuityLevelId: data.continuityLevelId,
         productVersionId: data.productVersionId,
@@ -724,20 +730,24 @@ router.post('/:id/variants', async (req, res, next) => {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    if ((product.category?.flavorFieldDefinitions?.length ?? 0) === 0) {
-      return res.status(400).json({ error: 'Variants can only be created for products whose category defines flavor fields' });
+    // Any product can carry variants — that is how a flavor is bound to a
+    // product (and how the product appears in the Marketplace Matrix).
+    // Storage products (NAS, Object Storage) have flavors but no OS.
+
+    if (data.osId) {
+      const os = await prisma.operatingSystem.findUnique({ where: { id: data.osId } });
+      if (!os) {
+        return res.status(404).json({ error: 'Operating system not found' });
+      }
     }
 
-    const os = await prisma.operatingSystem.findUnique({ where: { id: data.osId } });
-    if (!os) {
-      return res.status(404).json({ error: 'Operating system not found' });
-    }
-
-    const osVersion = await prisma.osVersion.findFirst({
-      where: { id: data.osVersionId, osId: data.osId },
-    });
-    if (!osVersion) {
-      return res.status(404).json({ error: 'OS version not found or does not belong to the selected OS' });
+    if (data.osId && data.osVersionId) {
+      const osVersion = await prisma.osVersion.findFirst({
+        where: { id: data.osVersionId, osId: data.osId },
+      });
+      if (!osVersion) {
+        return res.status(404).json({ error: 'OS version not found or does not belong to the selected OS' });
+      }
     }
 
     const flavor = await prisma.flavor.findUnique({ where: { id: data.flavorId } });
@@ -759,8 +769,8 @@ router.post('/:id/variants', async (req, res, next) => {
       data: {
         productId: id,
         name: data.name,
-        osId: data.osId,
-        osVersionId: data.osVersionId,
+        osId: data.osId ?? undefined,
+        osVersionId: data.osVersionId ?? undefined,
         flavorId: data.flavorId,
         continuityLevelId: data.continuityLevelId,
         isActive: data.isActive,

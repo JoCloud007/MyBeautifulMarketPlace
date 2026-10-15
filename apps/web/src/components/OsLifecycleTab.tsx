@@ -34,13 +34,15 @@ export function groupOsFromVariants(variants: ProductVariant[]): OsGroup[] {
   const byOs = new Map<string, OsGroup>();
   for (const v of variants) {
     if (!v.os || !v.osVersion) continue;
-    let group = byOs.get(v.os.id);
+    const os = v.os;
+    const osVersion = v.osVersion;
+    let group = byOs.get(os.id);
     if (!group) {
-      group = { os: v.os, versions: [], variantCount: 0 };
-      byOs.set(v.os.id, group);
+      group = { os, versions: [], variantCount: 0 };
+      byOs.set(os.id, group);
     }
-    if (!group.versions.some((ov) => ov.id === v.osVersion.id)) {
-      group.versions.push(v.osVersion);
+    if (!group.versions.some((ov) => ov.id === osVersion.id)) {
+      group.versions.push(osVersion);
     }
     group.variantCount += 1;
   }

@@ -394,6 +394,7 @@ export function useCreateFlavor() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['flavors'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-flavors'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
       addToast('Flavor created successfully', 'success');
@@ -416,6 +417,7 @@ export function useUpdateFlavor() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['flavors'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-flavors'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
       addToast('Flavor updated', 'success');
@@ -435,6 +437,7 @@ export function useDeleteFlavor() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['flavors'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-flavors'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
       addToast('Flavor deleted', 'success');

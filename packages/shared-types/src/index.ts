@@ -167,10 +167,12 @@ export interface ProductVariant {
   productId: string;
   product: Product;
   name: string;
-  osId: string;
-  os: OperatingSystem;
-  osVersionId: string;
-  osVersion: OsVersion;
+  // Optional: storage products (NAS, Object Storage) have no OS but still
+  // bind a flavor through their variants.
+  osId: string | null;
+  os: OperatingSystem | null;
+  osVersionId: string | null;
+  osVersion: OsVersion | null;
   flavorId: string;
   flavor: Flavor;
   availabilityZones: ProductVariantAvailabilityZone[];

@@ -1457,8 +1457,8 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
     setEditingVariant(v);
     setVariantForm({
       name: v.name,
-      osId: v.osId,
-      osVersionId: v.osVersionId,
+      osId: v.osId || '',
+      osVersionId: v.osVersionId || '',
       flavorId: v.flavorId,
       availabilityZoneIds: v.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [],
       zoneIds: v.zones?.map((z: any) => z.zoneId) ?? [],
@@ -1473,6 +1473,10 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
     e.preventDefault();
     try {
       const payload: any = { ...variantForm };
+      // Empty strings are not valid UUIDs — normalize optional relations
+      // to null so storage products can create variants without an OS.
+      if (!payload.osId) payload.osId = null;
+      if (!payload.osVersionId) payload.osVersionId = null;
       if (!payload.continuityLevelId) delete payload.continuityLevelId;
       if (editingVariant) await updateVariant.mutateAsync({ id: editingVariant.id, ...payload });
       else await createVariant.mutateAsync({ productId: product.id, ...payload });

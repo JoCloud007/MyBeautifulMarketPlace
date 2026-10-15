@@ -132,10 +132,12 @@ model ProductVariant {
   productId          String
   product            Product                          @relation(fields: [productId], references: [id], onDelete: Cascade)
   name               String
-  osId               String
-  os                 OperatingSystem                  @relation(fields: [osId], references: [id])
-  osVersionId        String
-  osVersion          OsVersion                        @relation(fields: [osVersionId], references: [id])
+  // OS fields are optional: storage products (NAS, Object Storage) have no
+  // operating system but must still bind a flavor through their variants.
+  osId               String?
+  os                 OperatingSystem?                 @relation(fields: [osId], references: [id])
+  osVersionId        String?
+  osVersion          OsVersion?                       @relation(fields: [osVersionId], references: [id])
   flavorId           String
   flavor             Flavor                           @relation(fields: [flavorId], references: [id])
   availabilityZones  ProductVariantAvailabilityZone[]

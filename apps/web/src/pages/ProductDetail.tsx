@@ -680,7 +680,11 @@ export default function ProductDetail() {
 
 
   // Compute unique filter options from variants
-  const osOptions = Array.from(new Map(variants.map(v => [v.osId, v.os])).values());
+  const osOptions = Array.from(
+    new Map(
+      variants.filter((v) => v.os != null).map((v) => [v.osId as string, v.os!] as const)
+    ).values()
+  );
   const flavorOptions = Array.from(new Map(variants.map(v => [v.flavorId, v.flavor])).values());
 
   const filteredVariants = variants.filter((v) => {
@@ -729,11 +733,12 @@ export default function ProductDetail() {
             acc[key] = { variant: v, count: 1, osEntries: [] };
           }
           acc[key].count += 1;
-          if (v.osVersion && !acc[key].osEntries.some((e) => e.id === v.osVersion.id)) {
+          const osVersion = v.osVersion;
+          if (osVersion && !acc[key].osEntries.some((e) => e.id === osVersion.id)) {
             // Use THIS variant's OS name — grouped variants may reference different OSes
             acc[key].osEntries.push({
-              id: v.osVersion.id,
-              label: osVersionLabel(v.os?.name, v.osVersion.version),
+              id: osVersion.id,
+              label: osVersionLabel(v.os?.name, osVersion.version),
               availabilityType: v.availabilityType,
             });
           }
@@ -743,8 +748,8 @@ export default function ProductDetail() {
 
   // Available versions based on selected OS — build full labels with OS name
   const availableVersions = osFilter
-    ? variants.filter(v => v.osId === osFilter).map(v => v.osVersion)
-    : variants.map(v => v.osVersion);
+    ? variants.filter(v => v.osId === osFilter).map(v => v.osVersion).filter((x): x is NonNullable<typeof x> => x != null)
+    : variants.map(v => v.osVersion).filter((x): x is NonNullable<typeof x> => x != null);
   const versionOptions = Array.from(new Map(availableVersions.map(v => [v.id, v])).values());
   const versionLabels = new Map<string, string>();
   for (const v of variants) {
@@ -792,7 +797,7 @@ export default function ProductDetail() {
   // Shared time range so the Roadmap and Release Timeline charts use the same scale —
   // tick positions and the "today" marker line up vertically between the two tiles.
   const ganttRange = (() => {
-    const all = [...(product.productVersions || []), ...variants.map((v) => v.osVersion)];
+    const all = [...(product.productVersions || []), ...variants.map((v) => v.osVersion).filter((x): x is NonNullable<typeof x> => x != null)];
     const starts = all.filter((pv) => pv?.releaseDate).map((pv) => new Date(pv.releaseDate!).getTime());
     const ends = all.filter((pv) => pv?.eolDate).map((pv) => new Date(pv.eolDate!).getTime());
     return {
@@ -860,7 +865,7 @@ export default function ProductDetail() {
   // NOTE: osVersion.os is not included in the API payload, so take the OS name from the variant.
   const osNameById = new Map(variants.map((v) => [v.osVersionId, v.os?.name]));
   const osVersionBars: GanttBarData[] = Array.from(
-    new Map(variants.filter((v) => v.osVersion?.releaseDate && v.osVersion?.eolDate).map((v) => [v.osVersionId, v.osVersion])).values()
+    new Map(variants.filter((v) => v.osVersion?.releaseDate && v.osVersion?.eolDate).map((v) => [v.osVersionId, v.osVersion!] as const)).values()
   )
     .sort((a, b) => new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime())
     .map((osv) => ({
