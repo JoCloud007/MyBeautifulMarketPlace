@@ -10,7 +10,7 @@ BEGIN
     SELECT 1 FROM information_schema.columns
     WHERE table_name = 'ForecastLine'
       AND column_name = 'resiliency'
-      AND udt_name = 'resiliencylevel'
+      AND lower(udt_name) = 'resiliencylevel'  -- Prisma type name is "ResiliencyLevel"; information_schema is case-sensitive
   ) THEN
     ALTER TABLE "ForecastLine" ALTER COLUMN "resiliency" DROP DEFAULT;
     ALTER TABLE "ForecastLine" ALTER COLUMN "resiliency" TYPE text USING "resiliency"::text;
