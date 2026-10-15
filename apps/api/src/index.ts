@@ -32,6 +32,7 @@ import { performanceProfileRoutes } from './routes/performance-profiles';
 import { geoRoutes } from './routes/geo';
 import { infraVersionRoutes } from './routes/infra-versions';
 import { serviceNowRoutes } from './routes/servicenow';
+import { resiliencyLevelRoutes } from './routes/resiliency-levels';
 import { startCronJobs } from './cron';
 import { mcpStatusRouter } from './routes/mcp-status';
 import { createMcpRouter } from './mcp/http';
@@ -109,6 +110,11 @@ const adminAuth = (req: express.Request, res: express.Response, next: express.Ne
   }
   next();
 };
+// Resiliency levels: GET endpoints are form-facing (public), mutations are admin-only.
+app.use('/api/resiliency-levels', (req, res, next) => {
+  if (req.method === 'GET') return next();
+  return adminAuth(req, res, next);
+}, resiliencyLevelRoutes);
 app.use('/api/admin', adminAuth, adminRoutes);
 
 // 404 handler

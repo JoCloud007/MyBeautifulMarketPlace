@@ -532,12 +532,13 @@ export interface ForecastLine {
   forecastId: string;
   productId: string;
   product: Product;
-  flavorId: string;
-  flavor: Flavor;
+  flavorId: string | null;
+  flavor: Flavor | null;
   azCode: string;
   quantity: number;
   metadata?: any;
-  resiliency: ResiliencyLevel;
+  /** Admin-configurable resiliency level code (see ResiliencyLevelConfig). */
+  resiliency: string;
   unitPrice: number | null;
 }
 
@@ -667,7 +668,28 @@ export interface AdminDashboard {
 export interface ForecastTrend {
   date: string;
   created: number;
+  submitted: number;
   approved: number;
+  rejected: number;
+}
+
+export interface ResiliencyLevelConfig {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  rank: number;
+  minAz: number;
+  isActive: boolean;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductResiliencyOptions {
+  allActive: ResiliencyLevelConfig[];
+  allowed: ResiliencyLevelConfig[];
+  associatedCodes: string[];
 }
 
 export interface ResourceByZone {
@@ -700,7 +722,8 @@ export interface ComplianceMetrics {
   totalInstances: number;
   runningInstances: number;
   uniqueAZs: number;
-  maxResiliency: ResiliencyLevel | null;
+  /** Code of the highest-ranked resiliency level (see ResiliencyLevelConfig). */
+  maxResiliency: string | null;
   unhealthyInstances: number;
   degradedInstances: number;
   prdInstances: number;

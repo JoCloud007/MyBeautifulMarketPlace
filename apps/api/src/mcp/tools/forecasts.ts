@@ -35,9 +35,11 @@ const forecastLineSchema = z.object({
   quantity: z.number().int().min(1).describe('Number of units'),
   metadata: z.record(z.unknown()).optional().describe('Free-form line metadata (e.g. { osVersion })'),
   resiliency: z
-    .enum(['STANDARD', 'HA', 'MULTI_AZ'])
+    .string()
+    .min(1)
+    .max(40)
     .optional()
-    .describe('HA and MULTI_AZ require at least 2 distinct availability zones for the product'),
+    .describe('Resiliency level code (admin-configurable, e.g. STANDARD, HA, MULTI_AZ). Levels with minAz > 1 require that many distinct availability zones for the product'),
 });
 
 /** Actor fields accepted by every lifecycle action endpoint. */

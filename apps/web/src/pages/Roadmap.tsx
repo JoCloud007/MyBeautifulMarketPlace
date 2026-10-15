@@ -1815,7 +1815,10 @@ export default function Roadmap() {
           // Compute view: only compute product variants
           if (product.computeType) {
             for (const variant of product.variants || []) {
-              if (variant.releaseDate) {
+              // Inclusion mirrors the date resolution in productVariantToRoadmap:
+              // a variant without its own releaseDate inherits the OsVersion's —
+              // exclude only when NEITHER is set (nothing to place on the timeline).
+              if (variant.releaseDate || variant.osVersion?.releaseDate) {
                 versions.push(productVariantToRoadmap(product, variant));
               }
             }

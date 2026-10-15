@@ -3,6 +3,7 @@ import { ForecastStatus, ForecastAction, Role, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { resolveTransition, TransitionError, estimateLineCost, governanceDefinition, Actor } from '../lib/forecast-workflow';
+import { resolveAllowedResiliency, type ResolvedLevel } from '../lib/resiliency';
 
 const router = Router();
 const governanceDef = governanceDefinition();
@@ -14,11 +15,11 @@ const metadataSchema = z.object({
 const forecastLineSchema = z.object({
   productId: z.string().uuid(),
   variantId: z.string().uuid().optional(),
-  flavorId: z.string().uuid(),
+  flavorId: z.string().uuid().optional(),
   azCode: z.string().min(1),
   quantity: z.number().int().min(1),
   metadata: metadataSchema,
-  resiliency: z.enum(['STANDARD', 'HA', 'MULTI_AZ']).optional(),
+  resiliency: z.string().min(1).max(40).optional(),
 });
 
 const createForecastSchema = z.object({
@@ -111,29 +112,44 @@ async function buildActor(body: { actorId?: string; actorName: string; actorEmai
   };
 }
 
-function computeCost(lines: { flavor: { vcpu: number | null; ramGb: number | null }; quantity: number }[]): number {
-  return lines.reduce((sum, l) => sum + estimateLineCost(l.flavor.vcpu || 0, l.flavor.ramGb || 0, l.quantity), 0);
+function computeCost(lines: { flavor: { vcpu: number | null; ramGb: number | null } | null; quantity: number }[]): number {
+  return lines.reduce((sum, l) => sum + estimateLineCost(l.flavor?.vcpu || 0, l.flavor?.ramGb || 0, l.quantity), 0);
 }
 
 function lineCreateData(line: z.infer<typeof forecastLineSchema>) {
   return {
     product: { connect: { id: line.productId } },
-    flavor: { connect: { id: line.flavorId } },
+    flavor: line.flavorId ? { connect: { id: line.flavorId } } : undefined,
     az: { connect: { code: line.azCode } },
     variant: line.variantId ? { connect: { id: line.variantId } } : undefined,
     quantity: line.quantity,
     metadata: (line.metadata ?? undefined) as any,
-    resiliency: line.resiliency || 'STANDARD',
+    // resiliency default ('STANDARD') is applied and validated in validateLines
+    resiliency: line.resiliency,
   };
 }
 
-/** Validate flavors/AZs exist and enforce the HA/MULTI_AZ >= 2 AZ governance rule. Returns flavor map. */
+/** Validate flavors/AZs exist, enforce per-product resiliency allowlists and
+ *  the per-level minAz governance rule (from ResiliencyLevelConfig). Returns flavor map. */
 async function validateLines(tx: Prisma.TransactionClient, lines: z.infer<typeof forecastLineSchema>[]) {
-  const flavorIds = [...new Set(lines.map((l) => l.flavorId))];
+  const flavorIds = [...new Set(lines.map((l) => l.flavorId).filter((f): f is string => !!f))];
   const azCodes = [...new Set(lines.map((l) => l.azCode))];
 
   const variantIds = [...new Set(lines.map((l) => l.variantId).filter((v): v is string => !!v))];
 
+  // NOTE: the default 'STANDARD' is applied HERE — before validation — so a
+  // line that omits resiliency still goes through the scoped allowlist.
+  for (const l of lines) {
+    if (!l.resiliency) l.resiliency = 'STANDARD';
+  }
+  // Resiliency levels exist / are active (one query for all used codes)
+  const usedResiliencies = [...new Set(lines.map((l) => l.resiliency).filter((r): r is string => !!r))];
+  const resiliencyLevels = usedResiliencies.length > 0
+    ? await tx.resiliencyLevelConfig.findMany({ where: { code: { in: usedResiliencies } } })
+    : [];
+  const levelByCode = new Map(resiliencyLevels.map((l) => [l.code, l]));
+
+  const flavorLines = lines.filter((l): l is typeof l & { flavorId: string } => !!l.flavorId);
   const [flavors, azs, variants, pairs] = await Promise.all([
     tx.flavor.findMany({ where: { id: { in: flavorIds } } }),
     tx.availabilityZone.findMany({ where: { code: { in: azCodes } } }),
@@ -143,7 +159,9 @@ async function validateLines(tx: Prisma.TransactionClient, lines: z.infer<typeof
     // Catalog compatibility: each (product, flavor) pair must exist in the
     // catalog as a ProductVariant — prevents e.g. a storage flavor on a VM.
     tx.productVariant.findMany({
-      where: { OR: lines.map((l) => ({ productId: l.productId, flavorId: l.flavorId })) },
+      where: flavorLines.length > 0
+        ? { OR: flavorLines.map((l) => ({ productId: l.productId, flavorId: l.flavorId })) }
+        : { id: { in: [] } },
       select: { productId: true, flavorId: true },
     }),
   ]);
@@ -155,8 +173,8 @@ async function validateLines(tx: Prisma.TransactionClient, lines: z.infer<typeof
 
   const azsByProduct = new Map<string, Set<string>>();
   for (const line of lines) {
-    const flavor = flavorMap.get(line.flavorId);
-    if (!flavor) {
+    const flavor = line.flavorId ? flavorMap.get(line.flavorId) : undefined;
+    if (line.flavorId && !flavor) {
       throw Object.assign(new Error(`Flavor not found: ${line.flavorId}`), { status: 404 });
     }
     const az = azMap.get(line.azCode);
@@ -166,13 +184,35 @@ async function validateLines(tx: Prisma.TransactionClient, lines: z.infer<typeof
     if (line.variantId && !variantMap.has(line.variantId)) {
       throw Object.assign(new Error(`Variant not found: ${line.variantId}`), { status: 404 });
     }
+    // Resiliency level must exist in config and be allowed in this exact
+    // scoped context (product + flavor + AZ), most specific rule wins.
+    if (line.resiliency) {
+      const level = levelByCode.get(line.resiliency);
+      if (!level) {
+        throw Object.assign(new Error(`Resiliency level not found: ${line.resiliency}`), { status: 400 });
+      }
+      if (!level.isActive) {
+        throw Object.assign(new Error(`Resiliency level "${level.name}" is inactive`), { status: 400 });
+      }
+      const allowed = await resolveAllowedResiliency(tx, {
+        productId: line.productId,
+        flavorId: line.flavorId,
+        azCode: line.azCode,
+      });
+      if (!allowed.some((l) => l.code === line.resiliency)) {
+        throw Object.assign(new Error(
+          `Resiliency level "${level.name}" is not available for this product in ${az ? az.name : line.azCode}`
+        ), { status: 400 });
+      }
+    }
     // Governance rule: the (product, flavor) pair must exist in the catalog
-    if (!compatiblePairs.has(`${line.productId}:${line.flavorId}`)) {
+    // (skipped for lines without a flavor — e.g. network products)
+    if (line.flavorId && !compatiblePairs.has(`${line.productId}:${line.flavorId}`)) {
       throw Object.assign(new Error(
-        `Flavor "${flavor.name}" is not available for this product in the catalog — the product/flavor combination does not match any catalog variant`
+        `Flavor "${flavor?.name ?? line.flavorId}" is not available for this product in the catalog — the product/flavor combination does not match any catalog variant`
       ), { status: 400 });
     }
-    if (line.resiliency === 'HA' || line.resiliency === 'MULTI_AZ') {
+    if (line.resiliency && (levelByCode.get(line.resiliency)?.minAz ?? 1) > 1) {
       const set = azsByProduct.get(line.productId) || new Set<string>();
       set.add(line.azCode);
       azsByProduct.set(line.productId, set);
@@ -180,19 +220,149 @@ async function validateLines(tx: Prisma.TransactionClient, lines: z.infer<typeof
   }
 
   for (const line of lines) {
-    if (line.resiliency === 'HA' || line.resiliency === 'MULTI_AZ') {
-      const distinctAzs = azsByProduct.get(line.productId) || new Set<string>();
-      if (distinctAzs.size < 2) {
-        throw Object.assign(new Error(
-          `Resiliency ${line.resiliency} requires at least 2 distinct availability zones for product ${line.productId}. ` +
-          `Only HA and MULTI_AZ lines count toward this requirement; STANDARD lines are ignored.`
-        ), { status: 400 });
+    if (line.resiliency) {
+      const level = levelByCode.get(line.resiliency);
+      const minAz = level?.minAz ?? 1;
+      if (minAz > 1) {
+        const distinctAzs = azsByProduct.get(line.productId) || new Set<string>();
+        if (distinctAzs.size < minAz) {
+          throw Object.assign(new Error(
+            `Resiliency ${line.resiliency} requires at least ${minAz} distinct availability zones for product ${line.productId}. ` +
+            `Lines at levels with minAz > 1 count toward this requirement; lower levels are ignored.`
+          ), { status: 400 });
+        }
       }
     }
   }
 
   return flavorMap;
 }
+
+// GET /api/forecasts/form-options?productId=<uuid>
+// Everything the "New forecast request" dialog needs, scoped to one product:
+// category + field definitions, flavors reachable via the product's variants
+// (with attributes), variants themselves, and OS versions for compute categories.
+router.get('/form-options', async (req, res, next) => {
+  try {
+    const productId = typeof req.query.productId === 'string' ? req.query.productId : '';
+    if (!productId) {
+      return res.status(400).json({ error: 'productId query parameter is required' });
+    }
+
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+      include: {
+        category: {
+          include: { flavorFieldDefinitions: { orderBy: { order: 'asc' } } },
+        },
+      },
+    });
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const variants = await prisma.productVariant.findMany({
+      where: { productId, isActive: true },
+      include: {
+        flavor: true,
+        os: true,
+        osVersion: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    // Flavors reachable for this product = flavors referenced by its variants.
+    // For products with no variants at all, fall back to the flavors of the
+    // product's category, EXCLUDING flavors claimed by another product's
+    // variant (e.g. S3-Standard belongs to Object Storage, not NAS).
+    const variantFlavorIds = [...new Set(variants.map((v) => v.flavorId))];
+    let flavors: Awaited<ReturnType<typeof prisma.flavor.findMany>>;
+    if (variantFlavorIds.length > 0) {
+      flavors = await prisma.flavor.findMany({
+        where: { id: { in: variantFlavorIds } },
+        orderBy: { name: 'asc' },
+      });
+    } else if (product.categoryId) {
+      const claimedByOthers = await prisma.productVariant.findMany({
+        where: { productId: { not: productId }, flavor: { categoryId: product.categoryId } },
+        select: { flavorId: true },
+      });
+      const claimedIds = [...new Set(claimedByOthers.map((v) => v.flavorId))];
+      flavors = await prisma.flavor.findMany({
+        where: { categoryId: product.categoryId, id: { notIn: claimedIds } },
+        orderBy: { name: 'asc' },
+      });
+    } else {
+      flavors = [];
+    }
+
+    // Compute detection: only categories defining a "vcpu" field are compute —
+    // storage categories (maxGb/iops/tier) do not carry an OS.
+    const hasFieldDefs = product.category.flavorFieldDefinitions.some((d) => d.key === 'vcpu');
+    const osVersions = hasFieldDefs
+      ? await prisma.osVersion.findMany({
+          where: { isActive: true, os: { isActive: true } },
+          include: { os: { select: { id: true, name: true, family: true } } },
+          orderBy: [{ os: { name: 'asc' } }, { version: 'asc' }],
+        })
+      : [];
+
+    // Resiliency levels allowed for this product:
+    // association ∩ active; no association = all active levels.
+    const [assoc, activeLevels] = await Promise.all([
+      prisma.productResiliency.findMany({ where: { productId } }),
+      prisma.resiliencyLevelConfig.findMany({ where: { isActive: true }, orderBy: { rank: 'asc' } }),
+    ]);
+    const resiliencyLevels = assoc.length === 0
+      ? activeLevels
+      : activeLevels.filter((l) => assoc.some((a) => a.levelCode === l.code));
+
+    res.json({
+      product: { id: product.id, name: product.name, categoryId: product.categoryId, categoryName: product.category?.name ?? null },
+      category: product.category
+        ? {
+            id: product.category.id,
+            name: product.category.name,
+            fieldDefinitions: product.category.flavorFieldDefinitions,
+          }
+        : null,
+      hasVariants: variants.length > 0,
+      hasFieldDefs,
+      variants: variants.map((v) => ({
+        id: v.id,
+        name: v.name,
+        flavorId: v.flavorId,
+        osId: v.osId,
+        osVersionId: v.osVersionId,
+        osName: v.os?.name ?? null,
+        osVersion: v.osVersion?.version ?? null,
+      })),
+      flavors: flavors.map((f) => ({
+        id: f.id,
+        name: f.name,
+        vcpu: f.vcpu,
+        ramGb: f.ramGb,
+        attributes: f.attributes,
+        description: f.description,
+      })),
+      osVersions: osVersions.map((ov) => ({
+        id: ov.id,
+        version: ov.version,
+        osId: ov.osId,
+        osName: ov.os.name,
+        osFamily: ov.os.family,
+      })),
+      resiliencyLevels: resiliencyLevels.map((l) => ({
+        code: l.code,
+        name: l.name,
+        minAz: l.minAz,
+        rank: l.rank,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // GET /api/forecasts — supports ?queue=<STATUS> and ?mine=<email>
 router.get('/', async (req, res, next) => {
@@ -270,27 +440,46 @@ router.get('/trends', async (req, res, next) => {
       where: { createdAt: { gte: since } },
       select: {
         createdAt: true,
-        transitions: { where: { action: 'APPROVE' }, select: { createdAt: true } },
+        submittedAt: true,
+        transitions: {
+          select: { action: true, createdAt: true },
+        },
       },
     });
 
-    const grouped = new Map<string, { created: number; approved: number }>();
-    for (const f of forecasts) {
-      const date = f.createdAt.toISOString().split('T')[0];
-      const entry = grouped.get(date) || { created: 0, approved: 0 };
-      entry.created++;
-      for (const t of f.transitions) {
-        const reviewedDate = t.createdAt.toISOString().split('T')[0];
-        const reviewedEntry = grouped.get(reviewedDate) || { created: 0, approved: 0 };
-        reviewedEntry.approved++;
-        grouped.set(reviewedDate, reviewedEntry);
+    type TrendBucket = { created: number; submitted: number; approved: number; rejected: number };
+    const grouped = new Map<string, TrendBucket>();
+    const bucketFor = (date: string): TrendBucket => {
+      let entry = grouped.get(date);
+      if (!entry) {
+        entry = { created: 0, submitted: 0, approved: 0, rejected: 0 };
+        grouped.set(date, entry);
       }
-      grouped.set(date, entry);
+      return entry;
+    };
+
+    for (const f of forecasts) {
+      bucketFor(f.createdAt.toISOString().split('T')[0]).created++;
+      if (f.submittedAt) {
+        bucketFor(f.submittedAt.toISOString().split('T')[0]).submitted++;
+      }
+      for (const t of f.transitions) {
+        const date = t.createdAt.toISOString().split('T')[0];
+        if (t.action === 'APPROVE') bucketFor(date).approved++;
+        if (t.action === 'REJECT') bucketFor(date).rejected++;
+      }
     }
 
-    const result = Array.from(grouped.entries())
-      .map(([date, counts]) => ({ date, ...counts }))
-      .sort((a, b) => a.date.localeCompare(b.date));
+    // Fill every day in the range so the chart has a continuous date axis
+    const result: { date: string; created: number; submitted: number; approved: number; rejected: number }[] = [];
+    const dayMs = 24 * 60 * 60 * 1000;
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(today.getTime() - i * dayMs).toISOString().split('T')[0];
+      const entry = grouped.get(d) || { created: 0, submitted: 0, approved: 0, rejected: 0 };
+      result.push({ date: d, ...entry });
+    }
 
     res.json(result);
   } catch (err) {
@@ -309,8 +498,8 @@ router.get('/resources-by-zone', async (_req, res, next) => {
     const grouped = new Map<string, { vcpu: number; ramGb: number }>();
     for (const line of lines) {
       const entry = grouped.get(line.azCode) || { vcpu: 0, ramGb: 0 };
-      entry.vcpu += (line.flavor.vcpu || 0) * line.quantity;
-      entry.ramGb += (line.flavor.ramGb || 0) * line.quantity;
+      entry.vcpu += (line.flavor?.vcpu || 0) * line.quantity;
+      entry.ramGb += (line.flavor?.ramGb || 0) * line.quantity;
       grouped.set(line.azCode, entry);
     }
 
@@ -394,7 +583,7 @@ router.post('/', async (req, res, next) => {
         : ForecastStatus.DRAFT;
 
       const estimatedCost = data.lines.reduce((sum, l) => {
-        const f = flavorMap.get(l.flavorId);
+        const f = l.flavorId ? flavorMap.get(l.flavorId) : undefined;
         return sum + estimateLineCost(f?.vcpu || 0, f?.ramGb || 0, l.quantity);
       }, 0);
 
@@ -411,9 +600,9 @@ router.post('/', async (req, res, next) => {
           estimatedCost,
           lines: {
             create: data.lines.map((line) => {
-              const f = flavorMap.get(line.flavorId);
+              const f = line.flavorId ? flavorMap.get(line.flavorId) : undefined;
               const unitPrice = f ? estimateLineCost(f.vcpu || 0, f.ramGb || 0, 1) : null;
-              return { ...lineCreateData(line), unitPrice };
+              return { ...lineCreateData(line), unitPrice, flavor: line.flavorId ? { connect: { id: line.flavorId } } : undefined } as any;
             }),
           },
           transitions: {
@@ -471,17 +660,20 @@ router.patch('/:id', async (req, res, next) => {
       if (data.lines) {
         await validateLines(tx, data.lines);
         await tx.forecastLine.deleteMany({ where: { forecastId: id } });
-        const flavorMap = await tx.flavor.findMany({ where: { id: { in: [...new Set(data.lines.map((l) => l.flavorId))] } } });
-        const flavorById = new Map(flavorMap.map((f) => [f.id, f]));
+        const updateFlavorIds = [...new Set(data.lines.map((l) => l.flavorId).filter((f): f is string => !!f))];
+        const flavorRows = updateFlavorIds.length > 0
+          ? await tx.flavor.findMany({ where: { id: { in: updateFlavorIds } } })
+          : [];
+        const flavorById = new Map(flavorRows.map((f) => [f.id, f]));
         updateData.lines = {
           create: data.lines.map((line) => {
-            const f = flavorById.get(line.flavorId);
+            const f = line.flavorId ? flavorById.get(line.flavorId) : undefined;
             const unitPrice = f ? estimateLineCost(f.vcpu || 0, f.ramGb || 0, 1) : null;
-            return { ...lineCreateData(line), unitPrice };
+            return { ...lineCreateData(line), unitPrice } as any;
           }),
         };
         estimatedCost = data.lines.reduce((sum, l) => {
-          const f = flavorById.get(l.flavorId);
+          const f = l.flavorId ? flavorById.get(l.flavorId) : undefined;
           return sum + estimateLineCost(f?.vcpu || 0, f?.ramGb || 0, l.quantity);
         }, 0);
       }

@@ -60,6 +60,8 @@ model Product {
   availabilityZones   ProductAvailabilityZone[]
   productVersions     ProductVersion[]
   performanceProfiles PerformanceProfile[]
+  resiliencyLevels    ProductResiliency[]
+  resiliencyScopes    ResiliencyScope[]
   documentation       String?
   roadmap             String?
   os                  String?
@@ -303,13 +305,13 @@ model ForecastLine {
   product    Product          @relation(fields: [productId], references: [id])
   variantId  String?
   variant    ProductVariant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  flavorId   String
-  flavor     Flavor           @relation(fields: [flavorId], references: [id])
+  flavorId   String?
+  flavor     Flavor?          @relation(fields: [flavorId], references: [id])
   azCode     String
   az         AvailabilityZone @relation(fields: [azCode], references: [code])
   quantity   Int              @default(1)
   metadata   Json?
-  resiliency ResiliencyLevel  @default(STANDARD)
+  resiliency String           @default("STANDARD")
   unitPrice  Float?
 }
 
@@ -649,6 +651,55 @@ enum ResiliencyLevel {
   STANDARD
   HA
   MULTI_AZ
+}
+
+/// Admin-configurable resiliency levels (replaces the hardcoded enum for new data).
+/// `rank` orders levels for compliance ("max resiliency"); `minAz` is the number
+/// of distinct availability zones a forecast line at this level requires.
+model ResiliencyLevelConfig {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  name         String
+  description  String?
+  rank         Int
+  minAz        Int      @default(1)
+  isActive     Boolean  @default(true)
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  productLevels ProductResiliency[]
+  scopes        ResiliencyScope[]
+}
+
+/// Which resiliency levels are available for which product.
+/// If a product has no entry, ALL active levels are allowed (backward compatible).
+model ProductResiliency {
+  productId String
+  product   Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  levelCode String
+  level     ResiliencyLevelConfig @relation(fields: [levelCode], references: [code], onDelete: Cascade)
+
+  @@id([productId, levelCode])
+}
+
+/// Fine-grained resiliency availability rules, scoped by region / availability
+/// zone / zone / flavor. Precedence (most specific wins):
+/// FLAVOR > AVAILABILITY_ZONE > ZONE > REGION > ProductResiliency > all-active default.
+/// A rule with a null productId is a catalog-wide rule. `allowed=false` denies.
+model ResiliencyScope {
+  id        String                @id @default(uuid())
+  levelCode String
+  level     ResiliencyLevelConfig @relation(fields: [levelCode], references: [code], onDelete: Cascade)
+  productId String?
+  product   Product?              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  scopeType String
+  scopeId   String
+  allowed   Boolean
+
+  @@unique([levelCode, productId, scopeType, scopeId])
+  @@index([productId])
+  @@index([scopeType, scopeId])
 }
 
 enum ProductStatus {

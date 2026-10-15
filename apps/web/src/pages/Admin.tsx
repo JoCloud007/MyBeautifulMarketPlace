@@ -78,7 +78,20 @@ import {
   useCreateInfraVersion,
   useUpdateInfraVersion,
   useDeleteInfraVersion,
+  useProducts,
+  useResiliencyLevels,
+  useCreateResiliencyLevel,
+  useUpdateResiliencyLevel,
+  useDeleteResiliencyLevel,
+  useProductResiliency,
+  useUpdateProductResiliency,
+  useResiliencyScopes,
+  useCreateResiliencyScope,
+  useDeleteResiliencyScope,
+  useProductBySlug,
+  type ResiliencyScopeRule,
 } from '@/hooks/useApi';
+import PickerList from '@/components/PickerList';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -128,6 +141,7 @@ import {
   ArrowRightLeft,
   Boxes,
   Plug,
+  ShieldCheck,
 } from 'lucide-react';
 import McpStatus from './McpStatus';
 import { formatFlavorAttrs } from '@/lib/utils';
@@ -1347,8 +1361,76 @@ function TransitionsSection({ productId }: { productId: string }) {
   );
 }
 
+/** Compact per-product resiliency levels editor, embedded in the product drawer. */
+function ProductResiliencyInline({ product }: { product: Product }) {
+  const { data: options } = useProductResiliency(product.id);
+  const updateAssoc = useUpdateProductResiliency();
+  const [selected, setSelected] = useState<Set<string> | null>(null);
+  const [dirty, setDirty] = useState(false);
+
+  // Sync local selection when the options load
+  useEffect(() => {
+    if (options) {
+      const codes = options.associatedCodes.length > 0
+        ? options.associatedCodes
+        : options.allActive.map((l) => l.code);
+      setSelected(new Set(codes));
+      setDirty(false);
+    }
+  }, [options?.associatedCodes.join(','), product.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggle = (code: string) => {
+    setSelected((prev) => {
+      if (!prev) return prev;
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code); else next.add(code);
+      return next;
+    });
+    setDirty(true);
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 space-y-3">
+      <div>
+        <h3 className="text-sm font-semibold text-white flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-blue-500" />Resiliency levels</h3>
+        <p className="text-xs text-slate-500">Levels this product supports. No change from default = all active levels.</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {(options?.allActive ?? []).map((lvl) => {
+          const on = !!selected?.has(lvl.code);
+          return (
+            <button
+              key={lvl.code}
+              type="button"
+              onClick={() => toggle(lvl.code)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                on ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-slate-900 text-slate-500 border-slate-700 hover:border-slate-500'
+              }`}
+              title={lvl.description ?? lvl.name}
+            >
+              {lvl.name}
+              <span className="ml-1.5 text-[10px] text-slate-500">min {lvl.minAz} AZ</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-2">
+        <Button size="sm" onClick={async () => { if (!selected) return; await updateAssoc.mutateAsync({ productId: product.id, levelCodes: [...selected] }); setDirty(false); }} disabled={!dirty || updateAssoc.isPending} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[36px]">
+          {updateAssoc.isPending ? 'Saving…' : 'Save'}
+        </Button>
+        {dirty && <span className="text-xs text-amber-400">Unsaved changes</span>}
+      </div>
+    </div>
+  );
+}
+
 function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product; onClose: () => void }) {
-  const isCompute = (product.category?.flavorFieldDefinitions?.length ?? 0) > 0;
+  // Compute detection must not depend on category.flavorFieldDefinitions —
+  // the admin API does not include it, which silently hid the whole
+  // Variants section. computeType is always present on admin products.
+  const isCompute =
+    (product.category?.flavorFieldDefinitions?.length ?? 0) > 0 ||
+    !!product.computeType;
   const { data: variants, isLoading: variantsLoading } = useProductVariants(product.id);
   const { data: allFlavors } = useFlavors();
   const { data: allOS } = useOperatingSystems();
@@ -1410,6 +1492,9 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
         <div><span className="text-slate-500">Status:</span> <Badge variant="outline" className={product.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>{product.isActive ? 'Active' : 'Inactive'}</Badge></div>
       </div>
       {product.description && <p className="text-sm text-slate-400">{product.description}</p>}
+
+      {/* Resiliency levels available for this product (same editor as the admin tab) */}
+      <ProductResiliencyInline product={product} />
 
       {isCompute ? (
         <div className="space-y-4">
@@ -4048,6 +4133,401 @@ function ContinuityLevelsSection() {
   );
 }
 
+// ============ RESILIENCY LEVELS SECTION ============
+function ResiliencySection() {
+  const { data: levels, isLoading, isError, refetch } = useResiliencyLevels();
+  const createLevel = useCreateResiliencyLevel();
+  const updateLevel = useUpdateResiliencyLevel();
+  const deleteLevel = useDeleteResiliencyLevel();
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null; code: string }>({ open: false, id: null, code: '' });
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [form, setForm] = useState({ name: '', description: '', minAz: 1, isActive: true });
+
+  const resetForm = () => { setForm({ name: '', description: '', minAz: 1, isActive: true }); setEditing(null); };
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (lvl: any) => {
+    setEditing(lvl);
+    setForm({ name: lvl.name, description: lvl.description || '', minAz: lvl.minAz, isActive: lvl.isActive });
+    setIsOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editing) {
+      await updateLevel.mutateAsync({ id: editing.id, name: form.name, description: form.description || null, minAz: form.minAz, isActive: form.isActive });
+    } else {
+      await createLevel.mutateAsync({ name: form.name, description: form.description || undefined, minAz: form.minAz, isActive: form.isActive });
+    }
+    setIsOpen(false); resetForm();
+  };
+
+  const handleConfirmDelete = async () => {
+    if (confirmDelete.id) await deleteLevel.mutateAsync(confirmDelete.id);
+    setConfirmDelete({ open: false, id: null, code: '' });
+  };
+
+  if (isError) return <QueryError message="Unable to load resiliency levels." onRetry={refetch} />;
+
+  const mobileCards = levels?.map((lvl) => (
+    <MobileCard key={lvl.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{lvl.name} <span className="ml-1 font-mono text-[10px] text-slate-500">{lvl.code}</span></p>
+          <p className="text-sm text-slate-400">rank {lvl.rank} · min {lvl.minAz} AZ</p>
+        </div>
+        {!lvl.isActive && <Badge variant="outline" className="border-slate-600 text-slate-500">Inactive</Badge>}
+      </div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openEdit(lvl)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ open: true, id: lvl.id, code: lvl.code })} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-6">
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-blue-500" />Resiliency levels</h3>
+              <p className="text-sm text-slate-500">Rank orders severity for compliance. minAz = distinct availability zones a forecast line at this level requires.</p>
+            </div>
+            <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" />New level</Button>
+          </div>
+          <ResponsiveTable headers={['Name', 'Code', 'Rank', 'Min AZ', 'Status']} isLoading={isLoading} emptyMessage="No resiliency levels" mobileCards={mobileCards}>
+            {levels?.map((lvl) => (
+              <tr key={lvl.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{lvl.name}<div className="text-xs text-slate-500">{lvl.description || '—'}</div></td>
+                <td className="py-3 font-mono text-xs text-slate-400">{lvl.code}</td>
+                <td className="py-3 text-slate-400">{lvl.rank}</td>
+                <td className="py-3 text-slate-400">{lvl.minAz}</td>
+                <td className="py-3">
+                  {lvl.isActive
+                    ? <Badge variant="outline" className="border-green-500/20 text-green-500">Active</Badge>
+                    : <Badge variant="outline" className="border-slate-600 text-slate-500">Inactive</Badge>}
+                </td>
+                <td className="py-3 text-right">
+                  <Button size="sm" variant="ghost" onClick={() => openEdit(lvl)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ open: true, id: lvl.id, code: lvl.code })} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <ResiliencyScopeRules />
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg">
+          <DialogHeader><DialogTitle className="text-white">{editing ? `Edit ${editing.name}` : 'New resiliency level'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Name</label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="e.g. Zone Redundant" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+              {!editing && <p className="text-xs text-slate-500">Code auto-generated: {form.name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '') || '—'}</p>}
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Description</label>
+              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Minimum distinct AZs required</label>
+              <Input type="number" min={1} max={50} value={form.minAz} onChange={(e) => setForm({ ...form, minAz: parseInt(e.target.value) || 1 })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+              <p className="text-xs text-slate-500">A forecast line at this level must span at least this many availability zones.</p>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950" />
+              Active (selectable in the forecast form)
+            </label>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null, code: open ? confirmDelete.code : '' })}
+        title="Delete Resiliency Level"
+        description={`Delete level "${confirmDelete.code}"? Deletion is refused if forecast lines use it — deactivate it instead.`}
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
+    </div>
+  );
+}
+
+/** Fine-grained availability rules: level × (region|AZ|zone|flavor) × allow/deny. */
+function ResiliencyScopeRules() {
+  const { data: scopes, isLoading, isError, refetch } = useResiliencyScopes();
+  const { data: levels } = useResiliencyLevels();
+  const { data: products } = useProducts();
+  const { data: azs } = useAvailabilityZones();
+  const { data: zones } = useZones();
+  const { data: flavors } = useFlavors();
+  const createScope = useCreateResiliencyScope();
+  const deleteScope = useDeleteResiliencyScope();
+
+  const [levelCodes, setLevelCodes] = useState<Set<string>>(new Set());
+  const [productId, setProductId] = useState<string | null>(null);
+  const [scopeType, setScopeType] = useState<'REGION' | 'AVAILABILITY_ZONE' | 'ZONE' | 'FLAVOR'>('REGION');
+  const [scopeIds, setScopeIds] = useState<Set<string>>(new Set());
+  const [allowed, setAllowed] = useState(true);
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+
+  // The selected product constrains the scope targets: only the regions / AZs /
+  // zones / flavors the product actually reaches (product relations + variants).
+  const selectedProduct = products?.find((p) => p.id === productId);
+  const productDetail = useProductBySlug(selectedProduct?.slug ?? null);
+
+  const scopeItems = useMemo(() => {
+    // No product selected → the whole catalog is in scope.
+    if (!productId) {
+      switch (scopeType) {
+        case 'REGION':
+          return [...new Set((azs ?? []).filter((a) => a.isActive).map((a) => a.region))]
+            .sort()
+            .map((region) => ({ id: region, name: region, description: 'Technical region (from availability zones)' }));
+        case 'AVAILABILITY_ZONE':
+          return (azs ?? []).map((a) => ({ id: a.code, name: a.name, description: `${a.city}, ${a.country}`, meta: a.code }));
+        case 'ZONE':
+          return (zones ?? []).map((z) => ({ id: z.id, name: z.name, description: z.description }));
+        case 'FLAVOR':
+          return (flavors ?? []).map((f) => ({ id: f.id, name: f.name, description: f.description }));
+      }
+    }
+    // Product selected → STRICT: only what this product actually reaches.
+    // Never fall back to the full list — a platform product (Citrix, VMware)
+    // with no flavors of its own must show an empty flavor list, not everything.
+    const detail = productDetail.data;
+    if (!detail) return []; // still loading the product detail
+    const productAzCodes = new Set<string>(
+      (detail.availabilityZones ?? []).map((x: any) => x.availabilityZone?.code ?? x.availabilityZoneId)
+    );
+    // Zones reachable via product.zones AND via variant.zones
+    const productZoneIds = new Set<string>(
+      (detail.zones ?? []).map((x: any) => x.zone?.id ?? x.zoneId)
+    );
+    (detail.variants ?? []).forEach((v: any) => {
+      (v.availabilityZones ?? []).forEach((x: any) => productAzCodes.add(x.availabilityZone?.code ?? x.availabilityZoneId));
+      (v.zones ?? []).forEach((x: any) => productZoneIds.add(x.zone?.id ?? x.zoneId));
+    });
+    const productFlavorIds = new Set<string>((detail.variants ?? []).map((v: any) => v.flavorId));
+    // Variant flavors first; a variant-less product (storage-like) falls back to
+    // its category's flavors, EXCLUDING flavors already claimed by another
+    // product through a variant (e.g. S3-Standard belongs to Object Storage).
+    const variantFlavors = (flavors ?? []).filter((f) => productFlavorIds.has(f.id));
+    const claimedByOthers = new Set<string>(
+      (products ?? []).flatMap((p) => (p.id === productId ? [] : (p.variants ?? []).map((v: any) => v.flavorId)))
+    );
+    const flavorScope = variantFlavors.length > 0
+      ? variantFlavors
+      : (flavors ?? []).filter((f: any) => f.categoryId === detail.categoryId && !claimedByOthers.has(f.id));
+    for (const f of flavorScope) {
+      productFlavorIds.add(f.id);
+      for (const x of (f as any).availabilityZones ?? []) {
+        productAzCodes.add(x.availabilityZone?.code ?? x.availabilityZoneId);
+      }
+    }
+    const productAzs = (azs ?? []).filter((a) => productAzCodes.has(a.code));
+    const productRegionNames = [...new Set(productAzs.map((a) => a.region))].sort();
+    const productZones = (zones ?? []).filter((z) => productZoneIds.has(z.id));
+
+    switch (scopeType) {
+      case 'REGION': {
+        // REGION rules match either the AZ technical region (eu-west…) or the
+        // product's commercial regions (EMEA/APAC — ProductRegion), which is
+        // how platform products without AZs declare their geography.
+        const commercial = (detail.regions ?? []).map((x: any) => x.region?.name ?? x.regionId);
+        return [...new Set([...productRegionNames, ...commercial])].sort()
+          .map((region) => ({
+            id: region,
+            name: region,
+            description: commercial.includes(region) ? 'Commercial region (product)' : 'Technical region (from availability zones)',
+          }));
+      }
+      case 'AVAILABILITY_ZONE':
+        return productAzs.map((a) => ({ id: a.code, name: a.name, description: `${a.city}, ${a.country}`, meta: a.code }));
+      case 'ZONE':
+        return productZones.map((z) => ({ id: z.id, name: z.name, description: z.description }));
+      case 'FLAVOR':
+        return flavorScope.map((f) => ({ id: f.id, name: f.name, description: f.description }));
+    }
+  }, [scopeType, azs, zones, flavors, productDetail.data, productId]);
+
+  // Drop selected targets that are no longer offered (product changed or list narrowed)
+  useEffect(() => {
+    setScopeIds((prev) => {
+      const valid = new Set((scopeItems ?? []).map((i) => i.id));
+      const next = new Set([...prev].filter((id) => valid.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [scopeItems]);
+
+  const scopeTypeLabel: Record<string, string> = {
+    REGION: 'Region', AVAILABILITY_ZONE: 'AZ', ZONE: 'Zone', FLAVOR: 'Flavor',
+  };
+
+  const handleAdd = async () => {
+    if (levelCodes.size === 0 || scopeIds.size === 0) return;
+    // Batch: one rule per (level × target) combination
+    await Promise.all(
+      [...levelCodes].flatMap((lc) =>
+        [...scopeIds].map((sid) => createScope.mutateAsync({ levelCode: lc, productId, scopeType, scopeId: sid, allowed }))
+      )
+    );
+    setScopeIds(new Set());
+  };
+
+  const scopeNameFor = (rule: ResiliencyScopeRule): string => {
+    switch (rule.scopeType) {
+      case 'REGION': return rule.scopeId;
+      case 'AVAILABILITY_ZONE': return (azs ?? []).find((a) => a.code === rule.scopeId)?.name ?? rule.scopeId;
+      case 'ZONE': return (zones ?? []).find((z) => z.id === rule.scopeId)?.name ?? rule.scopeId;
+      case 'FLAVOR': return (flavors ?? []).find((f) => f.id === rule.scopeId)?.name ?? rule.scopeId;
+    }
+  };
+
+  if (isError) return <QueryError message="Unable to load availability rules." onRetry={refetch} />;
+
+  const mobileCards = scopes?.map((rule) => (
+    <MobileCard key={rule.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{rule.level.name}</p>
+          <p className="text-sm text-slate-400">
+            {scopeTypeLabel[rule.scopeType]}: {scopeNameFor(rule)}{rule.product ? ` · ${rule.product.name}` : ' · all products'}
+          </p>
+        </div>
+        <Badge variant="outline" className={rule.allowed ? 'border-green-500/20 text-green-500' : 'border-red-500/20 text-red-400'}>
+          {rule.allowed ? 'Allowed' : 'Denied'}
+        </Badge>
+      </div>
+      <div className="mt-3 flex justify-end">
+        <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ open: true, id: rule.id })} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <Card className="bg-slate-900 border-slate-800">
+      <CardContent className="p-4 sm:p-6 space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2"><MapPin className="h-5 w-5 text-blue-500" />Availability rules</h3>
+          <p className="text-sm text-slate-500">Fine-grained availability: the most specific rule (flavor &gt; AZ &gt; zone &gt; region) wins over the product association above.</p>
+        </div>
+
+        {/* Rule builder — pickups only, no native select */}
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <label className="text-xs text-slate-400 uppercase tracking-wide">1. Product (optional — empty = catalog-wide)</label>
+              <PickerList
+                items={[{ id: '__all__', name: 'All products', description: 'Catalog-wide rule' }, ...(products ?? []).map((p) => ({ id: p.id, name: p.name }))]}
+                value={productId ?? '__all__'}
+                onChange={(id) => setProductId(id === '__all__' ? null : id)}
+                placeholder="Search products…"
+                maxHeight="9rem"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-slate-400 uppercase tracking-wide">2. Levels (multi)</label>
+              <PickerList
+                multi
+                items={(levels ?? []).filter((l) => l.isActive).map((l) => ({ id: l.code, name: l.name, description: l.description, meta: l.code }))}
+                value={null}
+                selectedIds={levelCodes}
+                onMultiChange={setLevelCodes}
+                placeholder="Search levels…"
+                maxHeight="9rem"
+              />
+            </div>
+          </div>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <label className="text-xs text-slate-400 uppercase tracking-wide">3. Scope type</label>
+              <div className="flex gap-1">
+                {(['REGION', 'AVAILABILITY_ZONE', 'ZONE', 'FLAVOR'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => { setScopeType(t); setScopeIds(new Set()); }}
+                    className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                      scopeType === t ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
+                    }`}
+                  >
+                    {scopeTypeLabel[t]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-slate-400 uppercase tracking-wide">4. Scope targets (multi)</label>
+              <PickerList
+                multi
+                items={scopeItems}
+                value={null}
+                selectedIds={scopeIds}
+                onMultiChange={setScopeIds}
+                placeholder={`Search ${scopeTypeLabel[scopeType].toLowerCase()}…`}
+                maxHeight="9rem"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex overflow-hidden rounded-lg border border-slate-700">
+                <button type="button" onClick={() => setAllowed(true)} className={`px-3 py-2 text-xs font-medium ${allowed ? 'bg-green-600 text-white' : 'bg-slate-950 text-slate-400 hover:bg-slate-800'}`}>Allowed</button>
+                <button type="button" onClick={() => setAllowed(false)} className={`px-3 py-2 text-xs font-medium ${!allowed ? 'bg-red-600 text-white' : 'bg-slate-950 text-slate-400 hover:bg-slate-800'}`}>Denied</button>
+              </div>
+              <Button type="button" onClick={handleAdd} disabled={levelCodes.size === 0 || scopeIds.size === 0 || createScope.isPending} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[40px]">
+                <Plus className="mr-2 h-4 w-4" />Add {levelCodes.size > 0 && scopeIds.size > 0 ? `${levelCodes.size * scopeIds.size} rule${levelCodes.size * scopeIds.size > 1 ? 's' : ''}` : 'rule'}
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Existing rules */}
+        <ResponsiveTable headers={['Level', 'Scope', 'Target', 'Product', 'Effect']} isLoading={isLoading} emptyMessage="No availability rules — product associations and defaults apply" mobileCards={mobileCards}>
+          {scopes?.map((rule) => (
+            <tr key={rule.id} className="hover:bg-slate-800/50 transition-colors">
+              <td className="py-3 font-medium text-white">{rule.level.name}</td>
+              <td className="py-3 text-slate-400">{scopeTypeLabel[rule.scopeType]}</td>
+              <td className="py-3 text-slate-300">{scopeNameFor(rule)}</td>
+              <td className="py-3 text-slate-400">{rule.product?.name ?? 'All products'}</td>
+              <td className="py-3">
+                <Badge variant="outline" className={rule.allowed ? 'border-green-500/20 text-green-500' : 'border-red-500/20 text-red-400'}>
+                  {rule.allowed ? 'Allowed' : 'Denied'}
+                </Badge>
+              </td>
+              <td className="py-3 text-right">
+                <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ open: true, id: rule.id })} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+              </td>
+            </tr>
+          ))}
+        </ResponsiveTable>
+
+        <ConfirmDialog
+          open={confirmDelete.open}
+          onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+          title="Delete Availability Rule"
+          description="Remove this availability rule? The product association or default will apply again."
+          onConfirm={async () => { if (confirmDelete.id) await deleteScope.mutateAsync(confirmDelete.id); setConfirmDelete({ open: false, id: null }); }}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          variant="destructive"
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
 // ============ INFRA VERSIONS SECTION ============
 function InfraVersionsSection() {
   const { data: infraVersions, isLoading, isError, refetch } = useInfraVersions();
@@ -4258,6 +4738,7 @@ export default function Admin() {
     { value: 'dependencies', label: 'Dependencies', icon: Link2 },
     { value: 'applications', label: 'Applications', icon: Shield },
     { value: 'continuity-levels', label: 'Continuity', icon: TrendingUp },
+    { value: 'resiliency', label: 'Resiliency', icon: ShieldCheck },
     { value: 'forecasts', label: 'Forecasts', icon: Activity },
     { value: 'users', label: 'Users', icon: UserCog },
     { value: 'regions', label: 'Regions', icon: Globe },
@@ -4304,6 +4785,7 @@ export default function Admin() {
         <TabsContent value="dependencies" className="animate-fade-in"><DependenciesSection /></TabsContent>
         <TabsContent value="applications" className="animate-fade-in"><ApplicationsSection /></TabsContent>
         <TabsContent value="continuity-levels" className="animate-fade-in"><ContinuityLevelsSection /></TabsContent>
+        <TabsContent value="resiliency" className="animate-fade-in"><ResiliencySection /></TabsContent>
         <TabsContent value="forecasts" className="animate-fade-in"><ForecastsAdminSection /></TabsContent>
         <TabsContent value="users" className="animate-fade-in"><UsersSection /></TabsContent>
         <TabsContent value="regions" className="animate-fade-in"><RegionsSection /></TabsContent>

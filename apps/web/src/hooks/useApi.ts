@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
-import type { Product, Category, Forecast, ForecastStats, ForecastTransition, GovernanceDefinition, ServiceNowStatus, Flavor, FlavorFieldDefinition, Dependency, User, AvailabilityZone, Zone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, ProductVersion, UpgradePath, Transition, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats, PresentationOrder, PresentationStepType, PerformanceProfile, Country, Region, InfraVersion } from '@cloudmarket/shared-types';
+import type { Product, Category, Forecast, ForecastStats, ForecastTransition, GovernanceDefinition, ServiceNowStatus, Flavor, FlavorFieldDefinition, Dependency, User, AvailabilityZone, Zone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, ProductVersion, UpgradePath, Transition, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats, PresentationOrder, PresentationStepType, PerformanceProfile, Country, Region, InfraVersion, ResiliencyLevelConfig, ProductResiliencyOptions } from '@cloudmarket/shared-types';
 import type { ForecastStatus } from '@cloudmarket/shared-types';
 import { useAuthStore, type SimulatedUser } from '@/stores/useAuthStore';
 
@@ -79,6 +79,16 @@ export function useProduct(slug: string) {
     enabled: !!slug,
     retry: 3,
     retryDelay: 2000,
+  });
+}
+
+/** Product with its geo relations (zones/regions/AZs/flavors via variants) — by slug. */
+export function useProductBySlug(slug: string | null | undefined) {
+  return useQuery<Product>({
+    queryKey: ['product-by-slug', slug],
+    queryFn: () => fetchJson(`/products/${slug}`),
+    enabled: !!slug,
+    staleTime: 60_000,
   });
 }
 
@@ -1422,7 +1432,168 @@ export function useDeleteTransition() {
 
 // ========== FORECAST ANALYTICS ==========
 
+export interface ForecastFormOptions {
+  product: { id: string; name: string; categoryId: string | null; categoryName: string | null };
+  category: { id: string; name: string; fieldDefinitions: { key: string; label: string; unit: string | null; type: string; required: boolean; order: number; options: string[] | null }[] } | null;
+  hasVariants: boolean;
+  hasFieldDefs: boolean;
+  variants: { id: string; name: string; flavorId: string; osId: string; osVersionId: string; osName: string | null; osVersion: string | null }[];
+  flavors: { id: string; name: string; vcpu: number | null; ramGb: number | null; attributes: Record<string, unknown> | null; description: string | null }[];
+  osVersions: { id: string; version: string; osId: string; osName: string; osFamily: string }[];
+  resiliencyLevels: { code: string; name: string; minAz: number; rank: number }[];
+}
+
+export function useForecastFormOptions(productId: string | null | undefined) {
+  return useQuery<ForecastFormOptions>({
+    queryKey: ['forecast-form-options', productId],
+    queryFn: () => fetchJson(`/forecasts/form-options`, { productId: productId! }),
+    enabled: !!productId,
+  });
+}
+
+// ========== RESILIENCY LEVELS (admin-configurable) ==========
+
+export interface ResiliencyScopeRule {
+  id: string;
+  levelCode: string;
+  productId: string | null;
+  scopeType: 'REGION' | 'AVAILABILITY_ZONE' | 'ZONE' | 'FLAVOR';
+  scopeId: string;
+  allowed: boolean;
+  level: { code: string; name: string; rank: number };
+  product?: { id: string; name: string } | null;
+}
+
+export interface ResiliencyResolveResult {
+  productId: string;
+  azCode: string | null;
+  flavorId: string | null;
+  levels: { code: string; name: string; minAz: number; rank: number }[];
+}
+
+export function useResiliencyLevels(activeOnly = false) {
+  return useQuery<ResiliencyLevelConfig[]>({
+    queryKey: ['resiliency-levels', activeOnly],
+    queryFn: () => fetchJson('/resiliency-levels', activeOnly ? { activeOnly: '1' } : undefined),
+  });
+}
+
+export function useResiliencyScopes() {
+  return useQuery<ResiliencyScopeRule[]>({
+    queryKey: ['resiliency-scopes'],
+    queryFn: () => fetchJson('/resiliency-levels/scopes'),
+  });
+}
+
+export function useCreateResiliencyScope() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: (payload: { levelCode: string; productId?: string | null; scopeType: string; scopeId: string; allowed: boolean }) =>
+      fetchJson('/resiliency-levels/scopes', { method: 'POST', body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['resiliency-scopes'] });
+      queryClient.invalidateQueries({ queryKey: ['resiliency-resolve'] });
+      queryClient.invalidateQueries({ queryKey: ['forecast-form-options'] });
+      addToast('Availability rule saved', 'success');
+    },
+    onError: (err: any) => addToast(err.response?.data?.error || 'Failed to save rule', 'error'),
+  });
+}
+
+export function useDeleteResiliencyScope() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: (id: string) => fetchJson(`/resiliency-levels/scopes/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['resiliency-scopes'] });
+      queryClient.invalidateQueries({ queryKey: ['resiliency-resolve'] });
+      queryClient.invalidateQueries({ queryKey: ['forecast-form-options'] });
+      addToast('Availability rule deleted', 'success');
+    },
+    onError: (err: any) => addToast(err.response?.data?.error || 'Failed to delete rule', 'error'),
+  });
+}
+
+/** Resolved levels for an exact (product, AZ, flavor) context. */
+export function useResiliencyResolve(productId: string | null | undefined, azCode: string | null | undefined, flavorId?: string | null) {
+  return useQuery<ResiliencyResolveResult>({
+    queryKey: ['resiliency-resolve', productId, azCode, flavorId],
+    queryFn: () => fetchJson('/resiliency-levels/resolve', { productId: productId!, azCode, flavorId }),
+    enabled: !!productId,
+  });
+}
+
+export function useProductResiliency(productId: string | null | undefined) {
+  return useQuery<ProductResiliencyOptions>({
+    queryKey: ['product-resiliency', productId],
+    queryFn: () => fetchJson(`/resiliency-levels/product/${productId}`),
+    enabled: !!productId,
+  });
+}
+
+export function useUpdateProductResiliency() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: ({ productId, levelCodes }: { productId: string; levelCodes: string[] }) =>
+      fetchJson(`/resiliency-levels/product/${productId}`, { method: 'PUT', body: JSON.stringify({ levelCodes }) }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['product-resiliency', variables.productId] });
+      queryClient.invalidateQueries({ queryKey: ['forecast-form-options'] });
+      addToast('Product resiliency levels updated', 'success');
+    },
+    onError: (err: any) => addToast(err.response?.data?.error || 'Failed to update product resiliency', 'error'),
+  });
+}
+
+export function useCreateResiliencyLevel() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: (payload: { name: string; description?: string; minAz?: number; isActive?: boolean }) =>
+      fetchJson('/resiliency-levels', { method: 'POST', body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['resiliency-levels'] });
+      queryClient.invalidateQueries({ queryKey: ['forecast-form-options'] });
+      addToast('Resiliency level created', 'success');
+    },
+    onError: (err: any) => addToast(err.response?.data?.error || 'Failed to create resiliency level', 'error'),
+  });
+}
+
+export function useUpdateResiliencyLevel() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: ({ id, ...payload }: { id: string; name?: string; description?: string | null; minAz?: number; isActive?: boolean; order?: number }) =>
+      fetchJson(`/resiliency-levels/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['resiliency-levels'] });
+      queryClient.invalidateQueries({ queryKey: ['forecast-form-options'] });
+      addToast('Resiliency level updated', 'success');
+    },
+    onError: (err: any) => addToast(err.response?.data?.error || 'Failed to update resiliency level', 'error'),
+  });
+}
+
+export function useDeleteResiliencyLevel() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: (id: string) => fetchJson(`/resiliency-levels/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['resiliency-levels'] });
+      queryClient.invalidateQueries({ queryKey: ['product-resiliency'] });
+      addToast('Resiliency level deleted', 'success');
+    },
+    onError: (err: any) => addToast(err.response?.data?.error || 'Failed to delete resiliency level', 'error'),
+  });
+}
+
 export function useForecastTrends(days: number = 30) {
+  // Returns one bucket per day in the range: { date, created, submitted, approved, rejected }.
   return useQuery<ForecastTrend[]>({
     queryKey: ['forecast-trends', days],
     queryFn: () => fetchJson('/forecasts/trends', { days: String(days) }),

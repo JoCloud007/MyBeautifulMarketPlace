@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
+  useResiliencyResolve,
   useForecasts, useForecastStats, useForecastQueue, useGovernance,
   useCreateForecast, useForecastAction, useDeleteForecast,
   useProducts, useApplications, useContinuityLevels, useFlavors, useAvailabilityZones,
@@ -42,10 +43,14 @@ import {
   RotateCcw,
   Scale,
   ExternalLink,
+  Table2,
 } from 'lucide-react';
+import RequestsGrid from '@/components/RequestsGrid';
+import PickerList from '@/components/PickerList';
+import { useForecastFormOptions } from '@/hooks/useApi';
 import { ForecastStatus, Role, type Forecast, type ForecastTransition } from '@cloudmarket/shared-types';
 
-type Tab = 'mine' | 'queues' | 'analytics' | 'governance';
+type Tab = 'mine' | 'all' | 'queues' | 'analytics' | 'governance';
 
 const STEP_ROLE: Partial<Record<ForecastStatus, Role>> = {
   [ForecastStatus.PENDING_TECH]: Role.TECH_LEAD,
@@ -528,6 +533,101 @@ function QueueSection({ role, onOpen }: { role: Role; onOpen: (f: Forecast) => v
   );
 }
 
+/* ---------- Scoped resiliency picker ----------
+ * One resolve query per selected AZ (hooks-in-component keeps rules-of-hooks
+ * valid as the AZ list changes); the visible buttons are the INTERSECTION of
+ * the levels allowed for every selected AZ. Falls back to the product-level
+ * levels while resolves are loading. */
+function ResiliencyLevelPicker({ productId, azCodes, flavorId, fallbackLevels, value, onChange }: {
+  productId: string;
+  azCodes: string[];
+  flavorId: string | null;
+  fallbackLevels: { code: string; name: string; minAz: number; rank: number }[];
+  value: string;
+  onChange: (code: string) => void;
+}) {
+  const [levelsByAz, setLevelsByAz] = useState<Record<string, { code: string; name: string; minAz: number; rank: number }[]>>({});
+
+  const registerLevels = (az: string) => (levels: { code: string; name: string; minAz: number; rank: number }[]) => {
+    setLevelsByAz((prev) => {
+      const prevAz = prev[az];
+      if (prevAz && prevAz.length === levels.length && prevAz.every((l, i) => l.code === levels[i].code)) return prev;
+      return { ...prev, [az]: levels };
+    });
+  };
+
+  const allLoaded = azCodes.length > 0 && azCodes.every((az) => levelsByAz[az]);
+  const allowed = useMemo(() => {
+    if (!allLoaded) return fallbackLevels;
+    const sets = azCodes.map((az) => levelsByAz[az]);
+    return sets[0].filter((lvl) => sets.every((s) => s.some((l) => l.code === lvl.code)));
+  }, [allLoaded, azCodes, levelsByAz, fallbackLevels]);
+
+  // Drop the selection if it became unavailable for one of the selected AZs
+  useEffect(() => {
+    if (allLoaded && value && !allowed.some((l) => l.code === value)) {
+      onChange('STANDARD');
+    }
+  }, [allLoaded, value, allowed]);
+
+  return (
+    <div className="space-y-2">
+      <label className="text-xs text-slate-400 uppercase tracking-wide">5. Resiliency</label>
+      {/* Hidden resolvers: one per AZ, each reports its allowed levels upward */}
+      <div className="hidden">
+        {azCodes.map((az) => (
+          <AzResiliencyResolve
+            key={az}
+            productId={productId}
+            azCode={az}
+            flavorId={flavorId}
+            onLoaded={registerLevels(az)}
+          />
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {allowed.map((lvl) => (
+          <button
+            key={lvl.code}
+            type="button"
+            onClick={() => onChange(lvl.code)}
+            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+              value === lvl.code
+                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
+            }`}
+          >
+            {lvl.name}
+          </button>
+        ))}
+        {allowed.length === 0 && (
+          <p className="text-xs text-slate-500">No resiliency level available for the selected location(s).</p>
+        )}
+      </div>
+      {(() => {
+        const selected = allowed.find((l) => l.code === value);
+        return selected && selected.minAz > 1 ? (
+          <p className="text-xs text-amber-400">Requires at least {selected.minAz} distinct availability zones</p>
+        ) : null;
+      })()}
+    </div>
+  );
+}
+
+/** Fetches the resolved levels for ONE (product, AZ, flavor) and reports them up. */
+function AzResiliencyResolve({ productId, azCode, flavorId, onLoaded }: {
+  productId: string;
+  azCode: string;
+  flavorId: string | null;
+  onLoaded: (levels: { code: string; name: string; minAz: number; rank: number }[]) => void;
+}) {
+  const { data, isSuccess } = useResiliencyResolve(productId, azCode, flavorId);
+  useEffect(() => {
+    if (isSuccess && data) onLoaded(data.levels);
+  }, [isSuccess, data?.levels.map((l) => l.code).join(','), data?.levels.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
 /* ---------- Main page ---------- */
 
 export default function Forecasts() {
@@ -560,13 +660,29 @@ export default function Forecasts() {
     applicationId: '',
     environment: 'DEV' as 'PRD' | 'DEV' | 'STG',
   });
-  const [lines, setLines] = useState<Array<{ productId: string; flavorId: string; azCode: string; quantity: number; osVersion?: string; resiliency?: 'STANDARD' | 'HA' | 'MULTI_AZ' }>>([]);
-  const [draftLine, setDraftLine] = useState({ productId: '', flavorId: '', azSelections: {} as Record<string, number>, osVersion: '', resiliency: 'STANDARD' as 'STANDARD' | 'HA' | 'MULTI_AZ' });
+  const [lines, setLines] = useState<Array<{ productId: string; flavorId?: string; azCode: string; quantity: number; metadata?: Record<string, unknown>; resiliency?: string }>>([]);
+  const [draftLine, setDraftLine] = useState({
+    productId: '',
+    flavorId: '',
+    azSelections: {} as Record<string, number>,
+    osVersionId: '',
+    sizeGb: '' as string | number,
+    iops: '' as string | number,
+    resiliency: 'STANDARD' as string,
+  });
+  const formOptions = useForecastFormOptions(draftLine.productId || null);
+  const isStorageCategory = formOptions.data?.category?.name === 'Data';
+  // OS version only when the category defines compute (vcpu field) — not for storage.
+  const needsOs = formOptions.data?.category?.fieldDefinitions.some((d) => d.key === 'vcpu') ?? false;
+
+  // Scoped resiliency resolution is computed by <ResiliencyLevelPicker /> below
+  // (one resolve query per selected AZ, intersected). Kept as a child component
+  // so hooks-per-AZ respect the rules of hooks.
+  const selectedAzCodes = useMemo(() => Object.keys(draftLine.azSelections), [draftLine.azSelections]);
   const [submitAfterCreate, setSubmitAfterCreate] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const selectedDraftProduct = products?.find((p) => p.id === draftLine.productId);
-  const selectedDraftFlavor = allFlavors?.find((f) => f.id === draftLine.flavorId);
   const selectedApp = applications?.find((a) => a.id === formData.applicationId);
   const appContinuityLevel = continuityLevels?.find((cl) => cl.id === selectedApp?.continuityLevelId);
 
@@ -602,7 +718,7 @@ export default function Forecasts() {
         flavorId: l.flavorId,
         azCode: l.azCode,
         quantity: typeof l.quantity === 'string' ? parseInt(l.quantity, 10) : l.quantity,
-        metadata: l.osVersion ? { osVersion: l.osVersion } : undefined,
+        metadata: l.metadata,
         resiliency: l.resiliency || 'STANDARD',
       })),
     } as any);
@@ -611,17 +727,22 @@ export default function Forecasts() {
   };
 
   const addLine = () => {
-    if (!draftLine.productId || !draftLine.flavorId || Object.keys(draftLine.azSelections).length === 0) return;
+    if (!draftLine.productId || Object.keys(draftLine.azSelections).length === 0) return;
+    const osVersion = formOptions.data?.osVersions.find((ov) => ov.id === draftLine.osVersionId);
+    const meta: Record<string, unknown> = {};
+    if (osVersion) meta.osVersion = `${osVersion.osName} ${osVersion.version}`;
+    if (isStorageCategory && draftLine.sizeGb !== '' && draftLine.sizeGb != null) meta.sizeGb = Number(draftLine.sizeGb);
+    if (isStorageCategory && draftLine.iops !== '' && draftLine.iops != null) meta.iops = Number(draftLine.iops);
     const newLines = Object.entries(draftLine.azSelections).map(([azCode, quantity]) => ({
       productId: draftLine.productId,
-      flavorId: draftLine.flavorId,
+      flavorId: draftLine.flavorId || undefined,
       azCode,
       quantity,
-      osVersion: draftLine.osVersion || undefined,
+      metadata: Object.keys(meta).length > 0 ? meta : undefined,
       resiliency: draftLine.resiliency,
     }));
     setLines([...lines, ...newLines]);
-    setDraftLine({ productId: '', flavorId: '', azSelections: {}, osVersion: '', resiliency: 'STANDARD' });
+    setDraftLine({ productId: '', flavorId: '', azSelections: {}, osVersionId: '', sizeGb: '', iops: '', resiliency: 'STANDARD' });
   };
 
   const removeLine = (index: number) => {
@@ -650,6 +771,7 @@ export default function Forecasts() {
   ).length;
   const tabs: { key: Tab; label: string; icon: typeof FileText; badge?: number }[] = [
     { key: 'mine', label: 'My requests', icon: FileText },
+    { key: 'all', label: 'All requests', icon: Table2 },
     ...(roleQueues.length > 0 ? [{ key: 'queues' as Tab, label: 'Approval queues', icon: Inbox, badge: pendingItems }] : []),
     { key: 'analytics', label: 'Analytics', icon: BarChart3 },
     { key: 'governance', label: 'Governance', icon: ShieldCheck },
@@ -804,6 +926,27 @@ export default function Forecasts() {
             </div>
           )}
 
+          {/* ============ TAB: ALL REQUESTS (grid) ============ */}
+          {tab === 'all' && (
+            <AnimatedSection delay={80}>
+              <Card className="bg-slate-900 border-slate-800">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-white">
+                    <Table2 className="h-5 w-5 text-blue-500" />
+                    All requests
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {forecastsLoading ? (
+                    <Skeleton className="h-72 w-full rounded-lg bg-slate-800" />
+                  ) : (
+                    <RequestsGrid forecasts={forecasts || []} onOpen={setDetail} />
+                  )}
+                </CardContent>
+              </Card>
+            </AnimatedSection>
+          )}
+
           {/* ============ TAB: QUEUES ============ */}
           {tab === 'queues' && (
             <div className="space-y-4">
@@ -831,40 +974,27 @@ export default function Forecasts() {
                       <BarChart3 className="h-5 w-5 text-blue-500" />
                       Analytics
                     </span>
-                    <div className="flex gap-1">
-                      {[7, 30, 90].map((d) => (
-                        <button
-                          key={d}
-                          onClick={() => setAnalyticsDays(d)}
-                          className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                            analyticsDays === d
-                              ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                              : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
-                          }`}
-                        >
-                          {d}d
-                        </button>
-                      ))}
-                    </div>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid gap-6 lg:grid-cols-2">
+                  <div className="space-y-6">
                     <div>
                       <h4 className="text-sm font-medium text-slate-400 mb-3">Request Trends</h4>
-                      <TrendChart days={analyticsDays} />
+                      <TrendChart days={analyticsDays} onDaysChange={setAnalyticsDays} />
                     </div>
-                    <div>
-                      <h4 className="text-sm font-medium text-slate-400 mb-3">Status Distribution</h4>
-                      <StatusDonut />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-medium text-slate-400 mb-3">Resources by Zone</h4>
-                      <ResourceBarChart />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-medium text-slate-400 mb-3">Product Demand Heatmap</h4>
-                      <DemandHeatmap />
+                    <div className="grid gap-6 lg:grid-cols-3">
+                      <div>
+                        <h4 className="text-sm font-medium text-slate-400 mb-3">Status Distribution</h4>
+                        <StatusDonut />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-medium text-slate-400 mb-3">Resources by Zone</h4>
+                        <ResourceBarChart />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-medium text-slate-400 mb-3">Product Demand Heatmap</h4>
+                        <DemandHeatmap />
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -895,76 +1025,22 @@ export default function Forecasts() {
                   <label className="text-sm font-semibold text-slate-200">Lines</label>
                 </div>
                 <div className="space-y-3">
-                  <Select value={draftLine.productId} onChange={(e) => setDraftLine({ ...draftLine, productId: e.target.value, flavorId: '', azSelections: {} })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
-                    <option value="">1. Select product...</option>
-                    {products?.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </Select>
+                  {/* 1. Product — pickup list */}
+                  <div className="space-y-2">
+                    <label className="text-xs text-slate-400 uppercase tracking-wide">1. Product</label>
+                    <PickerList
+                      items={(products ?? []).map((p) => ({ id: p.id, name: p.name, description: p.description }))}
+                      value={draftLine.productId || null}
+                      onChange={(id) => setDraftLine({ ...draftLine, productId: id, flavorId: '', osVersionId: '', sizeGb: '', iops: '', azSelections: {} })}
+                      placeholder="Search products…"
+                      maxHeight="10rem"
+                    />
+                  </div>
 
+                  {/* 2. Localisation & quantities (before flavor/OS, per workflow) */}
                   {selectedDraftProduct && (
                     <div className="space-y-2">
-                      <label className="text-xs text-slate-400 uppercase tracking-wide">2. Flavor</label>
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                        {allFlavors?.map((f) => (
-                          <button
-                            key={f.id}
-                            type="button"
-                            onClick={() => setDraftLine({ ...draftLine, flavorId: f.id, azSelections: {} })}
-                            className={`rounded-lg border p-3 text-left transition-all ${
-                              draftLine.flavorId === f.id
-                                ? 'border-blue-500 bg-blue-500/10 text-blue-300'
-                                : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
-                            }`}
-                          >
-                            <div className="text-sm font-bold text-white">{f.name}</div>
-                            <div className="text-xs text-slate-400 mt-1">{f.vcpu} vCPU · {f.ramGb} GB</div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedDraftProduct && (
-                    <div className="space-y-2">
-                      <label className="text-xs text-slate-400 uppercase tracking-wide">3. Operating System Version</label>
-                      <Input
-                        value={draftLine.osVersion}
-                        onChange={(e) => setDraftLine({ ...draftLine, osVersion: e.target.value })}
-                        placeholder="e.g. debian-12, windows-server-2022"
-                        className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
-                      />
-                    </div>
-                  )}
-
-                  {selectedDraftFlavor && (
-                    <div className="space-y-2">
-                      <label className="text-xs text-slate-400 uppercase tracking-wide">4. Resiliency</label>
-                      <div className="flex gap-2">
-                        {(['STANDARD', 'HA', 'MULTI_AZ'] as const).map((r) => (
-                          <button
-                            key={r}
-                            type="button"
-                            onClick={() => setDraftLine({ ...draftLine, resiliency: r })}
-                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                              draftLine.resiliency === r
-                                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                                : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
-                            }`}
-                          >
-                            {r === 'STANDARD' ? 'Standard' : r === 'HA' ? 'HA' : 'Multi-AZ'}
-                          </button>
-                        ))}
-                      </div>
-                      {draftLine.resiliency !== 'STANDARD' && (
-                        <p className="text-xs text-amber-400">Requires at least 2 distinct availability zones</p>
-                      )}
-                    </div>
-                  )}
-
-                  {selectedDraftFlavor && (
-                    <div className="space-y-2">
-                      <label className="text-xs text-slate-400 uppercase tracking-wide">5. Regions & Quantities</label>
+                      <label className="text-xs text-slate-400 uppercase tracking-wide">2. Location &amp; Quantities</label>
                       <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-3 space-y-2 max-h-40 overflow-y-auto">
                         {zones?.map((z) => {
                           const isSelected = draftLine.azSelections[z.code] !== undefined;
@@ -1011,10 +1087,98 @@ export default function Forecasts() {
                     </div>
                   )}
 
+                  {/* 3. Flavor / service class — filtered by product via form-options */}
+                  {selectedDraftProduct && (formOptions.data?.flavors.length ?? 0) > 0 && (
+                    <div className="space-y-2">
+                      <label className="text-xs text-slate-400 uppercase tracking-wide">
+                        3. {isStorageCategory ? 'Service class' : 'Flavor'}
+                      </label>
+                      <PickerList
+                        items={(formOptions.data?.flavors ?? []).map((f) => {
+                          const a = (f.attributes ?? {}) as Record<string, unknown>;
+                          let meta: string;
+                          if (isStorageCategory) {
+                            const parts = [a.tier, a.iops != null ? `${a.iops} IOPS` : null].filter(Boolean);
+                            meta = parts.join(' · ');
+                          } else {
+                            meta = `${f.vcpu ?? 0} vCPU · ${f.ramGb ?? 0} GB`;
+                          }
+                          return { id: f.id, name: f.name, description: f.description, meta };
+                        })}
+                        value={draftLine.flavorId || null}
+                        onChange={(id) => setDraftLine({ ...draftLine, flavorId: id })}
+                        placeholder="Search flavors…"
+                        maxHeight="12rem"
+                      />
+                      {/* Storage: capacity + IOPS are per-request variables */}
+                      {isStorageCategory && draftLine.flavorId && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">Capacity (GB)</label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={draftLine.sizeGb}
+                              onChange={(e) => setDraftLine({ ...draftLine, sizeGb: e.target.value })}
+                              placeholder="e.g. 10000"
+                              className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-slate-400 uppercase tracking-wide mb-1.5 block">IOPS (optional)</label>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={draftLine.iops}
+                              onChange={(e) => setDraftLine({ ...draftLine, iops: e.target.value })}
+                              placeholder="class baseline"
+                              className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 4. OS version — only for compute categories, real picker */}
+                  {needsOs && selectedDraftProduct && (
+                    <div className="space-y-2">
+                      <label className="text-xs text-slate-400 uppercase tracking-wide">4. Operating System Version</label>
+                      <PickerList
+                        items={(formOptions.data?.osVersions ?? []).map((ov) => ({
+                          id: ov.id,
+                          name: `${ov.osName} ${ov.version}`,
+                          description: ov.osFamily,
+                        }))}
+                        value={draftLine.osVersionId || null}
+                        onChange={(id) => setDraftLine({ ...draftLine, osVersionId: id })}
+                        placeholder="Search OS versions…"
+                        maxHeight="12rem"
+                      />
+                    </div>
+                  )}
+
+                  {/* 5. Resiliency — scoped resolution: levels must be allowed for
+                      EVERY selected AZ (most specific rule wins server-side). */}
+                  {selectedDraftProduct && (
+                    <ResiliencyLevelPicker
+                      productId={draftLine.productId}
+                      azCodes={selectedAzCodes}
+                      flavorId={draftLine.flavorId || null}
+                      fallbackLevels={formOptions.data?.resiliencyLevels ?? []}
+                      value={draftLine.resiliency}
+                      onChange={(code) => setDraftLine({ ...draftLine, resiliency: code })}
+                    />
+                  )}
+
                   <Button
                     type="button"
                     onClick={addLine}
-                    disabled={!draftLine.productId || !draftLine.flavorId || Object.keys(draftLine.azSelections).length === 0}
+                    disabled={
+                      !draftLine.productId ||
+                      Object.keys(draftLine.azSelections).length === 0 ||
+                      ((formOptions.data?.flavors.length ?? 0) > 0 && !draftLine.flavorId)
+                    }
                     className="bg-blue-600 hover:bg-blue-700 text-white w-full min-h-[44px]"
                   >
                     <Plus className="w-4 h-4 mr-2" />
@@ -1138,15 +1302,25 @@ export default function Forecasts() {
                   {lines.map((line, idx) => {
                     const p = products?.find((pr) => pr.id === line.productId);
                     const f = allFlavors?.find((fl) => fl.id === line.flavorId);
+                    const isStorage = f?.vcpu === null && f?.ramGb === null;
+                    const meta = (line.metadata ?? {}) as Record<string, unknown>;
                     const lineCost = f ? ((f.vcpu ?? 0) * 10 + (f.ramGb ?? 0) * 3) * line.quantity : 0;
+                    const detailParts = [
+                      f?.name,
+                      isStorage && meta.sizeGb != null ? `${Number(meta.sizeGb).toLocaleString('en-US')} GB` : null,
+                      isStorage && meta.iops != null ? `${Number(meta.iops).toLocaleString('en-US')} IOPS` : null,
+                      meta.osVersion as string | undefined,
+                      line.azCode,
+                      `x${line.quantity}`,
+                    ].filter(Boolean);
                     return (
                       <div key={idx} className="space-y-1">
                         <div className="flex justify-between text-sm">
                           <span className="text-white font-medium truncate">{p?.name}</span>
                           <button type="button" onClick={() => removeLine(idx)} className="ml-1 shrink-0 text-slate-600 hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
                         </div>
-                        <div className="text-xs text-slate-400">{f?.name} · {line.azCode} · x{line.quantity}</div>
-                        <div className="text-xs text-slate-500">{formatCost(lineCost)}/mo</div>
+                        <div className="text-xs text-slate-400">{detailParts.join(' · ')}</div>
+                        <div className="text-xs text-slate-500">{isStorage ? 'Pricing on request' : `${formatCost(lineCost)}/mo`}</div>
                         {idx < lines.length - 1 && <div className="h-px bg-slate-700 my-2" />}
                       </div>
                     );
@@ -1159,7 +1333,8 @@ export default function Forecasts() {
                         <span className="text-lg font-bold text-blue-400">
                           {formatCost(lines.reduce((sum, l) => {
                             const f = allFlavors?.find((fl) => fl.id === l.flavorId);
-                            return sum + (f ? ((f.vcpu ?? 0) * 10 + (f.ramGb ?? 0) * 3) * l.quantity : 0);
+                            const isStorage = f?.vcpu == null && f?.ramGb == null;
+                            return sum + (f && !isStorage ? ((f.vcpu ?? 0) * 10 + (f.ramGb ?? 0) * 3) * l.quantity : 0);
                           }, 0))}
                         </span>
                       </div>

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ResiliencyLevel, InstanceStatus, HealthStatus, ForecastStatus } from '@prisma/client';
+import { InstanceStatus, HealthStatus, ForecastStatus } from '@prisma/client';
 import { prisma } from '../db';
 
 const router = Router();
@@ -17,7 +17,8 @@ export interface ComplianceMetrics {
   totalInstances: number;
   runningInstances: number;
   uniqueAZs: number;
-  maxResiliency: ResiliencyLevel | null;
+  /** Code of the highest-ranked resiliency level across approved forecast lines. */
+  maxResiliency: string | null;
   unhealthyInstances: number;
   degradedInstances: number;
   prdInstances: number;
@@ -59,6 +60,16 @@ router.get('/', async (_req, res, next) => {
       include: { lines: true },
     });
 
+    // Resiliency levels are admin-configurable — rank orders severity.
+    const resiliencyLevels = await prisma.resiliencyLevelConfig.findMany({ where: { isActive: true } });
+    const rankByCode = new Map<string, number>(resiliencyLevels.map((l: { code: string; rank: number }) => [l.code, l.rank] as [string, number]));
+    const codeByRank = new Map<number, string>(resiliencyLevels.map((l: { code: string; rank: number }) => [l.rank, l.code] as [number, string]));
+    const rankOf = (code: string): number => rankByCode.get(code) ?? -1;
+    // Thresholds expressed against seeded levels (backward-compatible semantics).
+    const haRank = rankByCode.get('HA') ?? 1;
+    const multiAzRank = rankByCode.get('MULTI_AZ') ?? 2;
+    const codeOf = (rank: number): string | null => codeByRank.get(rank) ?? null;
+
     const results: ApplicationCompliance[] = applications.map((app) => {
       const appInstances = instances.filter((i) => i.applicationId === app.id);
       const appForecasts = forecasts.filter((f) => f.applicationId === app.id && f.status === ForecastStatus.APPROVED);
@@ -67,15 +78,11 @@ router.get('/', async (_req, res, next) => {
       const uniqueAZs = new Set(runningInstances.map((i) => i.azCode)).size;
       const prdInstances = appInstances.filter((i) => i.environment === 'PRD');
 
-      // Determine max resiliency from APPROVED forecast lines only
+      // Determine max resiliency from APPROVED forecast lines only —
+      // highest rank across the lines, resolved against the admin config.
       const allResiliencies = appForecasts.flatMap((f) => f.lines.map((l) => l.resiliency));
-      const maxResiliency = allResiliencies.length > 0
-        ? allResiliencies.includes(ResiliencyLevel.MULTI_AZ)
-          ? ResiliencyLevel.MULTI_AZ
-          : allResiliencies.includes(ResiliencyLevel.HA)
-            ? ResiliencyLevel.HA
-            : ResiliencyLevel.STANDARD
-        : null;
+      const maxRank = allResiliencies.reduce((max, code) => Math.max(max, rankOf(code)), -1);
+      const maxResiliency = maxRank >= 0 ? codeOf(maxRank) : null;
 
       // Health status per instance (latest check)
       let unhealthyInstances = 0;
@@ -144,7 +151,7 @@ router.get('/', async (_req, res, next) => {
           });
           score -= 25;
         }
-        if (maxResiliency !== ResiliencyLevel.HA && maxResiliency !== ResiliencyLevel.MULTI_AZ) {
+        if (rankOf(maxResiliency ?? '') < haRank) {
           gaps.push({
             id: `${app.id}-no-ha`,
             applicationId: app.id,
@@ -192,7 +199,7 @@ router.get('/', async (_req, res, next) => {
           });
           score -= 20;
         }
-        if (maxResiliency !== ResiliencyLevel.MULTI_AZ) {
+        if (rankOf(maxResiliency ?? '') < multiAzRank) {
           gaps.push({
             id: `${app.id}-no-multi-az`,
             applicationId: app.id,
@@ -240,7 +247,7 @@ router.get('/', async (_req, res, next) => {
           });
           score -= 20;
         }
-        if (maxResiliency !== ResiliencyLevel.MULTI_AZ) {
+        if (rankOf(maxResiliency ?? '') < multiAzRank) {
           gaps.push({
             id: `${app.id}-no-multi-az`,
             applicationId: app.id,

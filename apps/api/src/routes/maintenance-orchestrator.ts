@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ResiliencyLevel, InstanceStatus, HealthStatus, LifecyclePhase, MaintenanceStatus } from '@prisma/client';
+import { InstanceStatus, HealthStatus, LifecyclePhase, MaintenanceStatus } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db';
 
