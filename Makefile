@@ -103,8 +103,12 @@ deploy:
 	done && \
 	ls .native-cache/ && \
 	npm install --force --legacy-peer-deps --no-package-lock --omit=optional $(NPM_PLATFORM_FLAGS) && \
+	for ws in apps/web apps/api packages/shared-types; do \
+		rm -rf $$ws/node_modules/esbuild $$ws/node_modules/@esbuild $$ws/node_modules/rollup $$ws/node_modules/@rollup 2>/dev/null; \
+	done; \
 	ESBUILD_VERSION=$$(node -p "require('./node_modules/esbuild/package.json').version") && \
 	ROLLUP_VERSION=$$(node -p "require('./node_modules/rollup/package.json').version") && \
+	if [ "$$ESBUILD_VERSION" != "$$ESBUILD_PIN" ] || [ "$$ROLLUP_VERSION" != "$$ROLLUP_PIN" ]; then echo "ERROR: npm resolved esbuild $$ESBUILD_VERSION / rollup $$ROLLUP_VERSION but the pinned versions are $$ESBUILD_PIN / $$ROLLUP_PIN — the package.json overrides were not applied (stale checkout?). Run 'git log -1' and re-pull."; exit 1; fi && \
 	echo "==> Installed esbuild $$ESBUILD_VERSION / rollup $$ROLLUP_VERSION — extracting staged natives" && \
 	for plat in linux-arm64 linux-x64 darwin-arm64 darwin-x64; do \
 		tgz=$$(ls .native-cache/esbuild-$$plat-*.tgz | head -1); \
