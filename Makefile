@@ -109,9 +109,13 @@ deploy:
 	for ws in apps/web apps/api packages/shared-types; do \
 		rm -rf $$ws/node_modules/esbuild $$ws/node_modules/@esbuild $$ws/node_modules/rollup $$ws/node_modules/@rollup 2>/dev/null; \
 	done && \
+	for d in $$(find node_modules -mindepth 3 -type d \( -name esbuild -o -name rollup -o -name "@esbuild" -o -name "@rollup" \) -prune 2>/dev/null); do rm -rf "$$d"; done; \
 	ESBUILD_VERSION=$$(node -p "require('./node_modules/esbuild/package.json').version") && \
 	ROLLUP_VERSION=$$(node -p "require('./node_modules/rollup/package.json').version") && \
 	if [ "$$ESBUILD_VERSION" != "$$ESBUILD_PIN" ] || [ "$$ROLLUP_VERSION" != "$$ROLLUP_PIN" ]; then echo "ERROR: npm resolved esbuild $$ESBUILD_VERSION / rollup $$ROLLUP_VERSION but the pinned versions are $$ESBUILD_PIN / $$ROLLUP_PIN — the package.json overrides were not applied (stale checkout?). Run 'git log -1' and re-pull."; exit 1; fi && \
+	VITE_ESBUILD=$$(node -e "const path=require('path');const p=require.resolve('esbuild/package.json',{paths:[path.dirname(require.resolve('vite/package.json'))]});console.log(require(p).version)") && \
+	echo "==> vite resolves esbuild $$VITE_ESBUILD (must equal $$ESBUILD_PIN)" && \
+	if [ "$$VITE_ESBUILD" != "$$ESBUILD_PIN" ]; then echo "ERROR: vite resolves esbuild $$VITE_ESBUILD but the pinned version is $$ESBUILD_PIN — a nested esbuild copy survives; rm -rf node_modules apps/web/node_modules then 'make deploy' again."; exit 1; fi && \
 	echo "==> Installed esbuild $$ESBUILD_VERSION / rollup $$ROLLUP_VERSION — extracting staged natives" && \
 	for plat in linux-arm64 linux-x64 darwin-arm64 darwin-x64; do \
 		tgz=$$(ls .native-cache/esbuild-$$plat-*.tgz | head -1); \
