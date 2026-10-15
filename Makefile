@@ -80,23 +80,30 @@ deploy:
 	. "$(shell pwd)/.source.prisma" && \
 	for i in 1 2 3 4 5; do rm -rf node_modules 2>/dev/null && break || sleep 2; done; \
 	if [ -d node_modules ]; then echo "ERROR: cannot remove node_modules (a process keeps recreating files — close editors/language servers and retry)"; exit 1; fi && \
-	npm install --force --legacy-peer-deps --no-package-lock $(NPM_PLATFORM_FLAGS) && \
-	NATIVE_SRC=$$( [ -d lib/native ] && ls lib/native/*.tgz >/dev/null 2>&1 && echo "lib/native" || echo "registry" ) && \
-	echo "==> Native bundler binaries source: $$NATIVE_SRC" && \
-	ESBUILD_VERSION=$$(node -p "require('./node_modules/esbuild/package.json').version") && \
-	ROLLUP_VERSION=$$(node -p "require('./node_modules/rollup/package.json').version") && \
+	echo "==> Staging native bundler binaries (extracted into node_modules AFTER install)" && \
+	mkdir -p .native-cache && \
 	for plat in linux-arm64 linux-x64 darwin-arm64 darwin-x64; do \
 		tgz=$$(ls lib/native/esbuild-$$plat-*.tgz 2>/dev/null | head -1 || true); \
-		if [ -n "$$tgz" ]; then cp "$$tgz" lib/native/.extract.tgz; \
-		else npm pack @esbuild/$$plat@$$ESBUILD_VERSION --pack-destination lib/native >/dev/null 2>&1 && tgz="lib/native/esbuild-$$plat-$$ESBUILD_VERSION.tgz" && cp "$$tgz" lib/native/.extract.tgz || { echo "ERROR: cannot obtain esbuild-$$plat tarball (not in lib/native/, registry failed). Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
-		mkdir -p node_modules/@esbuild/$$plat && tar -xzf lib/native/.extract.tgz -C node_modules/@esbuild/$$plat --strip-components=1 && rm -f lib/native/.extract.tgz; \
+		if [ -n "$$tgz" ]; then cp "$$tgz" .native-cache/; \
+		else npm pack @esbuild/$$plat@0.28.1 --pack-destination .native-cache >/dev/null 2>&1 || { echo "ERROR: cannot obtain esbuild-$$plat tarball. Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
 	done && \
 	for spec in rollup-linux-arm64-gnu rollup-linux-x64-gnu rollup-darwin-arm64 rollup-darwin-x64; do \
 		tgz=$$(ls lib/native/rollup-$$spec-*.tgz 2>/dev/null | head -1 || true); \
-		if [ -n "$$tgz" ]; then cp "$$tgz" lib/native/.extract.tgz; \
-		else npm pack @rollup/$$spec@$$ROLLUP_VERSION --pack-destination lib/native >/dev/null 2>&1 && tgz="lib/native/rollup-$$spec-$$ROLLUP_VERSION.tgz" && cp "$$tgz" lib/native/.extract.tgz || { echo "ERROR: cannot obtain rollup-$$spec tarball (not in lib/native/, registry failed). Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
-		mkdir -p node_modules/@rollup/$$spec && tar -xzf lib/native/.extract.tgz -C node_modules/@rollup/$$spec --strip-components=1 && rm -f lib/native/.extract.tgz; \
+		if [ -n "$$tgz" ]; then cp "$$tgz" .native-cache/; \
+		else npm pack @rollup/$$spec@4.62.3 --pack-destination .native-cache >/dev/null 2>&1 || { echo "ERROR: cannot obtain rollup-$$spec tarball. Run 'make build' on a connected machine and commit lib/native/."; exit 1; }; fi; \
 	done && \
+	ls .native-cache/ && \
+	npm install --force --legacy-peer-deps --no-package-lock --omit=optional $(NPM_PLATFORM_FLAGS) && \
+	ESBUILD_VERSION=$$(node -p "require('./node_modules/esbuild/package.json').version") && \
+	ROLLUP_VERSION=$$(node -p "require('./node_modules/rollup/package.json').version") && \
+	echo "==> Installed esbuild $$ESBUILD_VERSION / rollup $$ROLLUP_VERSION — extracting staged natives" && \
+	for plat in linux-arm64 linux-x64 darwin-arm64 darwin-x64; do \
+		mkdir -p node_modules/@esbuild/$$plat && tar -xzf .native-cache/esbuild-$$plat-*.tgz -C node_modules/@esbuild/$$plat --strip-components=1; \
+	done && \
+	for spec in rollup-linux-arm64-gnu rollup-linux-x64-gnu rollup-darwin-arm64 rollup-darwin-x64; do \
+		mkdir -p node_modules/@rollup/$$spec && tar -xzf .native-cache/rollup-$$spec-*.tgz -C node_modules/@rollup/$$spec --strip-components=1; \
+	done && \
+	rm -rf .native-cache && \
 	npm run build -w packages/shared-types && \
 	npx prisma generate --schema=apps/api/prisma/schema.prisma && \
 	npm run build -w apps/web && \
