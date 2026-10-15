@@ -143,6 +143,19 @@ check-natives:
 	@echo "==> rollup native:  $$(node -e "console.log(require('rollup/dist/native.js') ? 'loads' : 'loaded')" 2>&1 | tail -1)"
 	@node -e "const fs=require('fs');const d='node_modules/@esbuild/darwin-'+process.arch;console.log('==> installed @esbuild variants: '+fs.readdirSync('node_modules/@esbuild').join(', '));console.log('==> expected for this host: @esbuild/darwin-'+process.arch);if(fs.existsSync(d+'/bin/esbuild')){const st=fs.statSync(d+'/bin/esbuild');console.log('==> binary executable: '+(st.mode&0o111?'yes':'NO — run: chmod +x '+d+'/bin/esbuild'))}else{console.log('==> MISSING: '+d+'/bin/esbuild')}"
 
+## Test vite — reproduce the web build's esbuild service usage and print a
+## one-word verdict per probe (read them aloud, nothing needs to be sent).
+## Probe 1: direct binary (bypasses every JS wrapper). Probe 2: the esbuild
+## API exactly as vite uses it (service spawn + TS transform, the very step
+## that loads vite.config.ts). Probe 3: rollup native load (next bundler
+## stage). Probe 4: the actual web build, verbose on failure.
+test-vite:
+	@echo "==> macOS $$(sw_vers -productVersion 2>/dev/null) / $$(uname -m) / node $$(node -v)"
+	@echo "PROBE 1 (direct binary): $$(./node_modules/@esbuild/darwin-$$(uname -m | sed 's/arm64/arm64/;s/x86_64/x64/')/bin/esbuild --version 2>&1 | tail -1)"
+	@node -e "require('./node_modules/esbuild/lib/main.js').transform('const a: number = 1', { loader: 'ts' }).then(() => { console.log('PROBE 2 (esbuild service + TS): OK'); process.exit(0) }).catch(e => { console.log('PROBE 2 (esbuild service + TS): FAIL — ' + String(e.message).split('\n')[0]); process.exit(1) })"
+	@node -e "try { require('rollup/dist/native.js'); console.log('PROBE 3 (rollup native): OK') } catch (e) { console.log('PROBE 3 (rollup native): FAIL — ' + String(e.message).split('\n')[0]); process.exit(1) }"
+	@cd apps/web && npx vite build 2>&1 | tail -3 && echo "PROBE 4 (web build): OK" || echo "PROBE 4 (web build): FAIL — see lines above"
+
 ## Run — Start all containers (db, api, web).
 ## Recreates containers to ensure the latest built images are used.
 ## --renew-anon-volumes is REQUIRED: the api container mounts an anonymous
