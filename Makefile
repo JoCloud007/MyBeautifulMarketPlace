@@ -113,13 +113,16 @@ restart-api:
 ## runbook: backup, schema push, recreate, incremental seed.
 ## Safe on a database with existing data: no destructive flags, no deletes.
 update:
-	@echo "==> 1/4 Backing up database to backup_`date +%F_%H%M`.sql"
+	@echo "==> 1/5 Backing up database to backup_`date +%F_%H%M`.sql"
 	@docker compose exec -T db pg_dump -U cloudmarket -d cloudmarket > backup_`date +%F_%H%M`.sql
-	@echo "==> 2/4 Recreating containers with fresh code and dist"
+	@echo "==> 2/5 Recreating containers with fresh code and dist"
 	docker compose up -d --force-recreate --renew-anon-volumes api web
-	@echo "==> 3/4 Pushing Prisma schema (non-destructive db push, from the fresh image)"
+	@echo "==> 3/5 Pre-converting enum columns db push cannot alter (idempotent, lossless)"
+	@docker compose exec -T db psql -U cloudmarket -d cloudmarket -v ON_ERROR_STOP=1 \
+		< apps/api/prisma/migrations/202610151000_resiliency_enum_to_text/migration.sql
+	@echo "==> 4/5 Pushing Prisma schema (non-destructive db push, from the fresh image)"
 	. "$(shell pwd)/.source.prisma" && docker compose exec -T api npx prisma db push
-	@echo "==> 4/4 Running incremental seed"
+	@echo "==> 5/5 Running incremental seed"
 	$(MAKE) seed-incremental
 	@echo ""
 	@echo "✓ Deployment updated — schema, dist and seed are current"

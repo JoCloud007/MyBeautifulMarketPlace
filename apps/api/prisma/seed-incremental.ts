@@ -488,6 +488,16 @@ async function main() {
     console.log('  ✅ All ProductVariants already have lifecycle dates');
   }
 
+  // ── Resiliency levels (idempotent, separate script) ─────────────────
+  // Spawned as a child to keep the resiliency seed standalone — it is also
+  // runnable on its own. It creates STANDARD/HA/MULTI_AZ if missing.
+  const { execSync } = require('child_process');
+  try {
+    execSync('npx tsx prisma/seed-resiliency-levels.ts', { stdio: 'inherit', cwd: __dirname + '/..' });
+  } catch {
+    console.log('  ⚠️ Resiliency levels seed failed — run it manually: npx tsx prisma/seed-resiliency-levels.ts');
+  }
+
   console.log('✅ Incremental seed completed — no data was deleted');
 }
 
