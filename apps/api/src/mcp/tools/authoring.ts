@@ -55,7 +55,10 @@ const RESOURCES: WriteResource[] = [
   { name: 'maintenance_window', basePath: '/api/maintenance-windows', ops: ['create', 'update', 'delete'], hint: 'Planned maintenance windows.' },
   { name: 'performance_profile', basePath: '/api/performance-profiles', ops: ['create', 'update', 'delete'], hint: 'Performance profiles (benchmark scores).' },
   { name: 'presentation_order', basePath: '/api/presentation-orders', ops: ['create', 'update', 'delete'], hint: 'Catalog display ordering.' },
-  { name: 'product_version', basePath: '/api/product-versions', ops: ['create', 'update', 'delete'], hint: 'Product versions and lifecycle dates.' },
+  // create is NOT factory-generated: POST /api/product-versions has no
+  // :productId and the router 404s — creation lives on the nested route
+  // (see authoring_create_product_version below).
+  { name: 'product_version', basePath: '/api/product-versions', ops: ['update', 'delete'], hint: 'Product versions and lifecycle dates.' },
   { name: 'product', basePath: '/api/products', ops: ['create', 'update', 'delete'], hint: 'Catalog products (categoryId, computeType...).' },
   { name: 'zone', basePath: '/api/zones', ops: ['create', 'update', 'delete'], updateMethod: 'PUT', hint: 'Infrastructure zones.' },
   { name: 'os', basePath: '/api/os', ops: ['create', 'update', 'delete'], updateMethod: 'PUT', hint: 'Operating systems.' },
@@ -113,6 +116,27 @@ function buildResourceTools(resource: WriteResource): McpToolDefinition[] {
 /** Named extras — write flows that do not fit the base-path factory. */
 function buildExtraTools(): McpToolDefinition[] {
   return [
+    // Product versions: creation lives on the NESTED route only —
+    // POST /api/product-versions (flat) has no :productId and 404s.
+    {
+      name: 'authoring_create_product_version',
+      description:
+        'Create a version of a product with its lifecycle dates — POST /api/products/:productId/versions.',
+      inputSchema: z.object({
+        productId: uuidSchema.describe('Parent product UUID'),
+        body: bodyField,
+      }),
+      handler: async (args) => {
+        const { productId, body } = (args ?? {}) as {
+          productId: string;
+          body?: Record<string, unknown>;
+        };
+        return toToolResult(
+          await apiPost(`/api/products/${productId}/versions`, body ?? {}),
+        );
+      },
+    },
+
     // Forecast lifecycle: patch + delete (create + transitions already in planning).
     {
       name: 'authoring_update_forecast',
@@ -169,7 +193,7 @@ function buildExtraTools(): McpToolDefinition[] {
     },
     {
       name: 'authoring_create_upgrade_path',
-      description: 'Create an upgrade path between two product versions — POST /api/products/:productId/upgrade-paths.',
+      description: 'Create a transition between two product versions (legacy alias, creates a Transition) — POST /api/products/:productId/upgrade-paths.',
       inputSchema: z.object({
         productId: uuidSchema.describe('Product UUID'),
         body: bodyField,
@@ -184,7 +208,7 @@ function buildExtraTools(): McpToolDefinition[] {
     },
     {
       name: 'authoring_delete_upgrade_path',
-      description: 'Delete an upgrade path — DELETE /api/products/:productId/upgrade-paths/:pathId.',
+      description: 'Delete a transition (legacy alias) — DELETE /api/products/:productId/upgrade-paths/:pathId.',
       inputSchema: z.object({
         productId: uuidSchema.describe('Product UUID'),
         pathId: uuidSchema.describe('Upgrade path UUID'),
