@@ -86,10 +86,11 @@ router.put('/:id', async (req, res, next) => {
       }
     }
 
-    // Verify OS version belongs to the target OS (skipped for storage
-    // products whose variant carries no OS at all)
-    const finalOsId = data.osId ?? existing.osId ?? undefined;
-    const finalOsVersionId = data.osVersionId ?? existing.osVersionId ?? undefined;
+    // Verify OS version belongs to the target OS (skipped when the variant
+    // ends up with no OS at all — storage products). "absent" (undefined)
+    // keeps the stored value; explicit null clears it.
+    const finalOsId = data.osId === undefined ? existing.osId : data.osId;
+    const finalOsVersionId = data.osVersionId === undefined ? existing.osVersionId : data.osVersionId;
     if (finalOsId && finalOsVersionId) {
       const osVersion = await prisma.osVersion.findFirst({
         where: { id: finalOsVersionId, osId: finalOsId },
