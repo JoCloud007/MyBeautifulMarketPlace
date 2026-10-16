@@ -2,7 +2,7 @@
 # Simplifies build, deploy, and run workflows for both online (build)
 # and air-gapped (deploy) environments.
 
-.PHONY: clean build deploy run help backfill-variants restart-api seed-incremental update fix-client-db fix-client-db-profiles
+.PHONY: clean build deploy run help backfill-variants restart-api seed-incremental update fix-client-db fix-client-db-profiles fix-client-db-variant-os
 
 # Force bash — avoids POSIX/dash incompatibilities on Ubuntu
 SHELL := /bin/bash
@@ -248,6 +248,20 @@ fix-client-db-profiles:
 	@echo "==> 3/3 Backfilling flavor profiles"
 	@docker compose exec -T db psql -U cloudmarket -d cloudmarket -v ON_ERROR_STOP=1 \
 		< apps/api/prisma/migrations/202610151200_add_flavor_profile/backfill.sql
+	@echo ""
+	@echo "✓ Done. Restart API to clear caches: make restart-api"
+
+## Fix client DB — makes ProductVariant optional relation columns nullable.
+## For databases provisioned by an older `db push` where osId/osVersionId/
+## continuityLevelId/productVersionId are still NOT NULL: clearing the OS of
+## a storage variant then fails with "Null constraint violation (osId)".
+## Non-destructive: constraint relaxation only, no data touched. Idempotent.
+fix-client-db-variant-os:
+	@echo "==> 1/2 Backing up database"
+	@docker compose exec -T db pg_dump -U cloudmarket -d cloudmarket > backup_variant_os_`date +%F_%H%M`.sql
+	@echo "==> 2/2 Making ProductVariant optional columns nullable"
+	@docker compose exec -T db psql -U cloudmarket -d cloudmarket -v ON_ERROR_STOP=1 \
+		< apps/api/prisma/migrations/202610161800_variant_optional_columns/migration.sql
 	@echo ""
 	@echo "✓ Done. Restart API to clear caches: make restart-api"
 
