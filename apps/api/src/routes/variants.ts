@@ -23,8 +23,10 @@ const createVariantSchema = z.object({
 
 const updateVariantSchema = z.object({
   name: z.string().min(1).optional(),
-  osId: z.string().uuid().optional(),
-  osVersionId: z.string().uuid().optional(),
+  // Nullable: editing a variant must be able to CLEAR the OS (storage
+  // products) — the UI sends explicit nulls so emptied fields persist.
+  osId: z.string().uuid().optional().nullable(),
+  osVersionId: z.string().uuid().optional().nullable(),
   flavorId: z.string().uuid().optional(),
   availabilityZoneIds: z.array(z.string().uuid()).max(50).optional(),
   zoneIds: z.array(z.string().uuid()).max(50).optional(),
