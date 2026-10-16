@@ -499,24 +499,30 @@ async function main() {
     },
   });
 
-  // Create Upgrade Paths
-  await prisma.upgradePath.create({
+  // Create Transitions (Transition is the single source of truth — no UpgradePath writes)
+  await prisma.transition.create({
     data: {
+      name: 'Virtual Machine 11.0 → 12.0',
+      slug: 'virtual-machine-11-0-to-12-0',
       fromProductId: vmProduct.id,
       toProductId: vmProduct.id,
       fromVersion: '11.0',
       toVersion: '12.0',
       migrationType: 'IN_PLACE',
+      status: 'AVAILABLE',
       notes: 'In-place upgrade via apt full-upgrade',
     },
   });
-  await prisma.upgradePath.create({
+  await prisma.transition.create({
     data: {
+      name: 'Virtual Machine 2019 → 2022',
+      slug: 'virtual-machine-2019-to-2022',
       fromProductId: vmProduct.id,
       toProductId: vmProduct.id,
       fromVersion: '2019',
       toVersion: '2022',
       migrationType: 'BLUE_GREEN',
+      status: 'AVAILABLE',
       notes: 'Blue-green migration recommended for zero downtime',
     },
   });

@@ -492,11 +492,13 @@ function VariantModal({
   onClose,
   productId,
   editing,
+  isCompute,
 }: {
   open: boolean;
   onClose: () => void;
   productId: string;
   editing: ProductVariant | null;
+  isCompute: boolean;
 }) {
   const createVariant = useCreateProductVariant();
   const updateVariant = useUpdateProductVariant();
@@ -526,8 +528,10 @@ function VariantModal({
         ...form,
         // Empty strings are not valid UUIDs — normalize optional relations
         // to null so storage products can create variants without an OS.
-        osId: form.osId || null,
-        osVersionId: form.osVersionId || null,
+        // Non-compute variants must never carry an OS — force null even if the
+        // form somehow holds values (e.g. a legacy variant being re-saved).
+        osId: isCompute ? form.osId || null : null,
+        osVersionId: isCompute ? form.osVersionId || null : null,
         continuityLevelId: form.continuityLevelId || null,
         productVersionId: form.productVersionId || null,
       };
@@ -562,8 +566,10 @@ function VariantModal({
             <label className="text-sm font-medium text-slate-300">Name</label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
           </div>
+          {isCompute && (
+          <>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-300">Operating System <span className="text-slate-500 font-normal">(optional — storage products have none)</span></label>
+            <label className="text-sm font-medium text-slate-300">Operating System <span className="text-slate-500 font-normal">(optional)</span></label>
             <select
               value={form.osId}
               onChange={(e) => setForm({ ...form, osId: e.target.value, osVersionId: '' })}
@@ -593,6 +599,8 @@ function VariantModal({
               ))}
             </select>
           </div>
+          </>
+          )}
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-300">Flavor</label>
             <select
@@ -688,7 +696,12 @@ function ProductDrawer({
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
-  const isCompute = (product.category?.flavorFieldDefinitions?.length ?? 0) > 0 || (product.variants?.length ?? 0) > 0;
+  // Strict rule (same as forecasts.ts / API form-options): only categories whose
+  // flavorFieldDefinitions include a "vcpu" field are compute. Storage categories
+  // (Data: maxGb/iops/tier) must never carry an OS on their variants.
+  const isCompute = (product.category?.flavorFieldDefinitions ?? []).some(
+    (d: any) => d.key === 'vcpu'
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -806,7 +819,7 @@ function ProductDrawer({
         </div>
       </div>
 
-      <VariantModal key={editingVariant?.id ?? 'new'} open={variantModalOpen} onClose={() => setVariantModalOpen(false)} productId={product.id} editing={editingVariant} />
+      <VariantModal key={editingVariant?.id ?? 'new'} open={variantModalOpen} onClose={() => setVariantModalOpen(false)} productId={product.id} editing={editingVariant} isCompute={isCompute} />
 
       <ConfirmDialog
         open={confirmDelete.open}

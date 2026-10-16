@@ -171,24 +171,32 @@ async function main() {
     console.log('  Created dependency: Archiving → Object Storage (recommended)');
   }
 
-  // ── Upgrade Path ────────────────────────────────────────────────────
-  const existingUpgrade = await prisma.upgradePath.findFirst({
-    where: { fromProductId: objectStorage.id, toProductId: archivingProduct.id },
+  // ── Transition (single source of truth — no UpgradePath writes) ─────
+  const existingTransition = await prisma.transition.findFirst({
+    where: {
+      fromProductId: objectStorage.id,
+      toProductId: archivingProduct.id,
+      fromVersion: '1.0',
+      toVersion: '1.0',
+    },
   });
-  if (existingUpgrade) {
-    console.log('  Upgrade path Object Storage → Archiving already exists — skipped');
+  if (existingTransition) {
+    console.log('  Transition Object Storage → Archiving already exists — skipped');
   } else {
-    await prisma.upgradePath.create({
+    await prisma.transition.create({
       data: {
+        name: 'Object Storage 1.0 → Archiving as a Service 1.0',
+        slug: 'object-storage-1-0-to-archiving-1-0',
         fromProductId: objectStorage.id,
         toProductId: archivingProduct.id,
         fromVersion: '1.0',
         toVersion: '1.0',
         migrationType: 'SNAPSHOT',
+        status: 'AVAILABLE',
         notes: 'Migrate objects to archive tier via snapshot transfer with policy-based lifecycle transition',
       },
     });
-    console.log('  Created upgrade path: Object Storage → Archiving as a Service');
+    console.log('  Created transition: Object Storage → Archiving as a Service');
   }
 
   // ── Instance ────────────────────────────────────────────────────────

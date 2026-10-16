@@ -98,7 +98,9 @@ function DialogContent({ className, children }: { className?: string; children: 
           className
         )}
       >
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* When the dialog has its default padding, bleed the scroll area to the panel edge
+            so its scrollbar sits at the border and clears the close button. */}
+        <div className="min-h-0 flex-1 overflow-y-auto [.p-6>&]:-mr-6 [.p-6>&]:pr-6">
           {children}
         </div>
         <button

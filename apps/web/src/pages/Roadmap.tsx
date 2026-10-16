@@ -588,6 +588,8 @@ function TreeNodeRow({
   showTodayBar,
   depth = 0,
   labelWidth = 240,
+  sort,
+  onSort,
 }: {
   node: TreeNode;
   timelineStart: Date;
@@ -595,25 +597,49 @@ function TreeNodeRow({
   showTodayBar: boolean;
   depth?: number;
   labelWidth?: number;
+  sort: SortState | null;
+  onSort: (key: string) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.children.length > 0;
   const isLeaf = !hasChildren && node.versions.length > 0;
+  // Clicking a node label sorts its SIBLINGS at this axis level. The key is
+  // namespaced by axis so every node of the same level shares one sort state.
+  const sortKey = `NODE:${node.axis}`;
+  const active = sort?.key === sortKey;
+  // The CHILDREN of this node are siblings to each other at the next axis
+  // level: they sort when that level's key is active (the clicked label's own
+  // axis sorts its siblings, handled by the parent / top-level list).
+  const childAxis = node.children[0]?.axis;
+  const childrenSorted = childAxis ? sort?.key === `NODE:${childAxis}` : false;
+  const sortedChildren = applyRowSort(node.children, childrenSorted ? sort : null, (c) => c.label);
 
   return (
     <div className={depth > 0 ? 'ml-4' : ''}>
+      {/* The row label is a sort control; only the chevron toggles the node. */}
       <button
-        onClick={() => hasChildren && setExpanded(!expanded)}
+        onClick={() => onSort(sortKey)}
+        title="Click to sort by this field"
         className="flex items-center gap-2 mb-2 text-left group w-full"
       >
         {hasChildren && (
-          expanded
-            ? <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
-            : <ChevronRight className="h-3.5 w-3.5 text-slate-500" />
+          <span
+            onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+            title={expanded ? 'Collapse' : 'Expand'}
+          >
+            {expanded
+              ? <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
+              : <ChevronRight className="h-3.5 w-3.5 text-slate-500" />}
+          </span>
         )}
         {!hasChildren && <span className="w-3.5" />}
-        <span className="text-sm font-medium text-slate-200 group-hover:text-cyan-400 transition-colors">
+        <span
+          className={`text-sm font-medium transition-colors ${
+            active ? 'text-cyan-400' : 'text-slate-200 group-hover:text-cyan-400'
+          }`}
+        >
           {node.label}
+          <span className="ml-1 text-[9px] text-slate-500">{active ? (sort!.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
         </span>
         {node.axis === 'FAMILY' && (
           <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${getFamilyLabel(node.label).color} ${getFamilyLabel(node.label).bg}`}>
@@ -632,8 +658,8 @@ function TreeNodeRow({
 
       {expanded && (
         <div>
-          {node.children.map((child) => (
-            <TreeNodeRow key={child.id} node={child} timelineStart={timelineStart} timelineEnd={timelineEnd} showTodayBar={showTodayBar} depth={depth + 1} labelWidth={labelWidth} />
+          {sortedChildren.map((child) => (
+            <TreeNodeRow key={child.id} node={child} timelineStart={timelineStart} timelineEnd={timelineEnd} showTodayBar={showTodayBar} depth={depth + 1} labelWidth={labelWidth} sort={sort} onSort={onSort} />
           ))}
           {isLeaf && (
             <div className="ml-5 space-y-1">
@@ -800,9 +826,48 @@ function buildFlatRows(versions: RoadmapVersion[], axes: Axis[]): FlatRow[] {
     }
   }
 
-  const time = (d: string) => { const t = new Date(d).getTime(); return isNaN(t) ? Infinity : t; };
-  return Array.from(merged.values())
-    .sort((a, b) => time(a.version.releaseDate) - time(b.version.releaseDate));
+  // No implicit sort here: the flat view applies the user's click-to-sort.
+  return Array.from(merged.values());
+}
+
+/* ── Click-to-sort state ───────────────────────────────────────── */
+
+type SortDir = 'asc' | 'desc';
+
+interface SortState {
+  key: string;
+  dir: SortDir;
+}
+
+// Natural comparator: numeric strings compare numerically, ISO dates
+// chronologically, everything else case-insensitively. Empty values sink
+// to the bottom regardless of direction.
+function compareSortValues(a: string, b: string): number {
+  const aEmpty = !a;
+  const bEmpty = !b;
+  if (aEmpty || bEmpty) return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1;
+  const an = Number(a);
+  const bn = Number(b);
+  const aNum = a.trim() !== '' && !isNaN(an);
+  const bNum = b.trim() !== '' && !isNaN(bn);
+  if (aNum && bNum) return an - bn;
+  const at = Date.parse(a);
+  const bt = Date.parse(b);
+  if (!isNaN(at) && !isNaN(bt) && /^\d{4}-\d{2}-\d{2}/.test(a) && /^\d{4}-\d{2}-\d{2}/.test(b)) return at - bt;
+  return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
+}
+
+// Sorts rows by a derived string value. Returns the input untouched when no
+// sort is active so callers can pass pre-grouped arrays through safely.
+// Descending reverses the ordered non-empty values but keeps empty values at
+// the bottom, per compareSortValues' contract.
+function applyRowSort<T>(rows: T[], sort: SortState | null, valueOf: (row: T) => string): T[] {
+  if (!sort) return rows;
+  const sortedAsc = [...rows].sort((a, b) => compareSortValues(valueOf(a), valueOf(b)));
+  if (sort.dir === 'asc') return sortedAsc;
+  let firstEmpty = sortedAsc.length;
+  while (firstEmpty > 0 && valueOf(sortedAsc[firstEmpty - 1]) === '') firstEmpty--;
+  return [...sortedAsc.slice(0, firstEmpty).reverse(), ...sortedAsc.slice(firstEmpty)];
 }
 
 function FlatTable({
@@ -813,6 +878,9 @@ function FlatTable({
   showTodayBar,
   columnWidths,
   onResizeColumn,
+  sort,
+  onSort,
+  nameSort,
 }: {
   rows: FlatRow[];
   axes: Axis[];
@@ -821,38 +889,95 @@ function FlatTable({
   showTodayBar: boolean;
   columnWidths: number[];
   onResizeColumn: (index: number, e: React.MouseEvent) => void;
+  sort: SortState | null;
+  onSort: (key: string) => void;
+  nameSort: SortState | null;
 }) {
   return (
     <div className="flex flex-col">
       {/* Header */}
       <div className="flex border-b border-slate-700 pb-1 mb-2 select-none">
-        {axes.map((axis, i) => (
-          <div
-            key={axis}
-            className="relative text-[11px] text-blue-400 font-semibold px-1 flex items-center"
-            style={{ width: columnWidths[i], minWidth: columnWidths[i] }}
-          >
-            {axisLabels[axis]}
+        {axes.map((axis, i) => {
+          const key = `AXIS:${axis}:${i}`;
+          const active = sort?.key === key;
+          return (
             <div
-              className="resize-handle absolute top-0 h-full w-3 cursor-col-resize z-20 flex items-center justify-center -right-1.5"
-              onMouseDown={(e) => onResizeColumn(i, e)}
+              key={axis}
+              className="relative text-[11px] font-semibold px-1 flex items-center"
+              style={{ width: columnWidths[i], minWidth: columnWidths[i] }}
             >
-              <div className="w-px h-5 bg-slate-500/60 hover:bg-blue-400 transition-colors rounded-full" />
+              <button
+                type="button"
+                onClick={() => onSort(key)}
+                className={`flex items-center gap-0.5 hover:text-cyan-300 transition-colors ${active ? 'text-cyan-400' : 'text-blue-400'}`}
+                title="Click to sort by this column"
+              >
+                {axisLabels[axis]}
+                <span className="text-[9px]">{active ? (sort!.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+              </button>
+              <div
+                className="resize-handle absolute top-0 h-full w-3 cursor-col-resize z-20 flex items-center justify-center -right-1.5"
+                onMouseDown={(e) => onResizeColumn(i, e)}
+              >
+                <div className="w-px h-5 bg-slate-500/60 hover:bg-blue-400 transition-colors rounded-full" />
+              </div>
             </div>
-          </div>
-        ))}
-        <div className="flex-1" />
+          );
+        })}
+        <div className="flex-1 flex items-center">
+          {axes.length === 0 && (
+            <button
+              type="button"
+              onClick={() => onSort('NAME')}
+              className={`flex items-center gap-0.5 text-[11px] font-semibold hover:text-cyan-300 transition-colors ${
+                nameSort?.key === 'NAME' ? 'text-cyan-400' : 'text-blue-400'
+              }`}
+              title="Click to sort by version name"
+            >
+              Version
+              <span className="text-[9px]">{nameSort?.key === 'NAME' ? (nameSort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Rows */}
       <div className="space-y-1">
         {(() => {
+          // Click-to-sort: order the flat rows first (group order follows the
+          // sorted first row of each label group), then group by label values.
+          // With no active sort, the historical default applies: chronological
+          // releaseDate order.
+          const sortedRows = (() => {
+            const activeSort = sort && sort.key.startsWith('AXIS:') ? sort : nameSort;
+            if (!activeSort) {
+              return [...rows].sort(
+                (a, b) => compareSortValues(a.version.releaseDate, b.version.releaseDate)
+              );
+            }
+            const axisIdx = activeSort.key.startsWith('AXIS:')
+              ? Number(activeSort.key.split(':')[2])
+              : -1;
+            return applyRowSort(rows, activeSort, (row) =>
+              axisIdx >= 0 ? row.labels[axisIdx]?.label || '' : row.version.name
+            );
+          })();
           // Group rows by their label values
           const groups = new Map<string, FlatRow[]>();
-          for (const row of rows) {
+          for (const row of sortedRows) {
             const key = row.labels.map((l) => l.label).join('|');
             if (!groups.has(key)) groups.set(key, []);
             groups.get(key)!.push(row);
+          }
+          // Within each group, sort rows by release date (then name) so the
+          // visible order follows the active sort direction consistently.
+          for (const [, groupRows] of groups) {
+            const dir = (sort && sort.key.startsWith('AXIS:') ? sort.dir : nameSort?.dir) || 'asc';
+            const ordered = [...groupRows].sort((a, b) =>
+              compareSortValues(a.version.name, b.version.name) ||
+              compareSortValues(a.version.releaseDate, b.version.releaseDate)
+            );
+            groupRows.splice(0, groupRows.length, ...(dir === 'asc' ? ordered : ordered.reverse()));
           }
 
           const rendered: React.ReactNode[] = [];
@@ -1110,7 +1235,7 @@ interface CardRow {
   dates: { release: string; normalEnd: string; extendedEnd: string; eol: string };
 }
 
-function buildCardRows(versions: RoadmapVersion[], config: CardDesignConfig, sortNewest = true): CardRow[] {
+function buildCardRows(versions: RoadmapVersion[], config: CardDesignConfig, sortNewest = true, sort: SortState | null = null): CardRow[] {
   // One row per VERSION (cells + real lifecycle dates). Variants of the same
   // OS version that share all displayed values are aggregated, and their row
   // labels (e.g. regions) are merged by union — variant-level geo quirks must
@@ -1147,19 +1272,25 @@ function buildCardRows(versions: RoadmapVersion[], config: CardDesignConfig, sor
       labels: new Set(label.split(',').map((s) => s.trim()).filter(Boolean)),
     });
   }
-  // Sort rows by release date (newest version first by default, e.g.
+  const built = Array.from(byKey.values()).map(({ row, labels }) => ({
+    ...row,
+    label: [...labels].sort().join(', '),
+  }));
+  // Click-to-sort on a card field (label / cell1 / cell2) reorders rows.
+  if (sort && sort.key.startsWith('FIELD:')) {
+    const field = sort.key.slice('FIELD:'.length);
+    const valueOf = (r: CardRow) =>
+      field === 'LABEL' ? r.label : field === 'CELL1' ? r.cell1 : field === 'CELL2' ? r.cell2 : '';
+    return applyRowSort(built, sort, valueOf);
+  }
+  // Default: sort rows by release date (newest version first by default, e.g.
   // Windows Server 2025 → 2022 → 2019). Versions without a release date
   // always sink to the bottom of the card.
   const time = (r: CardRow) => {
     const x = new Date(r.dates.release).getTime();
     return isNaN(x) ? (sortNewest ? -Infinity : Infinity) : x;
   };
-  return Array.from(byKey.values())
-    .map(({ row, labels }) => ({
-      ...row,
-      label: [...labels].sort().join(', '),
-    }))
-    .sort((a, b) => (sortNewest ? time(b) - time(a) : time(a) - time(b)));
+  return built.sort((a, b) => (sortNewest ? time(b) - time(a) : time(a) - time(b)));
 }
 
 /* ── Transition row rendered inside a product card ─────────────── */
@@ -1318,7 +1449,7 @@ function LifecycleBar({ dates, toPct, cardStartPct, cardWidthPct }: {
   );
 }
 
-function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPct, widthPct, config, productTransitionsMap, showLifecycleBar = true, sortNewest = true }: {
+function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPct, widthPct, config, productTransitionsMap, showLifecycleBar = true, sortNewest = true, sort = null, onSort }: {
   group: RoadmapVersion[];
   timelineStart: Date;
   timelineEnd: Date;
@@ -1329,6 +1460,8 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
   productTransitionsMap?: { from: Map<string, Transition[]>; to: Map<string, Transition[]> };
   showLifecycleBar?: boolean;
   sortNewest?: boolean;
+  sort?: SortState | null;
+  onSort?: (key: string) => void;
 }) {
   // The card represents the whole family. The border reflects the BEST phase
   // available among its versions (best case): if any version is still in
@@ -1349,7 +1482,7 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
 
   const title = getCardFieldValue(group[0], config.title);
   const headerLabel = getCardFieldValue(group[0], config.headerLabel);
-  const rows = buildCardRows(group, config, sortNewest);
+  const rows = buildCardRows(group, config, sortNewest, sort);
   const cardStatus = getStatusConfig(group[0].status);
   // Transition entities attached to this product (from + to), rendered as rows in the card
   const groupTransitions: Transition[] = [
@@ -1382,7 +1515,14 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
             {headerLabel}
           </div>
           <div className="flex-1 px-3 py-1.5 text-xs font-semibold text-white text-center flex items-center justify-center gap-1.5 flex-wrap">
-            <span>{title}</span>
+            <span
+              onClick={() => onSort?.('COL:TITLE')}
+              title="Click to sort cards by this field"
+              className={`cursor-pointer transition-colors hover:text-cyan-300 ${sort?.key === 'COL:TITLE' ? 'text-cyan-400' : ''}`}
+            >
+              {title}
+              <span className="ml-1 text-[9px] text-slate-500">{sort?.key === 'COL:TITLE' ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+            </span>
             {phase === 'RELEASED' && <span className="text-emerald-400">✓</span>}
             {/* status chip with the legend label */}
             <span
@@ -1399,32 +1539,49 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
           <div key={i} className={`border-b ${style.cellBorder} last:border-b-0`}>
             {/* version cells */}
             <div className="flex">
-              <div className={`shrink-0 px-2 py-1 text-[10px] font-bold text-slate-400 border-r ${style.cellBorder} flex items-center`} style={{ minWidth: CARDS_LEFT_WIDTH }}>
-                {row.label}
+              <div className={`shrink-0 px-2 py-1 text-[10px] font-bold border-r ${style.cellBorder} flex items-center`} style={{ minWidth: CARDS_LEFT_WIDTH }}>
+                <span
+                  onClick={() => onSort?.('FIELD:LABEL')}
+                  title="Click to sort rows by this field"
+                  className={`cursor-pointer transition-colors hover:text-cyan-300 ${sort?.key === 'FIELD:LABEL' ? 'text-cyan-400' : 'text-slate-400'}`}
+                >
+                  {row.label}
+                  <span className="ml-1 text-[8px] opacity-70">{sort?.key === 'FIELD:LABEL' ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+                </span>
               </div>
               <div className={row.cell2 ? 'flex-1 min-w-0 px-2 py-1' : 'flex-1 px-2 py-1 basis-full'}>
                 {row.cell1 && (
-                  <span className={`inline-block w-full text-[11px] text-center rounded px-2 py-0.5 border ${
-                    row.cell1Status
-                      ? (row.cell1Status in phaseConfig
-                          ? `${phaseConfig[row.cell1Status as LifecyclePhase].color} ${phaseConfig[row.cell1Status as LifecyclePhase].border}`
-                          : `${getStatusConfig(row.cell1Status).color} ${getStatusConfig(row.cell1Status).border} ${getStatusConfig(row.cell1Status).bg}/10`)
-                      : 'text-cyan-300 border-cyan-600/70'
-                  }`}>
+                  <span
+                    onClick={() => onSort?.('FIELD:CELL1')}
+                    title="Click to sort rows by this field"
+                    className={`inline-block w-full text-[11px] text-center rounded px-2 py-0.5 border cursor-pointer transition-colors hover:brightness-125 ${
+                      row.cell1Status
+                        ? (row.cell1Status in phaseConfig
+                            ? `${phaseConfig[row.cell1Status as LifecyclePhase].color} ${phaseConfig[row.cell1Status as LifecyclePhase].border}`
+                            : `${getStatusConfig(row.cell1Status).color} ${getStatusConfig(row.cell1Status).border} ${getStatusConfig(row.cell1Status).bg}/10`)
+                        : 'text-cyan-300 border-cyan-600/70'
+                    } ${sort?.key === 'FIELD:CELL1' ? 'ring-1 ring-cyan-400' : ''}`}
+                  >
                     {row.cell1}
+                    <span className="ml-1 text-[8px] opacity-70">{sort?.key === 'FIELD:CELL1' ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
                   </span>
                 )}
               </div>
               {row.cell2 && (
                 <div className="shrink-0 min-w-0 px-2 py-1 flex items-center justify-end" style={{ flex: '0 0 auto', width: '11rem' }}>
-                  <span className={`inline-block max-w-full text-[10px] text-center rounded px-1.5 py-0.5 border ${
-                    row.cell2Status
-                      ? (row.cell2Status in phaseConfig
-                          ? `${phaseConfig[row.cell2Status as LifecyclePhase].color} ${phaseConfig[row.cell2Status as LifecyclePhase].border}`
-                          : `${getStatusConfig(row.cell2Status).color} ${getStatusConfig(row.cell2Status).border} ${getStatusConfig(row.cell2Status).bg}/10`)
-                      : 'text-slate-300 border-slate-600/70'
-                  }`}>
+                  <span
+                    onClick={() => onSort?.('FIELD:CELL2')}
+                    title="Click to sort rows by this field"
+                    className={`inline-block max-w-full text-[10px] text-center rounded px-1.5 py-0.5 border cursor-pointer transition-colors hover:brightness-125 ${
+                      row.cell2Status
+                        ? (row.cell2Status in phaseConfig
+                            ? `${phaseConfig[row.cell2Status as LifecyclePhase].color} ${phaseConfig[row.cell2Status as LifecyclePhase].border}`
+                            : `${getStatusConfig(row.cell2Status).color} ${getStatusConfig(row.cell2Status).border} ${getStatusConfig(row.cell2Status).bg}/10`)
+                        : 'text-slate-300 border-slate-600/70'
+                    } ${sort?.key === 'FIELD:CELL2' ? 'ring-1 ring-cyan-400' : ''}`}
+                  >
                     {row.cell2}
+                    <span className="ml-1 text-[8px] opacity-70">{sort?.key === 'FIELD:CELL2' ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
                   </span>
                 </div>
               )}
@@ -1448,11 +1605,13 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
   );
 }
 
-function CardsView({ versions, timelineStart, timelineEnd, showTodayBar }: {
+function CardsView({ versions, timelineStart, timelineEnd, showTodayBar, sort = null, onSort }: {
   versions: RoadmapVersion[];
   timelineStart: Date;
   timelineEnd: Date;
   showTodayBar: boolean;
+  sort?: SortState | null;
+  onSort: (key: string) => void;
 }) {
   const totalMs = timelineEnd.getTime() - timelineStart.getTime();
   const toPct = (d: Date) => Math.max(0, Math.min(100, ((d.getTime() - timelineStart.getTime()) / totalMs) * 100));
@@ -1512,8 +1671,17 @@ function CardsView({ versions, timelineStart, timelineEnd, showTodayBar }: {
     if (!byTitle.has(key)) byTitle.set(key, []);
     byTitle.get(key)!.push(v);
   }
-  const cards = Array.from(byTitle.values())
-    .sort((a, b) => new Date(a[0].releaseDate).getTime() - new Date(b[0].releaseDate).getTime());
+  // Card order: clicking the card title sorts cards alphabetically; the
+  // default stays chronological on the group's earliest release date.
+  const cards = (() => {
+    const groups = Array.from(byTitle.entries());
+    if (sort?.key === 'COL:TITLE') {
+      return applyRowSort(groups, sort, ([title]) => title).map(([, vs]) => vs);
+    }
+    return groups
+      .map(([, vs]) => vs)
+      .sort((a, b) => new Date(a[0].releaseDate).getTime() - new Date(b[0].releaseDate).getTime());
+  })();
 
   // Transitions render as rows inside their product cards, indexed by product name
   const { data: allTransitions } = useTransitions();
@@ -1656,6 +1824,8 @@ function CardsView({ versions, timelineStart, timelineEnd, showTodayBar }: {
                 productTransitionsMap={productTransitionsMap}
                 showLifecycleBar={showLifecycleBars}
                 sortNewest={sortNewest}
+                sort={sort}
+                onSort={onSort}
               />
             );
           })
@@ -1673,6 +1843,7 @@ export default function Roadmap() {
   const [selectedPhase, setSelectedPhase] = useState<LifecyclePhase | ''>('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState('');
   const [selectedRegion, setSelectedRegion] = useState('');
   const [selectedCountry, setSelectedCountry] = useState('');
   const [selectedAZ, setSelectedAZ] = useState('');
@@ -1840,8 +2011,30 @@ export default function Roadmap() {
     return Array.from(new Set(allVersions.map((v) => v.family).filter(Boolean)));
   }, [allVersions]);
 
+  // Click-to-sort: one state shared by every design. Sort keys are namespaced
+  // per surface: `AXIS:axis:idx` / `NAME` (flat columns), `NODE:axis:idx`
+  // (grouped tree levels), `FIELD:x` (card rows) and `COL:x` (card order).
+  // Clicking a key starts ascending, a second click flips to descending, a
+  // third clears the sort and restores the default order.
+  const [sort, setSort] = useState<SortState | null>(null);
+
+  const handleSort = useCallback((key: string) => {
+    setSort((prev) => {
+      if (prev?.key === key) {
+        return prev.dir === 'asc' ? { key, dir: 'desc' } : null;
+      }
+      return { key, dir: 'asc' };
+    });
+  }, []);
+
   const allCategories = useMemo(() => {
     return Array.from(new Set(allVersions.map((v) => v.category).filter(Boolean)));
+  }, [allVersions]);
+
+  const allProducts = useMemo(() => {
+    return Array.from(new Set(allVersions.map((v) => v.product).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b)
+    );
   }, [allVersions]);
 
   const allInfraVersions = useMemo(() => {
@@ -1878,6 +2071,9 @@ export default function Roadmap() {
     if (selectedCategory) {
       result = result.filter((v) => v.category === selectedCategory);
     }
+    if (selectedProduct) {
+      result = result.filter((v) => v.product === selectedProduct);
+    }
     if (selectedRegion) {
       result = result.filter((v) => v.regions.includes(selectedRegion));
     }
@@ -1902,7 +2098,7 @@ export default function Roadmap() {
       });
     }
     return result;
-  }, [allVersions, selectedFamily, selectedPhase, selectedStatus, selectedCategory, selectedRegion, selectedCountry, selectedAZ, selectedZone, selectedEntityType, selectedInfraVersion]);
+  }, [allVersions, selectedFamily, selectedProduct, selectedPhase, selectedStatus, selectedCategory, selectedRegion, selectedCountry, selectedAZ, selectedZone, selectedEntityType, selectedInfraVersion]);
 
   const tree = useMemo(() => buildTree(filtered, rowAxes), [filtered, rowAxes]);
   const flatRows = useMemo(() => buildFlatRows(filtered, rowAxes), [filtered, rowAxes]);
@@ -2000,6 +2196,17 @@ export default function Roadmap() {
                 options={[{ value: '', label: 'All' }, ...allCategories.map((c) => ({ value: c, label: c }))]}
                 value={selectedCategory}
                 onChange={(v) => setSelectedCategory(v)}
+              />
+            </>
+          )}
+
+          {allProducts.length > 0 && (
+            <>
+              <span className="text-xs text-slate-500">Product:</span>
+              <PickUpList
+                options={[{ value: '', label: 'All' }, ...allProducts.map((p) => ({ value: p, label: p }))]}
+                value={selectedProduct}
+                onChange={(v) => setSelectedProduct(v)}
               />
             </>
           )}
@@ -2311,6 +2518,8 @@ export default function Roadmap() {
                 timelineStart={timelineStart}
                 timelineEnd={timelineEnd}
                 showTodayBar={showTodayBar}
+                sort={sort}
+                onSort={handleSort}
               />
             ) : (
               <>
@@ -2327,8 +2536,14 @@ export default function Roadmap() {
                 {tree.length === 0 ? (
                   <div className="text-slate-500 text-center py-12">No versions match your filters</div>
                 ) : (
-                  tree.map((node) => (
-                    <TreeNodeRow key={node.id} node={node} timelineStart={timelineStart} timelineEnd={timelineEnd} showTodayBar={showTodayBar} labelWidth={labelColumnWidth} />
+                  // Top-level nodes are siblings at the first axis level:
+                  // clicking one of their labels sorts this list by that axis.
+                  applyRowSort(
+                    tree,
+                    tree[0] && sort?.key === `NODE:${tree[0].axis}` ? sort : null,
+                    (node) => node.label
+                  ).map((node) => (
+                    <TreeNodeRow key={node.id} node={node} timelineStart={timelineStart} timelineEnd={timelineEnd} showTodayBar={showTodayBar} labelWidth={labelColumnWidth} sort={sort} onSort={handleSort} />
                   ))
                 )}
               </>
@@ -2347,6 +2562,9 @@ export default function Roadmap() {
                     showTodayBar={showTodayBar}
                     columnWidths={columnWidths}
                     onResizeColumn={handleResizeColumn}
+                    sort={sort}
+                    onSort={handleSort}
+                    nameSort={sort && sort.key === 'NAME' ? sort : null}
                   />
                 )}
               </>
