@@ -2,7 +2,7 @@
 # Simplifies build, deploy, and run workflows for both online (build)
 # and air-gapped (deploy) environments.
 
-.PHONY: clean build deploy run help backfill-variants restart-api seed-incremental update fix-client-db fix-client-db-profiles fix-client-db-variant-os
+.PHONY: clean build deploy run help backfill-variants restart-api seed-incremental update fix-client-db fix-client-db-profiles fix-client-db-variant-os fix-client-db-transition-kind
 
 # Force bash — avoids POSIX/dash incompatibilities on Ubuntu
 SHELL := /bin/bash
@@ -204,19 +204,21 @@ restart-api:
 ## runbook: backup, schema push, recreate, incremental seed.
 ## Safe on a database with existing data: no destructive flags, no deletes.
 update:
-	@echo "==> 1/5 Backing up database to backup_`date +%F_%H%M`.sql"
+	@echo "==> 1/6 Backing up database to backup_`date +%F_%H%M`.sql"
 	@docker compose exec -T db pg_dump -U cloudmarket -d cloudmarket > backup_`date +%F_%H%M`.sql
-	@echo "==> 2/5 Recreating containers with fresh code and dist"
+	@echo "==> 2/6 Recreating containers with fresh code and dist"
 	docker compose up -d --force-recreate --renew-anon-volumes api web
-	@echo "==> 3/5 Pre-converting enum columns db push cannot alter (idempotent, lossless)"
+	@echo "==> 3/6 Pre-converting enum columns db push cannot alter (idempotent, lossless)"
 	@docker compose exec -T db psql -U cloudmarket -d cloudmarket -v ON_ERROR_STOP=1 \
 		< apps/api/prisma/migrations/202610151000_resiliency_enum_to_text/migration.sql
-	@echo "==> 4/5 Pushing Prisma schema (non-destructive db push, from the fresh image)"
+	@echo "==> 4/6 Pushing Prisma schema (non-destructive db push, from the fresh image)"
 	. "$(shell pwd)/.source.prisma" && docker compose exec -T api npx prisma db push
-	@echo "==> 5/5 Running incremental seed"
+	@echo "==> 5/6 Running incremental seed"
 	$(MAKE) seed-incremental
+	@echo "==> 6/6 Classifying PRODUCT/OS transitions (idempotent backfill)"
+	@docker compose exec -T api npx tsx prisma/backfill-transition-kind.ts
 	@echo ""
-	@echo "✓ Deployment updated — schema, dist and seed are current"
+	@echo "✓ Deployment updated — schema, dist, seed and transition backfill are current"
 
 ## Fix client DB — applies the missing flavor-fields schema (one shot).
 ## For databases provisioned by db push (no _prisma_migrations table),
@@ -248,6 +250,23 @@ fix-client-db-profiles:
 	@echo "==> 3/3 Backfilling flavor profiles"
 	@docker compose exec -T db psql -U cloudmarket -d cloudmarket -v ON_ERROR_STOP=1 \
 		< apps/api/prisma/migrations/202610151200_add_flavor_profile/backfill.sql
+	@echo ""
+	@echo "✓ Done. Restart API to clear caches: make restart-api"
+
+## Fix client DB (transition kind) — applies the PRODUCT/OS transition schema.
+## Adds enum TransitionKind + nullable Transition.kind / fromOsVersionId /
+## toOsVersionId, then classifies existing transitions (OS upgrade rows get
+## kind=OS with their OsVersion FKs). For databases provisioned by db push
+## (no _prisma_migrations table), where `prisma db push` fails with P3005.
+## Non-destructive and idempotent: safe to re-run.
+fix-client-db-transition-kind:
+	@echo "==> 1/3 Backing up database"
+	@docker compose exec -T db pg_dump -U cloudmarket -d cloudmarket > backup_transition_kind_`date +%F_%H%M`.sql
+	@echo "==> 2/3 Applying transition-kind schema patch"
+	@docker compose exec -T db psql -U cloudmarket -d cloudmarket -v ON_ERROR_STOP=1 \
+		< apps/api/prisma/migrations/202610161900_add_transition_kind/migration.sql
+	@echo "==> 3/3 Backfilling transition kinds (idempotent)"
+	@docker compose exec -T api npx tsx prisma/backfill-transition-kind.ts
 	@echo ""
 	@echo "✓ Done. Restart API to clear caches: make restart-api"
 

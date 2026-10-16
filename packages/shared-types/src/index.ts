@@ -78,6 +78,11 @@ export enum MigrationType {
   SNAPSHOT = 'SNAPSHOT',
 }
 
+// Explicit transition kind: PRODUCT = product-to-product transition driven by
+// free-text fromVersion/toVersion; OS = OS migration sourced from
+// OperatingSystem/OsVersion objects (legacy strings auto-filled).
+export type TransitionKind = 'PRODUCT' | 'OS';
+
 export enum AvailabilityType {
   STANDARD = 'STANDARD',
   RECOMMENDED = 'RECOMMENDED',
@@ -345,6 +350,21 @@ export interface Transition {
   toProduct?: { id: string; name: string; slug: string };
   fromVersion: string;
   toVersion: string;
+  kind: TransitionKind;
+  fromOsVersionId?: string | null;
+  toOsVersionId?: string | null;
+  fromOsVersion?: {
+    id: string;
+    version: string;
+    osId: string;
+    os?: { id: string; name: string; family: string };
+  } | null;
+  toOsVersion?: {
+    id: string;
+    version: string;
+    osId: string;
+    os?: { id: string; name: string; family: string };
+  } | null;
   migrationType: MigrationType;
   status: ProductStatus;
   availableFrom: string | null;

@@ -923,8 +923,13 @@ const createTransitionSchema = z.object({
   description: z.string().optional().nullable(),
   fromProductId: z.string().uuid('Invalid source product ID'),
   toProductId: z.string().uuid('Invalid target product ID'),
-  fromVersion: z.string().min(1),
-  toVersion: z.string().min(1),
+  // Free-text versions: required for kind=PRODUCT (validated in the route),
+  // ignored for kind=OS where they are auto-filled from OsVersion.version.
+  fromVersion: z.string().min(1).optional(),
+  toVersion: z.string().min(1).optional(),
+  kind: z.enum(['PRODUCT', 'OS']).optional(),
+  fromOsVersionId: z.string().uuid('Invalid source OS version ID').nullable().optional(),
+  toOsVersionId: z.string().uuid('Invalid target OS version ID').nullable().optional(),
   migrationType: z.enum(['IN_PLACE', 'REBUILD', 'BLUE_GREEN', 'SNAPSHOT']).optional(),
   status: z.enum(['BACKLOG', 'OPPORTUNITY', 'AVAILABLE', 'AVAILABLE_PILOT_PENDING', 'DELAY_PENDING', 'CANCELLED']).optional(),
   availableFrom: z.string().datetime().or(z.date()).optional().nullable(),
@@ -938,6 +943,23 @@ function transitionInclude() {
   return {
     fromProduct: { select: { id: true, name: true, slug: true } },
     toProduct: { select: { id: true, name: true, slug: true } },
+    // OS-kind transitions carry explicit OsVersion sources (with their OS).
+    fromOsVersion: {
+      select: {
+        id: true,
+        version: true,
+        osId: true,
+        os: { select: { id: true, name: true, family: true } },
+      },
+    },
+    toOsVersion: {
+      select: {
+        id: true,
+        version: true,
+        osId: true,
+        os: { select: { id: true, name: true, family: true } },
+      },
+    },
   };
 }
 
@@ -982,13 +1004,48 @@ router.post('/:id/transitions', async (req, res, next) => {
     if (!source) return res.status(404).json({ error: 'Source product not found' });
     if (!target) return res.status(404).json({ error: 'Target product not found' });
 
+    // kind resolution:
+    // - kind=OS sources versions from explicit OsVersion rows (both must
+    //   exist); legacy fromVersion/toVersion strings are auto-filled from
+    //   OsVersion.version and any free text in the payload is ignored.
+    // - kind=PRODUCT (default) forces both OS FKs to null and keeps the
+    //   free-text fromVersion/toVersion as today.
+    const kind = data.kind ?? 'PRODUCT';
+    let fromVersion: string;
+    let toVersion: string;
+    let fromOsVersionId: string | null = null;
+    let toOsVersionId: string | null = null;
+
+    if (kind === 'OS') {
+      if (!data.fromOsVersionId || !data.toOsVersionId) {
+        return res.status(400).json({ error: 'kind=OS requires both fromOsVersionId and toOsVersionId' });
+      }
+      const [fromOsVersion, toOsVersion] = await Promise.all([
+        prisma.osVersion.findUnique({ where: { id: data.fromOsVersionId } }),
+        prisma.osVersion.findUnique({ where: { id: data.toOsVersionId } }),
+      ]);
+      if (!fromOsVersion || !toOsVersion) {
+        return res.status(404).json({ error: 'OsVersion not found' });
+      }
+      fromOsVersionId = fromOsVersion.id;
+      toOsVersionId = toOsVersion.id;
+      fromVersion = fromOsVersion.version;
+      toVersion = toOsVersion.version;
+    } else {
+      if (!data.fromVersion || !data.toVersion) {
+        return res.status(400).json({ error: 'fromVersion and toVersion are required for PRODUCT transitions' });
+      }
+      fromVersion = data.fromVersion;
+      toVersion = data.toVersion;
+    }
+
     // A self-transition (same product, version bump) is the common case
     // (e.g. Bare Metal bm-gen2 → bm-gen3) — fully supported.
     const name = data.name || autoTransitionName({
       fromProductName: source.name,
       toProductName: target.name,
-      fromVersion: data.fromVersion,
-      toVersion: data.toVersion,
+      fromVersion,
+      toVersion,
     });
 
     const slug = data.slug || generateSlug('transition', name);
@@ -999,8 +1056,11 @@ router.post('/:id/transitions', async (req, res, next) => {
         description: data.description || null,
         fromProductId: data.fromProductId,
         toProductId: data.toProductId,
-        fromVersion: data.fromVersion,
-        toVersion: data.toVersion,
+        kind,
+        fromVersion,
+        toVersion,
+        fromOsVersionId,
+        toOsVersionId,
         migrationType: data.migrationType || 'REBUILD',
         status: data.status || 'BACKLOG',
         availableFrom: data.availableFrom ? new Date(data.availableFrom) : null,
@@ -1020,13 +1080,59 @@ router.patch('/transitions/:id', async (req, res, next) => {
   try {
     const id = idParamSchema.parse(req.params.id);
     const data = updateTransitionSchema.parse(req.body);
+    const existing = await prisma.transition.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: 'Transition not found' });
+
+    // kind resolution (mirror of the create route):
+    // - kind=OS: both OsVersion must exist; legacy fromVersion/toVersion are
+    //   auto-filled from OsVersion.version (free text in the payload is
+    //   ignored). Omitted FKs fall back to the stored ones.
+    // - kind=PRODUCT (default path): force both OS FKs to null and keep the
+    //   free-text fromVersion/toVersion as today.
+    let kind: 'PRODUCT' | 'OS' | undefined;
+    let fromOsVersionId: string | null | undefined;
+    let toOsVersionId: string | null | undefined;
+    let resolvedFromVersion: string | undefined;
+    let resolvedToVersion: string | undefined;
+
+    if (data.kind === 'OS') {
+      const fromId = data.fromOsVersionId !== undefined ? data.fromOsVersionId : existing.fromOsVersionId;
+      const toId = data.toOsVersionId !== undefined ? data.toOsVersionId : existing.toOsVersionId;
+      if (!fromId || !toId) {
+        return res.status(400).json({ error: 'kind=OS requires both fromOsVersionId and toOsVersionId' });
+      }
+      const [fromOsVersion, toOsVersion] = await Promise.all([
+        prisma.osVersion.findUnique({ where: { id: fromId } }),
+        prisma.osVersion.findUnique({ where: { id: toId } }),
+      ]);
+      if (!fromOsVersion || !toOsVersion) {
+        return res.status(404).json({ error: 'OsVersion not found' });
+      }
+      kind = 'OS';
+      fromOsVersionId = fromOsVersion.id;
+      toOsVersionId = toOsVersion.id;
+      resolvedFromVersion = fromOsVersion.version;
+      resolvedToVersion = toOsVersion.version;
+    } else if (data.kind !== undefined || data.fromOsVersionId !== undefined || data.toOsVersionId !== undefined) {
+      kind = 'PRODUCT';
+      fromOsVersionId = null;
+      toOsVersionId = null;
+    }
+
     const transition = await prisma.transition.update({
       where: { id },
       data: {
         ...(data.name !== undefined ? { name: data.name } : {}),
         ...(data.description !== undefined ? { description: data.description } : {}),
-        ...(data.fromVersion !== undefined ? { fromVersion: data.fromVersion } : {}),
-        ...(data.toVersion !== undefined ? { toVersion: data.toVersion } : {}),
+        ...(resolvedFromVersion !== undefined
+          ? { fromVersion: resolvedFromVersion }
+          : data.fromVersion !== undefined ? { fromVersion: data.fromVersion } : {}),
+        ...(resolvedToVersion !== undefined
+          ? { toVersion: resolvedToVersion }
+          : data.toVersion !== undefined ? { toVersion: data.toVersion } : {}),
+        ...(kind !== undefined ? { kind } : {}),
+        ...(fromOsVersionId !== undefined ? { fromOsVersionId } : {}),
+        ...(toOsVersionId !== undefined ? { toOsVersionId } : {}),
         ...(data.migrationType !== undefined ? { migrationType: data.migrationType } : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
         ...(data.availableFrom !== undefined ? { availableFrom: data.availableFrom ? new Date(data.availableFrom) : null } : {}),

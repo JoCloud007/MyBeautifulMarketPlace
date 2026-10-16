@@ -56,6 +56,7 @@ import {
   useContinuityLevels,
   useUpdateContinuityLevel,
   useOperatingSystems,
+  useOsVersions,
   useCreateOS,
   useUpdateOS,
   useDeleteOS,
@@ -101,6 +102,7 @@ import PickerList from '@/components/PickerList';
 import FlavorProductLinks from '@/components/FlavorProductLinks';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
+import { osVersionLabel } from '@/components/OsLifecycleTab';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -152,7 +154,7 @@ import {
 } from 'lucide-react';
 import McpStatus from './McpStatus';
 import { formatFlavorAttrs } from '@/lib/utils';
-import type { ForecastStatus, Product, Category, Flavor, FlavorFieldDefinition, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType, AvailabilitySchedule, ProductVersion, Region, Transition, InfraVersion } from '@cloudmarket/shared-types';
+import type { ForecastStatus, Product, Category, Flavor, FlavorFieldDefinition, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType, AvailabilitySchedule, ProductVersion, Region, Transition, TransitionKind, InfraVersion } from '@cloudmarket/shared-types';
 import { LifecyclePhase, MigrationType } from '@cloudmarket/shared-types';
 import { PerformanceTargetType, VisibilityType } from '@cloudmarket/shared-types';
 
@@ -1059,6 +1061,104 @@ function ProductsSection() {
 }
 
 // ============ TRANSITIONS SECTION ============
+
+/** Form-only state of the cascading OS → OS Version picks for kind=OS transitions. */
+type TransitionOsFields = {
+  fromOsId: string;
+  toOsId: string;
+  fromOsVersionId: string;
+  toOsVersionId: string;
+};
+
+/**
+ * Strict compute detection for the transition kind control — same rule as
+ * ProductDetailDrawer (see its comment) and the API form-options/forecasts:
+ * a product is "compute" (runs an OS) when its category's
+ * flavorFieldDefinitions include a "vcpu" field. Never use product.computeType
+ * alone — it is a stale VIRTUAL on non-compute products (NAS Storage, Object
+ * Storage…) and would make every product look like compute.
+ */
+function isComputeProduct(product: Pick<Product, 'category'> | null | undefined): boolean {
+  return (product?.category?.flavorFieldDefinitions ?? []).some((d) => d.key === 'vcpu');
+}
+
+/**
+ * Two cascading OS → OS Version select pairs (From and To) for kind=OS
+ * transitions. Options come from the OS catalogue (useOperatingSystems,
+ * GET /os) and useOsVersions (GET /os/:osId/versions) — never free text.
+ * Mount only when kind=OS so the version queries stay lazy.
+ */
+function TransitionOsVersionFields({
+  fromOsId,
+  toOsId,
+  fromOsVersionId,
+  toOsVersionId,
+  onChange,
+  compact = false,
+}: TransitionOsFields & {
+  onChange: (patch: Partial<TransitionOsFields>) => void;
+  compact?: boolean;
+}) {
+  const { data: osCatalog } = useOperatingSystems();
+  const { data: fromOsVersionOptions } = useOsVersions(fromOsId || undefined);
+  const { data: toOsVersionOptions } = useOsVersions(toOsId || undefined);
+
+  const labelClass = compact ? 'text-xs font-medium text-slate-300' : 'text-sm font-medium text-slate-300';
+  const selectClass = compact
+    ? 'bg-slate-950 border-slate-700 text-white min-h-[40px]'
+    : 'bg-slate-950 border-slate-700 text-white min-h-[44px]';
+
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:gap-4">
+      <div className="space-y-2">
+        <label className={labelClass}>From OS</label>
+        <Select value={fromOsId} onChange={(e) => onChange({ fromOsId: e.target.value, fromOsVersionId: '' })} required className={selectClass}>
+          <option value="">Choose OS...</option>
+          {osCatalog?.map((os) => <option key={os.id} value={os.id}>{os.name}</option>)}
+        </Select>
+        <label className={labelClass}>From OS Version</label>
+        <Select value={fromOsVersionId} onChange={(e) => onChange({ fromOsVersionId: e.target.value })} required disabled={!fromOsId} className={selectClass}>
+          <option value="">{fromOsId ? 'Choose version...' : 'Select an OS first'}</option>
+          {fromOsVersionOptions?.map((v) => <option key={v.id} value={v.id}>{v.version}</option>)}
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <label className={labelClass}>To OS</label>
+        <Select value={toOsId} onChange={(e) => onChange({ toOsId: e.target.value, toOsVersionId: '' })} required className={selectClass}>
+          <option value="">Choose OS...</option>
+          {osCatalog?.map((os) => <option key={os.id} value={os.id}>{os.name}</option>)}
+        </Select>
+        <label className={labelClass}>To OS Version</label>
+        <Select value={toOsVersionId} onChange={(e) => onChange({ toOsVersionId: e.target.value })} required disabled={!toOsId} className={selectClass}>
+          <option value="">{toOsId ? 'Choose version...' : 'Select an OS first'}</option>
+          {toOsVersionOptions?.map((v) => <option key={v.id} value={v.id}>{v.version}</option>)}
+        </Select>
+      </div>
+    </div>
+  );
+}
+
+/** Kind marker: OS vs Product. */
+function transitionKindBadge(t: Transition) {
+  const kind: TransitionKind = t.kind ?? 'PRODUCT';
+  return (
+    <Badge variant="outline" className={`text-xs mr-2 ${kind === 'OS' ? 'border-cyan-500/40 text-cyan-300' : 'border-slate-600 text-slate-400'}`}>
+      {kind === 'OS' ? 'OS' : 'Product'}
+    </Badge>
+  );
+}
+
+/** Version labels for a transition row: OS labels via osVersionLabel when kind=OS. */
+function transitionVersionLabel(t: Transition): string {
+  const kind: TransitionKind = t.kind ?? 'PRODUCT';
+  if (kind === 'OS') {
+    const from = t.fromOsVersion ? osVersionLabel(t.fromOsVersion.os?.name, t.fromOsVersion.version) : t.fromVersion;
+    const to = t.toOsVersion ? osVersionLabel(t.toOsVersion.os?.name, t.toOsVersion.version) : t.toVersion;
+    return `${from} → ${to}`;
+  }
+  return `${t.fromVersion} → ${t.toVersion}`;
+}
+
 function TransitionsAdminSection() {
   const { data: transitions, isLoading, isError, refetch } = useTransitions();
   const { data: products } = useAdminProducts();
@@ -1073,11 +1173,20 @@ function TransitionsAdminSection() {
     name: '', description: '', fromProductId: '', toProductId: '',
     fromVersion: '', toVersion: '', migrationType: 'REBUILD', status: 'BACKLOG',
     availableFrom: '', notes: '',
+    kind: 'PRODUCT' as TransitionKind,
+    fromOsId: '', toOsId: '', fromOsVersionId: '', toOsVersionId: '',
   });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
+  // Strict compute rule (see isComputeProduct): the "Transition type" control is
+  // only offered when the From product runs an OS; otherwise kind is forced to
+  // PRODUCT in the payload.
+  const fromProduct = products?.find((p) => p.id === form.fromProductId);
+  const fromIsCompute = isComputeProduct(fromProduct);
+  const kind: TransitionKind = fromIsCompute ? form.kind : 'PRODUCT';
+
   const resetForm = () => {
-    setForm({ name: '', description: '', fromProductId: '', toProductId: '', fromVersion: '', toVersion: '', migrationType: 'REBUILD', status: 'BACKLOG', availableFrom: '', notes: '' });
+    setForm({ name: '', description: '', fromProductId: '', toProductId: '', fromVersion: '', toVersion: '', migrationType: 'REBUILD', status: 'BACKLOG', availableFrom: '', notes: '', kind: 'PRODUCT', fromOsId: '', toOsId: '', fromOsVersionId: '', toOsVersionId: '' });
     setEditing(null);
   };
 
@@ -1091,6 +1200,11 @@ function TransitionsAdminSection() {
       migrationType: t.migrationType, status: t.status,
       availableFrom: t.availableFrom ? t.availableFrom.slice(0, 10) : '',
       notes: t.notes || '',
+      kind: t.kind === 'OS' ? 'OS' : 'PRODUCT',
+      fromOsId: t.fromOsVersion?.osId || '',
+      toOsId: t.toOsVersion?.osId || '',
+      fromOsVersionId: t.fromOsVersionId || t.fromOsVersion?.id || '',
+      toOsVersionId: t.toOsVersionId || t.toOsVersion?.id || '',
     });
     setIsOpen(true);
   };
@@ -1098,9 +1212,24 @@ function TransitionsAdminSection() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const payload: any = { ...form };
+      const payload: any = { ...form, kind };
       if (payload.availableFrom) payload.availableFrom = new Date(payload.availableFrom).toISOString();
       else delete payload.availableFrom;
+      // fromOsId/toOsId are form-only state driving the cascading selects.
+      delete payload.fromOsId;
+      delete payload.toOsId;
+      if (kind === 'OS') {
+        // kind=OS: versions come from the picked OsVersion objects (the API
+        // auto-fills the legacy fromVersion/toVersion strings) — no free text.
+        payload.fromOsVersionId = form.fromOsVersionId;
+        payload.toOsVersionId = form.toOsVersionId;
+        delete payload.fromVersion;
+        delete payload.toVersion;
+      } else {
+        // kind=PRODUCT: free-text versions, no OS FKs.
+        delete payload.fromOsVersionId;
+        delete payload.toOsVersionId;
+      }
       if (editing) await updateTransition.mutateAsync({ id: editing.id, ...payload });
       else await createTransition.mutateAsync({ productId: form.fromProductId, ...payload });
       setIsOpen(false); resetForm();
@@ -1138,7 +1267,8 @@ function TransitionsAdminSection() {
         <Badge variant="outline" className={`text-xs ${statusCfg(t.status).className}`}>{statusCfg(t.status).label}</Badge>
       </div>
       <div className="mt-2 text-sm text-slate-500">
-        {t.fromVersion} → {t.toVersion} · {t.migrationType.replace('_', '/')}
+        {transitionKindBadge(t)}
+        {transitionVersionLabel(t)} · {t.migrationType.replace('_', '/')}
         {t.availableFrom && <span> · from {new Date(t.availableFrom).toLocaleDateString()}</span>}
       </div>
       <div className="mt-3 flex justify-end gap-1">
@@ -1168,7 +1298,10 @@ function TransitionsAdminSection() {
                 <td className="py-3 font-medium text-white">{t.name}</td>
                 <td className="py-3 text-slate-400">{t.fromProduct?.name}</td>
                 <td className="py-3 text-cyan-300">{t.toProduct?.name}</td>
-                <td className="py-3 text-slate-400">{t.fromVersion} → {t.toVersion}</td>
+                <td className="py-3 text-slate-400">
+                  {transitionKindBadge(t)}
+                  {transitionVersionLabel(t)}
+                </td>
                 <td className="py-3 text-slate-400">{t.migrationType.replace('_', ' ')}</td>
                 <td className="py-3">
                   <Badge variant="outline" className={`text-xs ${statusCfg(t.status).className}`}>{statusCfg(t.status).label}</Badge>
@@ -1213,7 +1346,18 @@ function TransitionsAdminSection() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300">From Product</label>
-                <Select value={form.fromProductId} onChange={(e) => setForm({ ...form, fromProductId: e.target.value, ...(e.target.value !== form.fromProductId ? { toProductId: '' } : {}) })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <Select value={form.fromProductId} onChange={(e) => {
+                  const nextFrom = e.target.value;
+                  const nextCompute = isComputeProduct(products?.find((p) => p.id === nextFrom));
+                  setForm({
+                    ...form,
+                    fromProductId: nextFrom,
+                    ...(nextFrom !== form.fromProductId ? { toProductId: '' } : {}),
+                    // The kind control only exists for compute From products —
+                    // force PRODUCT (and drop OS picks) otherwise.
+                    ...(nextCompute ? {} : { kind: 'PRODUCT' as TransitionKind, fromOsId: '', toOsId: '', fromOsVersionId: '', toOsVersionId: '' }),
+                  });
+                }} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                   <option value="">Choose...</option>
                   {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </Select>
@@ -1226,16 +1370,35 @@ function TransitionsAdminSection() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            {fromIsCompute && (
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">From Version</label>
-                <Input value={form.fromVersion} onChange={(e) => setForm({ ...form, fromVersion: e.target.value })} required placeholder="e.g. 8" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+                <label className="text-sm font-medium text-slate-300">Transition type</label>
+                <Select value={kind} onChange={(e) => setForm({ ...form, kind: e.target.value as TransitionKind, fromOsId: '', toOsId: '', fromOsVersionId: '', toOsVersionId: '' })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="PRODUCT">Product upgrade</option>
+                  <option value="OS">OS upgrade</option>
+                </Select>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-300">To Version</label>
-                <Input value={form.toVersion} onChange={(e) => setForm({ ...form, toVersion: e.target.value })} required placeholder="e.g. 9" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+            )}
+            {kind === 'OS' ? (
+              <TransitionOsVersionFields
+                fromOsId={form.fromOsId}
+                toOsId={form.toOsId}
+                fromOsVersionId={form.fromOsVersionId}
+                toOsVersionId={form.toOsVersionId}
+                onChange={(patch) => setForm((prev) => ({ ...prev, ...patch }))}
+              />
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-300">From Version</label>
+                  <Input value={form.fromVersion} onChange={(e) => setForm({ ...form, fromVersion: e.target.value })} required placeholder="e.g. 8" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-300">To Version</label>
+                  <Input value={form.toVersion} onChange={(e) => setForm({ ...form, toVersion: e.target.value })} required placeholder="e.g. 9" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+                </div>
               </div>
-            </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-300">Migration Type</label>
@@ -1270,16 +1433,28 @@ function TransitionsAdminSection() {
   );
 }
 
-function TransitionsSection({ productId }: { productId: string }) {
+function TransitionsSection({ product }: { product: Product }) {
+  const productId = product.id;
   const [formOpen, setFormOpen] = useState(false);
   const [toProductId, setToProductId] = useState('');
   const [fromVersion, setFromVersion] = useState('');
   const [toVersion, setToVersion] = useState('');
+  const [kind, setKind] = useState<TransitionKind>('PRODUCT');
+  const [fromOsId, setFromOsId] = useState('');
+  const [toOsId, setToOsId] = useState('');
+  const [fromOsVersionId, setFromOsVersionId] = useState('');
+  const [toOsVersionId, setToOsVersionId] = useState('');
   const [migrationType, setMigrationType] = useState<MigrationType>(MigrationType.REBUILD);
   const { data: allProducts } = useAdminProducts();
   const { data: paths, isLoading } = useProductTransitions(productId);
   const createTransition = useCreateTransition();
   const deleteTransition = useDeleteTransition();
+
+  // Same strict compute rule as the admin transition dialog: the "Transition
+  // type" control only appears when this (From) product runs an OS; otherwise
+  // kind is forced to PRODUCT in the payload.
+  const fromIsCompute = isComputeProduct(product);
+  const effectiveKind: TransitionKind = fromIsCompute ? kind : 'PRODUCT';
 
   // A self-transition (same product, version bump) appears in both outgoing and
   // incoming — show it once, labelled with its direction.
@@ -1299,15 +1474,20 @@ function TransitionsSection({ productId }: { productId: string }) {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createTransition.mutateAsync({
-        productId,
-        toProductId,
-        fromVersion,
-        toVersion,
-        migrationType,
-      });
+      const payload: any = { productId, toProductId, migrationType, kind: effectiveKind };
+      if (effectiveKind === 'OS') {
+        // kind=OS: OS/version come from the catalogue picks; the API auto-fills
+        // the legacy fromVersion/toVersion strings — no free text here.
+        payload.fromOsVersionId = fromOsVersionId;
+        payload.toOsVersionId = toOsVersionId;
+      } else {
+        payload.fromVersion = fromVersion;
+        payload.toVersion = toVersion;
+      }
+      await createTransition.mutateAsync(payload);
       setFormOpen(false);
       setToProductId(''); setFromVersion(''); setToVersion('');
+      setKind('PRODUCT'); setFromOsId(''); setToOsId(''); setFromOsVersionId(''); setToOsVersionId('');
     } catch {
       /* mutation error handled by hook onError */
     }
@@ -1339,10 +1519,38 @@ function TransitionsSection({ productId }: { productId: string }) {
             <option value="">Transitions to product...</option>
             {targetProducts.map((p: Product) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Select>
-          <div className="grid grid-cols-2 gap-2">
-            <Input placeholder="From version (e.g. 1.0)" value={fromVersion} onChange={(e) => setFromVersion(e.target.value)} required className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
-            <Input placeholder="To version (e.g. 2.0)" value={toVersion} onChange={(e) => setToVersion(e.target.value)} required className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
-          </div>
+          {fromIsCompute && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-300">Transition type</label>
+              <Select value={effectiveKind} onChange={(e) => {
+                setKind(e.target.value as TransitionKind);
+                setFromOsId(''); setToOsId(''); setFromOsVersionId(''); setToOsVersionId('');
+              }} className="bg-slate-950 border-slate-700 text-white min-h-[40px]">
+                <option value="PRODUCT">Product upgrade</option>
+                <option value="OS">OS upgrade</option>
+              </Select>
+            </div>
+          )}
+          {effectiveKind === 'OS' ? (
+            <TransitionOsVersionFields
+              compact
+              fromOsId={fromOsId}
+              toOsId={toOsId}
+              fromOsVersionId={fromOsVersionId}
+              toOsVersionId={toOsVersionId}
+              onChange={(patch) => {
+                if (patch.fromOsId !== undefined) setFromOsId(patch.fromOsId);
+                if (patch.toOsId !== undefined) setToOsId(patch.toOsId);
+                if (patch.fromOsVersionId !== undefined) setFromOsVersionId(patch.fromOsVersionId);
+                if (patch.toOsVersionId !== undefined) setToOsVersionId(patch.toOsVersionId);
+              }}
+            />
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="From version (e.g. 1.0)" value={fromVersion} onChange={(e) => setFromVersion(e.target.value)} required className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+              <Input placeholder="To version (e.g. 2.0)" value={toVersion} onChange={(e) => setToVersion(e.target.value)} required className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+            </div>
+          )}
           <Select value={migrationType} onChange={(e) => setMigrationType(e.target.value as Transition['migrationType'])} className="bg-slate-950 border-slate-700 text-white min-h-[40px]">
             <option value="IN_PLACE">In-place</option>
             <option value="REBUILD">Rebuild</option>
@@ -1366,7 +1574,10 @@ function TransitionsSection({ productId }: { productId: string }) {
             <div key={t.id} className="flex items-center justify-between rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5">
               <span className={`text-xs ${dir === 'out' ? 'text-cyan-300' : 'text-slate-400'}`}>
                 {dir === 'out' ? '→' : '← from'} {dir === 'out' ? t.toProduct?.name : t.fromProduct?.name}{' '}
-                <span className="text-slate-500">({t.fromVersion} → {t.toVersion} · {t.migrationType})</span>
+                <span className="text-slate-500">
+                  ({transitionKindBadge(t)}
+                  {transitionVersionLabel(t)} · {t.migrationType})
+                </span>
               </span>
               <Button size="sm" variant="ghost" onClick={() => handleDelete(t.id)} className="h-6 w-6 p-0 text-slate-500 hover:text-red-400"><Trash2 className="h-3 w-3" /></Button>
             </div>
@@ -1628,7 +1839,7 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
         </div>
       )}
 
-      <TransitionsSection productId={product.id} />
+      <TransitionsSection product={product} />
 
       <Dialog open={variantOpen} onOpenChange={setVariantOpen}>
         <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[90vh] overflow-y-auto">

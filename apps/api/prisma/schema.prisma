@@ -142,6 +142,8 @@ model OsVersion {
   phase              LifecyclePhase   @default(RELEASED)
   isActive           Boolean          @default(true)
   variants           ProductVariant[]
+  transitionsFrom    Transition[]     @relation("TransitionFromOsVersion")
+  transitionsTo      Transition[]     @relation("TransitionToOsVersion")
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
@@ -202,6 +204,14 @@ model Transition {
   toProduct     Product       @relation("TransitionsTo", fields: [toProductId], references: [id])
   fromVersion   String
   toVersion     String
+  // OS-kind transitions reference explicit OsVersion rows; the legacy
+  // fromVersion/toVersion strings above are kept in sync (auto-filled from
+  // OsVersion.version) for consumers that read the free-text fields.
+  kind            TransitionKind @default(PRODUCT)
+  fromOsVersionId String?
+  fromOsVersion   OsVersion?     @relation("TransitionFromOsVersion", fields: [fromOsVersionId], references: [id])
+  toOsVersionId   String?
+  toOsVersion     OsVersion?     @relation("TransitionToOsVersion", fields: [toOsVersionId], references: [id])
   migrationType MigrationType @default(REBUILD)
   status        ProductStatus @default(BACKLOG)
   availableFrom DateTime?
@@ -751,6 +761,11 @@ enum MigrationType {
   REBUILD
   BLUE_GREEN
   SNAPSHOT
+}
+
+enum TransitionKind {
+  PRODUCT
+  OS
 }
 
 enum InstanceStatus {

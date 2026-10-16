@@ -47,6 +47,7 @@ type Scale = 'month' | 'quarter' | 'year';
 type ViewMode = 'grouped' | 'flat';
 type RoadmapDesign = 'gantt' | 'cards';
 type EntityType = 'product' | 'flavor' | 'os';
+type TransitionKindFilter = '' | 'PRODUCT' | 'OS';
 
 const axisLabels: Record<Axis, string> = {
   FAMILY: 'Family',
@@ -255,6 +256,12 @@ const entityTypeOptions: { value: '' | EntityType; label: string }[] = [
   { value: 'product', label: 'Product' },
   { value: 'flavor', label: 'Flavor' },
   { value: 'os', label: 'OS' },
+];
+
+const transitionKindFilterOptions: { value: TransitionKindFilter; label: string }[] = [
+  { value: '', label: 'All' },
+  { value: 'PRODUCT', label: 'Product' },
+  { value: 'OS', label: 'OS' },
 ];
 
 /* ── AnimatedSection ───────────────────────────────────────────── */
@@ -1293,10 +1300,33 @@ function buildCardRows(versions: RoadmapVersion[], config: CardDesignConfig, sor
   return built.sort((a, b) => (sortNewest ? time(b) - time(a) : time(a) - time(b)));
 }
 
+/* ── Transition kind + migration type labels ───────────────────── */
+
+const migrationTypeLabels: Record<string, string> = {
+  IN_PLACE: 'In-place',
+  REBUILD: 'Rebuild',
+  BLUE_GREEN: 'Blue-Green',
+  SNAPSHOT: 'Snapshot',
+};
+
+/**
+ * Explicit `kind` on the payload drives the Product/OS marker and the
+ * "Transitions:" filter; the version-string heuristic is only a fallback for
+ * legacy payloads where `kind` is absent (same rule as UpgradesTransitionsTab).
+ */
+function transitionKindOf(t: Transition, osVersionStrings?: Set<string>): 'OS' | 'PRODUCT' {
+  if (t.kind === 'OS') return 'OS';
+  if (t.kind) return 'PRODUCT';
+  if (osVersionStrings && osVersionStrings.has(t.fromVersion) && osVersionStrings.has(t.toVersion)) return 'OS';
+  return t.fromOsVersionId || t.toOsVersionId ? 'OS' : 'PRODUCT';
+}
+
 /* ── Transition row rendered inside a product card ─────────────── */
 
-function TransitionRow({ transition }: { transition: Transition }) {
+function TransitionRow({ transition, osVersionStrings }: { transition: Transition; osVersionStrings?: Set<string> }) {
   const status = getStatusConfig(transition.status);
+  const kind = transitionKindOf(transition, osVersionStrings);
+  const migrationLabel = migrationTypeLabels[transition.migrationType] || String(transition.migrationType).replace('_', ' ');
   return (
     <div className="flex border-b border-cyan-500/20 last:border-b-0">
       <div className="shrink-0 px-2 py-1 text-[10px] font-bold text-cyan-400 bg-cyan-500/10 border-r border-cyan-500/20 flex items-center" style={{ minWidth: CARDS_LEFT_WIDTH }}>
@@ -1305,6 +1335,12 @@ function TransitionRow({ transition }: { transition: Transition }) {
       <div className="flex-1 px-2 py-1 flex items-center gap-2 flex-wrap">
         <span className="text-[11px] text-cyan-300 border border-cyan-600/70 rounded px-2 py-0.5">
           {transition.fromVersion} → {transition.toVersion} {transition.toProduct?.name && transition.toProduct.name !== transition.fromProduct?.name ? `(${transition.toProduct.name})` : ''}
+        </span>
+        <span className="inline-flex items-center rounded-full border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 text-[10px] font-medium text-purple-300" title="Transition kind (Product or OS)">
+          {kind === 'OS' ? 'OS' : 'Product'}
+        </span>
+        <span className="inline-flex items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-medium text-sky-300" title="Migration type">
+          {migrationLabel}
         </span>
         <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${status.color} ${status.border}`} style={{ background: 'rgba(2, 6, 23, 0.6)' }}>
           <span className={`inline-block w-2 h-2 rounded-full ${status.bg}`} />
@@ -1449,7 +1485,7 @@ function LifecycleBar({ dates, toPct, cardStartPct, cardWidthPct }: {
   );
 }
 
-function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPct, widthPct, config, productTransitionsMap, showLifecycleBar = true, sortNewest = true, sort = null, onSort }: {
+function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPct, widthPct, config, productTransitionsMap, transitionKindFilter = '', osVersionStrings, showLifecycleBar = true, sortNewest = true, sort = null, onSort }: {
   group: RoadmapVersion[];
   timelineStart: Date;
   timelineEnd: Date;
@@ -1458,6 +1494,8 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
   widthPct: number;
   config: CardDesignConfig;
   productTransitionsMap?: { from: Map<string, Transition[]>; to: Map<string, Transition[]> };
+  transitionKindFilter?: TransitionKindFilter;
+  osVersionStrings?: Set<string>;
   showLifecycleBar?: boolean;
   sortNewest?: boolean;
   sort?: SortState | null;
@@ -1484,11 +1522,12 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
   const headerLabel = getCardFieldValue(group[0], config.headerLabel);
   const rows = buildCardRows(group, config, sortNewest, sort);
   const cardStatus = getStatusConfig(group[0].status);
-  // Transition entities attached to this product (from + to), rendered as rows in the card
+  // Transition entities attached to this product (from + to), rendered as rows in
+  // the card. The "Transitions:" FILTERS selection keeps only Product or OS rows.
   const groupTransitions: Transition[] = [
     ...(productTransitionsMap?.from.get(group[0].product) || []),
     ...(productTransitionsMap?.to.get(group[0].product) || []),
-  ];
+  ].filter((t) => !transitionKindFilter || transitionKindOf(t, osVersionStrings) === transitionKindFilter);
   const isEol = phase === 'EOL' || phase === 'NO_SUPPORT';
 
   return (
@@ -1592,7 +1631,7 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
         ))}
         {/* transitions as rows inside the card */}
         {groupTransitions.length > 0 && groupTransitions.map((t) => (
-          <TransitionRow key={t.id} transition={t} />
+          <TransitionRow key={t.id} transition={t} osVersionStrings={osVersionStrings} />
         ))}
       </div>
       {showTodayBar && (
@@ -1605,13 +1644,14 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
   );
 }
 
-function CardsView({ versions, timelineStart, timelineEnd, showTodayBar, sort = null, onSort }: {
+function CardsView({ versions, timelineStart, timelineEnd, showTodayBar, sort = null, onSort, transitionKindFilter = '' }: {
   versions: RoadmapVersion[];
   timelineStart: Date;
   timelineEnd: Date;
   showTodayBar: boolean;
   sort?: SortState | null;
   onSort: (key: string) => void;
+  transitionKindFilter?: TransitionKindFilter;
 }) {
   const totalMs = timelineEnd.getTime() - timelineStart.getTime();
   const toPct = (d: Date) => Math.max(0, Math.min(100, ((d.getTime() - timelineStart.getTime()) / totalMs) * 100));
@@ -1685,6 +1725,17 @@ function CardsView({ versions, timelineStart, timelineEnd, showTodayBar, sort = 
 
   // Transitions render as rows inside their product cards, indexed by product name
   const { data: allTransitions } = useTransitions();
+  // Known OS version strings from the enriched fromOsVersion/toOsVersion
+  // payloads — used only as heuristic fallback when a transition has no
+  // explicit kind (same version-string rule as UpgradesTransitionsTab).
+  const osVersionStrings = useMemo(() => {
+    const s = new Set<string>();
+    for (const t of allTransitions || []) {
+      if (t.fromOsVersion?.version) s.add(t.fromOsVersion.version);
+      if (t.toOsVersion?.version) s.add(t.toOsVersion.version);
+    }
+    return s;
+  }, [allTransitions]);
   const productTransitionsMap = useMemo(() => {
     const from = new Map<string, Transition[]>();
     const to = new Map<string, Transition[]>();
@@ -1822,6 +1873,8 @@ function CardsView({ versions, timelineStart, timelineEnd, showTodayBar, sort = 
                 widthPct={Math.max(10, Math.min(eolPct - releasePct, 100 - indentPct))}
                 config={designConfig}
                 productTransitionsMap={productTransitionsMap}
+                transitionKindFilter={transitionKindFilter}
+                osVersionStrings={osVersionStrings}
                 showLifecycleBar={showLifecycleBars}
                 sortNewest={sortNewest}
                 sort={sort}
@@ -1850,6 +1903,7 @@ export default function Roadmap() {
   const [selectedZone, setSelectedZone] = useState('');
   const [selectedInfraVersion, setSelectedInfraVersion] = useState('');
   const [selectedEntityType, setSelectedEntityType] = useState<'' | EntityType>('');
+  const [selectedTransitionKind, setSelectedTransitionKind] = useState<TransitionKindFilter>('');
   const [timeSpan, setTimeSpan] = useState(5);
   const [viewMode, setViewMode] = useState<ViewMode>('grouped');
   const [design, setDesign] = useState<RoadmapDesign>('gantt');
@@ -2176,6 +2230,13 @@ export default function Roadmap() {
             options={entityTypeOptions}
             value={selectedEntityType}
             onChange={(v) => setSelectedEntityType(v as '' | EntityType)}
+          />
+
+          <span className="text-xs text-slate-500">Transitions:</span>
+          <PickUpList
+            options={transitionKindFilterOptions}
+            value={selectedTransitionKind}
+            onChange={(v) => setSelectedTransitionKind(v)}
           />
 
           {perspective === 'compute' && (
@@ -2520,6 +2581,7 @@ export default function Roadmap() {
                 showTodayBar={showTodayBar}
                 sort={sort}
                 onSort={handleSort}
+                transitionKindFilter={selectedTransitionKind}
               />
             ) : (
               <>

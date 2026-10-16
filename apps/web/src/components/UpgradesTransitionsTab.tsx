@@ -24,6 +24,20 @@ function isOsTransition(t: { fromVersion: string; toVersion: string }, osVersion
   return osVersionStrings.has(t.fromVersion) && osVersionStrings.has(t.toVersion);
 }
 
+/**
+ * Classify a row as 'OS' or 'PLATFORM'. The explicit `kind` on the payload
+ * drives the result ('OS' → OS, any other kind → PLATFORM); the version-string
+ * heuristic above is only a fallback for legacy payloads where `kind` is absent.
+ */
+function classifyTransition(
+  t: { kind?: string; fromVersion: string; toVersion: string },
+  osVersionStrings: Set<string>
+): 'OS' | 'PLATFORM' {
+  if (t.kind === 'OS') return 'OS';
+  if (t.kind) return 'PLATFORM';
+  return isOsTransition(t, osVersionStrings) ? 'OS' : 'PLATFORM';
+}
+
 const statusBadge: Record<string, string> = {
   AVAILABLE: 'border-emerald-500/20 text-emerald-500 bg-emerald-500/10',
   PLANNED: 'border-blue-500/20 text-blue-500 bg-blue-500/10',
@@ -142,7 +156,7 @@ export default function UpgradesTransitionsTab({
     seenPairs.add(pairKey(t));
     items.push({
       key: `t-${t.id}`,
-      kind: isOsTransition(t, osVersionStrings) ? 'OS' : 'PLATFORM',
+      kind: classifyTransition(t, osVersionStrings),
       fromVersion: t.fromVersion,
       toVersion: t.toVersion,
       fromProductId: t.fromProductId,
@@ -164,7 +178,7 @@ export default function UpgradesTransitionsTab({
     seenUp.add(up.id);
     items.push({
       key: `up-${up.id}`,
-      kind: isOsTransition(up, osVersionStrings) ? 'OS' : 'PLATFORM',
+      kind: classifyTransition(up, osVersionStrings),
       fromVersion: up.fromVersion,
       toVersion: up.toVersion,
       fromProductId: up.fromProductId,
