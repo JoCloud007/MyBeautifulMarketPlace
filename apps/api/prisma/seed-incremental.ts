@@ -52,6 +52,39 @@ async function main() {
 
   console.log(`  Categories: compute=${compute.id}, data=${data.id}, network=${network.id}`);
 
+  // ── Flavor Profiles (Profile × Size grid) ───────────────────────────
+  // Idempotent: upsert per (categoryId, slug), never overwrites admin edits (update: {}).
+  const profileSpecs: { categorySlug: string; name: string; slug: string; description: string; icon: string; color: string; order: number }[] = [
+    { categorySlug: 'compute', name: 'General purpose', slug: 'general-purpose', description: 'Balanced CPU/RAM for web servers, dev & test', icon: 'Server', color: 'blue', order: 0 },
+    { categorySlug: 'compute', name: 'Compute oriented', slug: 'compute-oriented', description: 'High-frequency cores, compute-bound workloads', icon: 'Cpu', color: 'amber', order: 1 },
+    { categorySlug: 'compute', name: 'Memory oriented', slug: 'memory-oriented', description: 'High RAM per core, in-memory databases and caching', icon: 'MemoryStick', color: 'violet', order: 2 },
+    { categorySlug: 'compute', name: 'Storage optimized', slug: 'storage-optimized', description: 'Local NVMe and high sequential throughput', icon: 'HardDrive', color: 'green', order: 3 },
+    { categorySlug: 'compute', name: 'Accelerated', slug: 'accelerated', description: 'GPU/FPGA accelerated computing', icon: 'Zap', color: 'red', order: 4 },
+    { categorySlug: 'data', name: 'Throughput', slug: 'throughput', description: 'Sequential throughput oriented storage', icon: 'Gauge', color: 'blue', order: 0 },
+    { categorySlug: 'data', name: 'IOPS', slug: 'iops', description: 'High random IOPS for transactional workloads', icon: 'Activity', color: 'amber', order: 1 },
+    { categorySlug: 'data', name: 'Archive', slug: 'archive', description: 'Long-term retention, cold data', icon: 'Archive', color: 'violet', order: 2 },
+  ];
+
+  const profiles: Record<string, string> = {};
+  for (const spec of profileSpecs) {
+    const categoryId = spec.categorySlug === 'compute' ? compute.id : data.id;
+    const rec = await prisma.flavorProfile.upsert({
+      where: { categoryId_slug: { categoryId, slug: spec.slug } },
+      update: {},
+      create: {
+        categoryId,
+        name: spec.name,
+        slug: spec.slug,
+        description: spec.description,
+        icon: spec.icon,
+        color: spec.color,
+        order: spec.order,
+      },
+    });
+    profiles[spec.slug] = rec.id;
+  }
+  console.log(`  Flavor profiles: ${Object.keys(profiles).length} ensured`);
+
   // ── Products ────────────────────────────────────────────────────────
   // Upsert an existing product (updates description if it exists)
   const vmProduct = await prisma.product.upsert({
@@ -167,6 +200,32 @@ async function main() {
   });
 
   console.log(`  Flavors: small=${small.id}, medium=${medium.id}, large=${large.id}, xl=${xl.id}, bm=${bmMedium.id}/${bmLarge.id}/${bmXl.id}`);
+
+  // ── Flavor grid positioning ─────────────────────────────────────────
+  // Idempotent: assigns profileId/sizeLabel/sizeRank to demo flavors.
+  // Scoped to the grid columns only — never touches attributes or geo links.
+  const gridPositioning: { name: string; categoryId: string; profileSlug: string; sizeLabel: string; sizeRank: number }[] = [
+    { name: 'Small', categoryId: compute.id, profileSlug: 'general-purpose', sizeLabel: 'S', sizeRank: 1 },
+    { name: 'Medium', categoryId: compute.id, profileSlug: 'general-purpose', sizeLabel: 'M', sizeRank: 2 },
+    { name: 'Large', categoryId: compute.id, profileSlug: 'general-purpose', sizeLabel: 'L', sizeRank: 3 },
+    { name: 'XL', categoryId: compute.id, profileSlug: 'general-purpose', sizeLabel: 'XL', sizeRank: 4 },
+    { name: 'BM Medium', categoryId: compute.id, profileSlug: 'memory-oriented', sizeLabel: 'M', sizeRank: 2 },
+    { name: 'BM Large', categoryId: compute.id, profileSlug: 'memory-oriented', sizeLabel: 'L', sizeRank: 3 },
+    { name: 'BM XL', categoryId: compute.id, profileSlug: 'memory-oriented', sizeLabel: 'XL', sizeRank: 4 },
+  ];
+
+  for (const pos of gridPositioning) {
+    await prisma.flavor.updateMany({
+      where: { name: pos.name, categoryId: null }, // only position unpositioned flavors
+      data: {
+        categoryId: pos.categoryId,
+        profileId: profiles[pos.profileSlug],
+        sizeLabel: pos.sizeLabel,
+        sizeRank: pos.sizeRank,
+      },
+    });
+  }
+  console.log(`  Flavor grid: positioned ${gridPositioning.length} demo flavors (only when previously unpositioned)`);
 
   // ── Dependencies ────────────────────────────────────────────────────
   await prisma.dependency.upsert({

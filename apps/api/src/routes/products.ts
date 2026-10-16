@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { generateSlug } from '../lib/slugify';
+import { autoTransitionName } from '../lib/transition-name';
 
 const router = Router();
 
@@ -112,7 +113,7 @@ router.get('/', async (req, res, next) => {
           include: {
             os: { include: { zones: { include: { zone: true } } } },
             osVersion: true,
-            flavor: { include: { zones: { include: { zone: true } } } },
+            flavor: { include: { profile: { select: { id: true, name: true, slug: true, icon: true, color: true, order: true } }, zones: { include: { zone: true } } } },
             availabilityZones: { include: { availabilityZone: true } },
             zones: { include: { zone: true } },
             continuityLevel: true,
@@ -225,7 +226,7 @@ router.post('/', async (req, res, next) => {
             include: {
               os: { include: { zones: { include: { zone: true } } } },
               osVersion: true,
-              flavor: { include: { zones: { include: { zone: true } } } },
+              flavor: { include: { profile: { select: { id: true, name: true, slug: true, icon: true, color: true, order: true } }, zones: { include: { zone: true } } } },
               availabilityZones: { include: { availabilityZone: true } },
               zones: { include: { zone: true } },
               continuityLevel: true,
@@ -280,7 +281,7 @@ router.get('/:id/variants', async (req, res, next) => {
       include: {
         os: true,
         osVersion: true,
-        flavor: true,
+        flavor: { include: { profile: { select: { id: true, name: true, slug: true, icon: true, color: true, order: true } } } },
         availabilityZones: { include: { availabilityZone: true } },
         zones: { include: { zone: true } },
         continuityLevel: true,
@@ -395,7 +396,7 @@ router.post('/:id/variants', async (req, res, next) => {
       include: {
         os: true,
         osVersion: true,
-        flavor: true,
+        flavor: { include: { profile: { select: { id: true, name: true, slug: true, icon: true, color: true, order: true } } } },
         availabilityZones: { include: { availabilityZone: true } },
         zones: { include: { zone: true } },
         continuityLevel: true,
@@ -422,7 +423,7 @@ router.get('/:slug', async (req, res, next) => {
           include: {
             os: { include: { zones: { include: { zone: true } } } },
             osVersion: true,
-            flavor: { include: { zones: { include: { zone: true } } } },
+            flavor: { include: { profile: { select: { id: true, name: true, slug: true, icon: true, color: true, order: true } }, zones: { include: { zone: true } } } },
             availabilityZones: { include: { availabilityZone: true } },
             zones: { include: { zone: true } },
             continuityLevel: true,
@@ -615,7 +616,7 @@ router.patch('/:id', async (req, res, next) => {
           include: {
             os: { include: { zones: { include: { zone: true } } } },
             osVersion: true,
-            flavor: { include: { zones: { include: { zone: true } } } },
+            flavor: { include: { profile: { select: { id: true, name: true, slug: true, icon: true, color: true, order: true } }, zones: { include: { zone: true } } } },
             availabilityZones: { include: { availabilityZone: true } },
             zones: { include: { zone: true } },
             continuityLevel: true,
@@ -700,7 +701,7 @@ router.get('/:id/variants', async (req, res, next) => {
       include: {
         os: true,
         osVersion: true,
-        flavor: true,
+        flavor: { include: { profile: { select: { id: true, name: true, slug: true, icon: true, color: true, order: true } } } },
         availabilityZones: { include: { availabilityZone: true } },
         continuityLevel: true,
         _count: { select: { instances: true } },
@@ -781,7 +782,7 @@ router.post('/:id/variants', async (req, res, next) => {
       include: {
         os: true,
         osVersion: true,
-        flavor: true,
+        flavor: { include: { profile: { select: { id: true, name: true, slug: true, icon: true, color: true, order: true } } } },
         availabilityZones: { include: { availabilityZone: true } },
         continuityLevel: true,
       },
@@ -824,11 +825,13 @@ const createUpgradePathSchema = z.object({
 });
 
 // GET /api/products/:id/upgrade-paths — transitions from and to this product
+// Legacy alias: reads from Transition (the single source of truth) so the
+// drawer and the Transitions page always show the same rows.
 router.get('/:id/upgrade-paths', async (req, res, next) => {
   try {
     const id = idParamSchema.parse(req.params.id);
     const [outgoing, incoming] = await Promise.all([
-      prisma.upgradePath.findMany({
+      prisma.transition.findMany({
         where: { fromProductId: id },
         include: {
           fromProduct: { select: { id: true, name: true, slug: true } },
@@ -836,7 +839,7 @@ router.get('/:id/upgrade-paths', async (req, res, next) => {
         },
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.upgradePath.findMany({
+      prisma.transition.findMany({
         where: { toProductId: id },
         include: {
           fromProduct: { select: { id: true, name: true, slug: true } },
@@ -863,17 +866,25 @@ router.post('/:id/upgrade-paths', async (req, res, next) => {
     ]);
     if (!product) return res.status(404).json({ error: 'Product not found' });
     if (!target) return res.status(404).json({ error: 'Target product not found' });
-    if (data.toProductId === id) {
-      return res.status(400).json({ error: 'A product cannot transition to itself' });
-    }
 
-    const path = await prisma.upgradePath.create({
+    // Legacy alias: writes to Transition (name auto-generated). Self-transitions
+    // (version bumps) are supported — same rule as POST /:id/transitions.
+    const name = autoTransitionName({
+      fromProductName: product.name,
+      toProductName: target.name,
+      fromVersion: data.fromVersion,
+      toVersion: data.toVersion,
+    });
+    const path = await prisma.transition.create({
       data: {
+        name,
+        slug: generateSlug('transition', name),
         fromProductId: id,
         toProductId: data.toProductId,
         fromVersion: data.fromVersion,
         toVersion: data.toVersion,
         migrationType: data.migrationType || 'REBUILD',
+        status: 'AVAILABLE',
         notes: data.notes || null,
       },
       include: {
@@ -893,11 +904,11 @@ router.delete('/:id/upgrade-paths/:pathId', async (req, res, next) => {
     const { id, pathId } = req.params;
     idParamSchema.parse(id);
     idParamSchema.parse(pathId);
-    const existing = await prisma.upgradePath.findUnique({ where: { id: pathId } });
+    const existing = await prisma.transition.findUnique({ where: { id: pathId } });
     if (!existing || existing.fromProductId !== id) {
       return res.status(404).json({ error: 'Upgrade path not found for this product' });
     }
-    await prisma.upgradePath.delete({ where: { id: pathId } });
+    await prisma.transition.delete({ where: { id: pathId } });
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -907,7 +918,7 @@ router.delete('/:id/upgrade-paths/:pathId', async (req, res, next) => {
 // ── Transitions (first-class product transitions) ──────────────────
 
 const createTransitionSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
+  name: z.string().min(1, 'Name is required').optional(),
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/).optional(),
   description: z.string().optional().nullable(),
   fromProductId: z.string().uuid('Invalid source product ID'),
@@ -970,14 +981,20 @@ router.post('/:id/transitions', async (req, res, next) => {
     ]);
     if (!source) return res.status(404).json({ error: 'Source product not found' });
     if (!target) return res.status(404).json({ error: 'Target product not found' });
-    if (data.toProductId === fromId) {
-      return res.status(400).json({ error: 'A product cannot transition to itself' });
-    }
 
-    const slug = data.slug || generateSlug('transition', data.name);
+    // A self-transition (same product, version bump) is the common case
+    // (e.g. Bare Metal bm-gen2 → bm-gen3) — fully supported.
+    const name = data.name || autoTransitionName({
+      fromProductName: source.name,
+      toProductName: target.name,
+      fromVersion: data.fromVersion,
+      toVersion: data.toVersion,
+    });
+
+    const slug = data.slug || generateSlug('transition', name);
     const transition = await prisma.transition.create({
       data: {
-        name: data.name,
+        name,
         slug,
         description: data.description || null,
         fromProductId: data.fromProductId,

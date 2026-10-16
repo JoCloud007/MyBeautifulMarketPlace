@@ -1109,49 +1109,149 @@ export default function ProductDetail() {
               </CardContent>
             </Card>
 
-            {isCompute && variants.length > 0 && (
-              <Card className="bg-slate-900 border-slate-800">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-white">
-                    <HardDrive className="h-5 w-5 text-blue-500" />
-                    Available Configurations
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {Array.from(new Map(variants.map(v => [v.flavorId, v.flavor])).values()).map((flavor: any) => {
-                      const flavorVariants = variants.filter(v => v.flavorId === flavor.id);
-                      const osList = Array.from(new Map(flavorVariants.map(v => [v.osId, { name: v.os?.name, version: v.osVersion?.version }])).values());
-                      return (
-                        <div key={flavor.id} className="flex flex-col sm:flex-row gap-3 rounded-lg border border-slate-800 bg-slate-950 p-4">
-                          {/* Flavor - big square on the left */}
-                          <div className="sm:w-48 shrink-0 flex flex-col items-center justify-center rounded-lg bg-slate-900 border border-slate-800 p-4 text-center">
-                            <Cpu className="h-8 w-8 text-blue-500 mb-2" />
-                            <span className="font-bold text-white text-lg">{flavor.name}</span>
-                            <span className="text-sm text-slate-400 mt-1">{formatFlavorAttrs(flavor as Flavor, flavorFieldDefs)}</span>
-                          </div>
-                          {/* OS options - small rectangles on the right */}
-                          <div className="flex-1 flex flex-wrap gap-2 items-center content-center">
-                            {osList.map((os: any, i: number) => (
-                              <Badge
-                                key={i}
-                                variant="outline"
-                                className="text-xs border-slate-700 text-slate-300 bg-slate-900 px-3 py-1.5"
-                              >
-                                {os.name} {os.version}
-                              </Badge>
+            {isCompute && variants.length > 0 && (() => {
+              // Profile × Size grid (AWS-style): shown when at least one flavor has a profile.
+              const uniqFlavors = Array.from(new Map(variants.map(v => [v.flavorId, v.flavor])).values()) as any[];
+              const profiled = uniqFlavors.filter((f: any) => f?.profile);
+              const hasGrid = profiled.length > 0;
+
+              if (!hasGrid) {
+                // Fallback — current grouped-by-flavor rendering
+                return (
+                  <Card className="bg-slate-900 border-slate-800">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-white">
+                        <HardDrive className="h-5 w-5 text-blue-500" />
+                        Available Configurations
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {uniqFlavors.map((flavor: any) => {
+                          const flavorVariants = variants.filter(v => v.flavorId === flavor.id);
+                          const osList = Array.from(new Map(flavorVariants.map(v => [v.osId, { name: v.os?.name, version: v.osVersion?.version }])).values());
+                          return (
+                            <div key={flavor.id} className="flex flex-col sm:flex-row gap-3 rounded-lg border border-slate-800 bg-slate-950 p-4">
+                              {/* Flavor - big square on the left */}
+                              <div className="sm:w-48 shrink-0 flex flex-col items-center justify-center rounded-lg bg-slate-900 border border-slate-800 p-4 text-center">
+                                <Cpu className="h-8 w-8 text-blue-500 mb-2" />
+                                <span className="font-bold text-white text-lg">{flavor.name}</span>
+                                <span className="text-sm text-slate-400 mt-1">{formatFlavorAttrs(flavor as Flavor, flavorFieldDefs)}</span>
+                              </div>
+                              {/* OS options - small rectangles on the right */}
+                              <div className="flex-1 flex flex-wrap gap-2 items-center content-center">
+                                {osList.map((os: any, i: number) => (
+                                  <Badge
+                                    key={i}
+                                    variant="outline"
+                                    className="text-xs border-slate-700 text-slate-300 bg-slate-900 px-3 py-1.5"
+                                  >
+                                    {os.name} {os.version}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <p className="text-sm text-slate-500 text-center">
+                          See the Variants tab for full details and filtering.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              }
+
+              // Grid: rows = profiles (ordered), columns = sizes (ordered by sizeRank).
+              // Profiled flavors without a sizeLabel are kept in a trailing "—" column
+              // so they (and their whole profile row) never vanish from the grid.
+              const profiles: any[] = [];
+              for (const f of profiled) {
+                if (f.profile && !profiles.some((p: any) => p.id === f.profile.id)) profiles.push(f.profile);
+              }
+              profiles.sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
+              const sizeSet = new Map<string, { label: string; rank: number }>();
+              for (const f of profiled) {
+                if (f.sizeLabel != null) sizeSet.set(f.sizeLabel, { label: f.sizeLabel, rank: f.sizeRank ?? 99 });
+              }
+              const sizes = Array.from(sizeSet.values()).sort((a, b) => a.rank - b.rank);
+              const hasUnSized = profiled.some((f: any) => f.sizeLabel == null);
+              const cellFlavor = (profileId: string, sizeLabel: string) =>
+                profiled.find((f: any) => f.profile?.id === profileId && f.sizeLabel === sizeLabel);
+              const unSizedFlavor = (profileId: string) =>
+                profiled.find((f: any) => f.profile?.id === profileId && f.sizeLabel == null);
+
+              return (
+                <Card className="bg-slate-900 border-slate-800">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-white">
+                      <HardDrive className="h-5 w-5 text-blue-500" />
+                      Profile × Size
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr>
+                            <th className="text-left py-2 px-3 text-xs uppercase tracking-wider text-slate-500 font-medium">Profile</th>
+                            {sizes.map((s) => (
+                              <th key={s.label} className="text-left py-2 px-3 text-xs uppercase tracking-wider text-slate-500 font-medium">{s.label}</th>
                             ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <p className="text-sm text-slate-500 text-center">
+                            {hasUnSized && (
+                              <th className="text-left py-2 px-3 text-xs uppercase tracking-wider text-slate-500 font-medium">—</th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {profiles.map((p: any) => (
+                            <tr key={p.id} className="border-t border-slate-800">
+                              <td className="py-3 px-3 align-top">
+                                <div className="font-medium text-blue-400">{p.name}</div>
+                                {p.description && <div className="text-[11px] text-slate-500 max-w-[180px]">{p.description}</div>}
+                              </td>
+                              {sizes.map((s) => {
+                                const f: any = cellFlavor(p.id, s.label);
+                                if (!f) {
+                                  return (
+                                    <td key={s.label} className="py-3 px-3 text-slate-700">—</td>
+                                  );
+                                }
+                                return (
+                                  <td key={s.label} className="py-3 px-3">
+                                    <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 h-full">
+                                      <div className="font-semibold text-white">{f.name}</div>
+                                      <div className="text-[11px] text-slate-400 mt-1">{formatFlavorAttrs(f as Flavor, flavorFieldDefs)}</div>
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                              {hasUnSized && (() => {
+                                const f: any = unSizedFlavor(p.id);
+                                if (!f) {
+                                  return <td className="py-3 px-3 text-slate-700">—</td>;
+                                }
+                                return (
+                                  <td className="py-3 px-3">
+                                    <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 h-full">
+                                      <div className="font-semibold text-white">{f.name}</div>
+                                      <div className="text-[11px] text-slate-400 mt-1">{formatFlavorAttrs(f as Flavor, flavorFieldDefs)}</div>
+                                    </div>
+                                  </td>
+                                );
+                              })()}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-sm text-slate-500 text-center mt-3">
                       See the Variants tab for full details and filtering.
                     </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
           </TabsContent>
 
           {/* Documentation */}

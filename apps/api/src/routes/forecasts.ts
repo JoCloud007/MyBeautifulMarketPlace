@@ -275,11 +275,13 @@ router.get('/form-options', async (req, res, next) => {
     // For products with no variants at all, fall back to the flavors of the
     // product's category, EXCLUDING flavors claimed by another product's
     // variant (e.g. S3-Standard belongs to Object Storage, not NAS).
+    const profileInclude = { select: { id: true, name: true, slug: true, icon: true, color: true } };
     const variantFlavorIds = [...new Set(variants.map((v) => v.flavorId))];
-    let flavors: Awaited<ReturnType<typeof prisma.flavor.findMany>>;
+    let flavors: any[];
     if (variantFlavorIds.length > 0) {
       flavors = await prisma.flavor.findMany({
         where: { id: { in: variantFlavorIds } },
+        include: { profile: profileInclude },
         orderBy: { name: 'asc' },
       });
     } else if (product.categoryId) {
@@ -290,6 +292,7 @@ router.get('/form-options', async (req, res, next) => {
       const claimedIds = [...new Set(claimedByOthers.map((v) => v.flavorId))];
       flavors = await prisma.flavor.findMany({
         where: { categoryId: product.categoryId, id: { notIn: claimedIds } },
+        include: { profile: profileInclude },
         orderBy: { name: 'asc' },
       });
     } else {
@@ -344,6 +347,10 @@ router.get('/form-options', async (req, res, next) => {
         ramGb: f.ramGb,
         attributes: f.attributes,
         description: f.description,
+        profileId: f.profileId ?? null,
+        profile: f.profile ?? null,
+        sizeLabel: f.sizeLabel ?? null,
+        sizeRank: f.sizeRank ?? null,
       })),
       osVersions: osVersions.map((ov) => ({
         id: ov.id,

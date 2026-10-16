@@ -140,8 +140,24 @@ export default function Marketplace() {
     if (filters.category && p.category?.slug !== filters.category) return false;
     if (filters.computeType && p.computeType !== filters.computeType) return false;
     if (filters.search && !p.name.toLowerCase().includes(filters.search.toLowerCase())) return false;
+    if (filters.profile) {
+      const hasProfile = (p.variants ?? []).some((v: any) => v.flavor?.profile?.id === filters.profile);
+      if (!hasProfile) return false;
+    }
     return true;
   }) ?? [];
+
+  // Profiles available in the catalog (from product variants' flavors), for the filter dropdown
+  const catalogProfiles = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    for (const p of products ?? []) {
+      for (const v of p.variants ?? []) {
+        const prof = v.flavor?.profile;
+        if (prof?.id && !map.has(prof.id)) map.set(prof.id, { id: prof.id, name: prof.name });
+      }
+    }
+    return Array.from(map.values());
+  }, [products]);
 
   const sortedProducts =
     filteredProducts.slice().sort((a: any, b: any) => {
@@ -362,6 +378,18 @@ export default function Marketplace() {
                   <option value="PHYSICAL">Physical</option>
                   <option value="VIRTUAL">Virtual</option>
                 </select>
+                {catalogProfiles.length > 0 && (
+                  <select
+                    value={filters.profile || ''}
+                    onChange={(e) => setFilters({ profile: e.target.value || undefined })}
+                    className="h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-900 px-3 text-sm text-white"
+                  >
+                    <option value="">All Profiles</option>
+                    {catalogProfiles.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                )}
                 <div className="relative">
                   <select
                     value={sortBy}

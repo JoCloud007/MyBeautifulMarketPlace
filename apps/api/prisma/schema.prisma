@@ -17,8 +17,29 @@ model Category {
   products    Product[]
   flavors     Flavor[]
   flavorFieldDefinitions FlavorFieldDefinition[]
+  flavorProfiles FlavorProfile[]
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+// Profile × Size grid (AWS-style) owned per Category.
+// Unrelated to PerformanceProfile (metric model).
+// slug is unique per category and must not be renamed after creation.
+model FlavorProfile {
+  id          String   @id @default(uuid())
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name        String
+  slug        String
+  description String?
+  icon        String?
+  color       String?
+  order       Int      @default(0)
+  flavors     Flavor[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([categoryId, slug])
 }
 
 model FlavorFieldDefinition {
@@ -212,6 +233,10 @@ model Flavor {
   name                String                   @unique
   categoryId          String?
   category            Category?                @relation(fields: [categoryId], references: [id])
+  profileId           String?
+  profile             FlavorProfile?           @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  sizeLabel           String?
+  sizeRank            Int?
   vcpu                Int?
   ramGb               Int?
   attributes          Json?

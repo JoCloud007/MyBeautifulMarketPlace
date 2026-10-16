@@ -420,12 +420,36 @@ export interface ProductVersionAvailabilityZone {
   availabilityZone?: AvailabilityZone;
 }
 
+/**
+ * Profile × Size grid: a flavor profile is owned per Category
+ * (slug unique per category). Unrelated to PerformanceProfile
+ * (the performance metric model).
+ */
+export interface FlavorProfile {
+  id: string;
+  categoryId: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  order: number;
+  category?: Category;
+  flavors?: Flavor[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Flavor {
   id: string;
   name: string;
   vcpu: number | null;
   ramGb: number | null;
   attributes?: Record<string, string | number> | null;
+  profileId?: string | null;
+  profile?: FlavorProfile | null;
+  sizeLabel?: string | null;
+  sizeRank?: number | null;
   description: string | null;
   releaseDate: string | null;
   deprecationDate: string | null;

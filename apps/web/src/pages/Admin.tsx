@@ -4,6 +4,7 @@ import {
   useAdminDashboard,
   useAdminProducts,
   useTransitions,
+  useProductTransitions,
   useCreateTransition,
   useUpdateTransition,
   useDeleteTransition,
@@ -18,6 +19,11 @@ import {
   useCreateFieldDefinition,
   useUpdateFieldDefinition,
   useDeleteFieldDefinition,
+  useFlavorProfiles,
+  useCreateFlavorProfile,
+  useUpdateFlavorProfile,
+  useDeleteFlavorProfile,
+  useAdminVariants,
   useCreateDependency,
   useUpdateDependency,
   useDeleteDependency,
@@ -147,7 +153,7 @@ import {
 import McpStatus from './McpStatus';
 import { formatFlavorAttrs } from '@/lib/utils';
 import type { ForecastStatus, Product, Category, Flavor, FlavorFieldDefinition, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType, AvailabilitySchedule, ProductVersion, Region, Transition, InfraVersion } from '@cloudmarket/shared-types';
-import { LifecyclePhase } from '@cloudmarket/shared-types';
+import { LifecyclePhase, MigrationType } from '@cloudmarket/shared-types';
 import { PerformanceTargetType, VisibilityType } from '@cloudmarket/shared-types';
 
 const statusConfig: Record<ForecastStatus, { label: string; color: string }> = {
@@ -1265,47 +1271,58 @@ function TransitionsAdminSection() {
 }
 
 function TransitionsSection({ productId }: { productId: string }) {
-  const [paths, setPaths] = useState<{ outgoing: any[]; incoming: any[] }>({ outgoing: [], incoming: [] });
-  const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [toProductId, setToProductId] = useState('');
   const [fromVersion, setFromVersion] = useState('');
   const [toVersion, setToVersion] = useState('');
-  const [migrationType, setMigrationType] = useState('REBUILD');
+  const [migrationType, setMigrationType] = useState<MigrationType>(MigrationType.REBUILD);
   const { data: allProducts } = useAdminProducts();
+  const { data: paths, isLoading } = useProductTransitions(productId);
+  const createTransition = useCreateTransition();
+  const deleteTransition = useDeleteTransition();
 
-  const load = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/products/${productId}/upgrade-paths`);
-      if (res.ok) setPaths(await res.json());
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { load(); }, [productId]);
+  // A self-transition (same product, version bump) appears in both outgoing and
+  // incoming — show it once, labelled with its direction.
+  const rows: { t: Transition; dir: 'out' | 'in' }[] = [];
+  const seen = new Set<string>();
+  for (const t of paths?.outgoing || []) {
+    if (seen.has(t.id)) continue;
+    seen.add(t.id);
+    rows.push({ t, dir: 'out' });
+  }
+  for (const t of paths?.incoming || []) {
+    if (seen.has(t.id)) continue;
+    seen.add(t.id);
+    rows.push({ t, dir: 'in' });
+  }
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/products/${productId}/upgrade-paths`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ toProductId, fromVersion, toVersion, migrationType }),
-    });
-    if (res.ok) {
+    try {
+      await createTransition.mutateAsync({
+        productId,
+        toProductId,
+        fromVersion,
+        toVersion,
+        migrationType,
+      });
       setFormOpen(false);
       setToProductId(''); setFromVersion(''); setToVersion('');
-      load();
+    } catch {
+      /* mutation error handled by hook onError */
     }
   };
 
-  const handleDelete = async (pathId: string) => {
-    const res = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/products/${productId}/upgrade-paths/${pathId}`, { method: 'DELETE' });
-    if (res.ok) load();
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteTransition.mutateAsync(id);
+    } catch {
+      /* handled by hook */
+    }
   };
 
-  const targetProducts = allProducts?.filter((p) => p.id !== productId) || [];
+  // Self (version-bump) transitions are the common case — keep the product in the list.
+  const targetProducts = allProducts || [];
 
   return (
     <div className="rounded-lg border border-slate-800 bg-slate-950 p-4">
@@ -1326,7 +1343,7 @@ function TransitionsSection({ productId }: { productId: string }) {
             <Input placeholder="From version (e.g. 1.0)" value={fromVersion} onChange={(e) => setFromVersion(e.target.value)} required className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
             <Input placeholder="To version (e.g. 2.0)" value={toVersion} onChange={(e) => setToVersion(e.target.value)} required className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
           </div>
-          <Select value={migrationType} onChange={(e) => setMigrationType(e.target.value)} className="bg-slate-950 border-slate-700 text-white min-h-[40px]">
+          <Select value={migrationType} onChange={(e) => setMigrationType(e.target.value as Transition['migrationType'])} className="bg-slate-950 border-slate-700 text-white min-h-[40px]">
             <option value="IN_PLACE">In-place</option>
             <option value="REBUILD">Rebuild</option>
             <option value="BLUE_GREEN">Blue/Green</option>
@@ -1339,21 +1356,19 @@ function TransitionsSection({ productId }: { productId: string }) {
         </form>
       )}
 
-      {loading ? (
+      {isLoading ? (
         <Skeleton className="h-12 rounded-md bg-slate-800" />
-      ) : paths.outgoing.length === 0 && paths.incoming.length === 0 ? (
+      ) : rows.length === 0 ? (
         <p className="text-xs text-slate-500">No transitions declared for this product.</p>
       ) : (
         <div className="space-y-1.5">
-          {paths.outgoing.map((p: any) => (
-            <div key={p.id} className="flex items-center justify-between rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5">
-              <span className="text-xs text-cyan-300">→ {p.toProduct?.name} <span className="text-slate-500">({p.fromVersion} → {p.toVersion} · {p.migrationType})</span></span>
-              <Button size="sm" variant="ghost" onClick={() => handleDelete(p.id)} className="h-6 w-6 p-0 text-slate-500 hover:text-red-400"><Trash2 className="h-3 w-3" /></Button>
-            </div>
-          ))}
-          {paths.incoming.map((p: any) => (
-            <div key={p.id} className="flex items-center justify-between rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5">
-              <span className="text-xs text-slate-400">← from {p.fromProduct?.name} <span className="text-slate-500">({p.fromVersion} → {p.toVersion})</span></span>
+          {rows.map(({ t, dir }) => (
+            <div key={t.id} className="flex items-center justify-between rounded-md border border-slate-800 bg-slate-900 px-3 py-1.5">
+              <span className={`text-xs ${dir === 'out' ? 'text-cyan-300' : 'text-slate-400'}`}>
+                {dir === 'out' ? '→' : '← from'} {dir === 'out' ? t.toProduct?.name : t.fromProduct?.name}{' '}
+                <span className="text-slate-500">({t.fromVersion} → {t.toVersion} · {t.migrationType})</span>
+              </span>
+              <Button size="sm" variant="ghost" onClick={() => handleDelete(t.id)} className="h-6 w-6 p-0 text-slate-500 hover:text-red-400"><Trash2 className="h-3 w-3" /></Button>
             </div>
           ))}
         </div>
@@ -1426,12 +1441,18 @@ function ProductResiliencyInline({ product }: { product: Product }) {
 }
 
 function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product; onClose: () => void }) {
-  // Compute detection must not depend on category.flavorFieldDefinitions —
-  // the admin API does not include it, which silently hid the whole
-  // Variants section. computeType is always present on admin products.
+  // Compute detection: a product is "compute" (runs an OS) when its category
+  // is Compute or carries flavor field definitions. Do NOT use product.computeType
+  // alone as the signal — it is a stale VIRTUAL on non-compute products (NAS Storage,
+  // Object Storage…) and would make every product look like compute.
+  // Strict rule (same as forecasts.ts / API form-options): categories whose
+  // flavorFieldDefinitions include a "vcpu" field are compute. Storage categories
+  // (Data: maxGb/iops/tier) must never carry an OS on their variants.
+  // Fallback: a product that already carries variants is treated as compute so a
+  // category without vcpu definitions (e.g. Platform) still shows OS selectors.
   const isCompute =
-    (product.category?.flavorFieldDefinitions?.length ?? 0) > 0 ||
-    !!product.computeType;
+    (product.category?.flavorFieldDefinitions ?? []).some((d: any) => d.key === 'vcpu') ||
+    (product.variants?.length ?? 0) > 0;
   const { data: variants, isLoading: variantsLoading } = useProductVariants(product.id);
   const { data: allFlavors } = useFlavors();
   const { data: allOS } = useOperatingSystems();
@@ -1478,6 +1499,12 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
       // to null so storage products can create variants without an OS.
       if (!payload.osId) payload.osId = null;
       if (!payload.osVersionId) payload.osVersionId = null;
+      // Non-compute variants must never carry an OS: clear both even if the
+      // form somehow holds values (e.g. a legacy variant being re-saved).
+      if (!isCompute) {
+        payload.osId = null;
+        payload.osVersionId = null;
+      }
       if (!payload.continuityLevelId) delete payload.continuityLevelId;
       if (editingVariant) await updateVariant.mutateAsync({ id: editingVariant.id, ...payload });
       else await createVariant.mutateAsync({ productId: product.id, ...payload });
@@ -1522,7 +1549,9 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="font-medium text-white">{v.name}</span>
-                      <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">{v.os?.name} {v.osVersion?.version}</Badge>
+                      {(v.os?.name || v.osVersion?.version) && (
+                        <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">{v.os?.name} {v.osVersion?.version}</Badge>
+                      )}
                       <Badge variant="outline" className="text-xs border-slate-700 text-slate-400">{v.flavor?.name}</Badge>
                       {v.continuityLevel && <Badge variant="outline" className="text-xs border-slate-700" style={{ color: v.continuityLevel.color, borderColor: `${v.continuityLevel.color}40` }}>{v.continuityLevel.name}</Badge>}
                       {v.availabilityType && v.availabilityType !== 'STANDARD' && (
@@ -1606,22 +1635,26 @@ function ProductDetailDrawer({ product, onClose: _onClose }: { product: Product;
           <DialogHeader><DialogTitle className="text-white">{editingVariant ? 'Edit Variant' : 'New Variant'}</DialogTitle></DialogHeader>
           <form onSubmit={handleVariantSubmit} className="space-y-4">
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={variantForm.name} onChange={(e) => setVariantForm({ ...variantForm, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Operating System</label>
-              <Select value={variantForm.osId} onChange={(e) => setVariantForm({ ...variantForm, osId: e.target.value, osVersionId: '' })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
-                <option value="">Select OS...</option>
-                {allOS?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Version</label>
-              <Select value={variantForm.osVersionId} onChange={(e) => setVariantForm({ ...variantForm, osVersionId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
-                <option value="">Select version...</option>
-                {selectedOS?.versions?.map((v: OsVersion) => (
-                  <option key={v.id} value={v.id}>{v.version} ({v.phase})</option>
-                ))}
-              </Select>
-            </div>
+            {isCompute && (
+              <>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-300">Operating System</label>
+                  <Select value={variantForm.osId} onChange={(e) => setVariantForm({ ...variantForm, osId: e.target.value, osVersionId: '' })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                    <option value="">Select OS...</option>
+                    {allOS?.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-300">Version</label>
+                  <Select value={variantForm.osVersionId} onChange={(e) => setVariantForm({ ...variantForm, osVersionId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                    <option value="">Select version...</option>
+                    {selectedOS?.versions?.map((v: OsVersion) => (
+                      <option key={v.id} value={v.id}>{v.version} ({v.phase})</option>
+                    ))}
+                  </Select>
+                </div>
+              </>
+            )}
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-300">Flavor</label>
               <Select value={variantForm.flavorId} onChange={(e) => setVariantForm({ ...variantForm, flavorId: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
@@ -1838,6 +1871,140 @@ function FlavorFieldsDialog({ category, onClose }: { category: Category; onClose
   );
 }
 
+// ============ FLAVOR PROFILES DIALOG (Profile × Size grid) ============
+type ProfileForm = { name: string; slug: string; description: string; icon: string; color: string; order: number };
+
+function FlavorProfilesDialog({ category, onClose }: { category: Category; onClose: () => void }) {
+  const { data: profiles, isLoading } = useFlavorProfiles(category.id);
+  const createProfile = useCreateFlavorProfile(category.id);
+  const updateProfile = useUpdateFlavorProfile(category.id);
+  const deleteProfile = useDeleteFlavorProfile(category.id);
+
+  const [form, setForm] = useState<ProfileForm>({ name: '', slug: '', description: '', icon: '', color: '', order: 0 });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+
+  const resetForm = () => { setForm({ name: '', slug: '', description: '', icon: '', color: '', order: 0 }); setEditingId(null); };
+  const openEdit = (p: any) => {
+    setEditingId(p.id);
+    setForm({ name: p.name, slug: p.slug, description: p.description || '', icon: p.icon || '', color: p.color || '', order: p.order ?? 0 });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload: any = {
+      name: form.name,
+      // Send null (not undefined) so a cleared field is actually persisted on edit
+      description: form.description || null,
+      icon: form.icon || null,
+      color: form.color || null,
+      order: form.order,
+    };
+    if (!editingId && form.slug.trim()) payload.slug = form.slug.trim();
+    try {
+      if (editingId) await updateProfile.mutateAsync({ id: editingId, ...payload });
+      else await createProfile.mutateAsync(payload);
+      resetForm();
+    } catch {
+      /* mutation error handled by hook onError */
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirmDelete.id) return;
+    try {
+      await deleteProfile.mutateAsync(confirmDelete.id);
+    } catch {
+      /* handled by hook */
+    }
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-white">Flavor profiles — {category.name}</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-slate-500">
+          Workload profiles of the Profile × Size grid (e.g. General purpose, Memory oriented). Flavors reference a profile plus a size label/rank.
+        </p>
+
+        <div className="space-y-2">
+          {isLoading ? (
+            <Skeleton className="h-12 w-full bg-slate-800" />
+          ) : profiles && profiles.length > 0 ? (
+            profiles.map((p: any) => (
+              <div key={p.id} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-white text-sm">{p.name}</span>
+                    <code className="text-[10px] text-slate-500">{p.slug}</code>
+                  </div>
+                  <div className="text-[11px] text-slate-500">{p.description || '—'}</div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button size="sm" variant="ghost" onClick={() => openEdit(p)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ open: true, id: p.id })} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-slate-500">No profiles yet. Flavors of this category are not positioned on a Profile × Size grid.</p>
+          )}
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+          <p className="text-sm font-medium text-slate-300">{editingId ? 'Edit profile' : 'Add a profile'}</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Name *</label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Memory oriented" required className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Slug {!editingId && '(optional, derived from name)'}</label>
+              <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} disabled={!!editingId} placeholder="memory-oriented" className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <label className="text-xs text-slate-400">Description</label>
+              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="High RAM per core…" className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Icon (lucide)</label>
+              <Input value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value })} placeholder="MemoryStick" className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Color</label>
+              <Input value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} placeholder="violet" className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Display order</label>
+              <Input type="number" value={form.order} onChange={(e) => setForm({ ...form, order: parseInt(e.target.value, 10) || 0 })} className="bg-slate-950 border-slate-700 text-white min-h-[40px]" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            {editingId && (
+              <Button type="button" variant="outline" onClick={resetForm} className="border-slate-700 text-slate-300 hover:bg-slate-800 min-h-[40px]">Cancel</Button>
+            )}
+            <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white min-h-[40px]">{editingId ? 'Save' : 'Add profile'}</Button>
+          </div>
+        </form>
+
+        <ConfirmDialog
+          open={confirmDelete.open}
+          onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+          title="Delete flavor profile"
+          description="Delete this profile? Flavors still attached to it block the deletion (409) — reassign them first. This action cannot be undone."
+          onConfirm={handleDelete}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          variant="destructive"
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ============ CATEGORIES SECTION ============
 function CategoriesSection() {
   const { data: categories, isLoading, isError, refetch } = useAdminCategories();
@@ -1898,6 +2065,7 @@ function CategoriesSection() {
   ));
 
   const [fieldsFor, setFieldsFor] = useState<Category | null>(null);
+  const [profilesFor, setProfilesFor] = useState<Category | null>(null);
 
   return (
     <div className="space-y-4">
@@ -1926,6 +2094,7 @@ function CategoriesSection() {
                 <td className="py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button size="sm" variant="ghost" onClick={() => setFieldsFor(cat)} title="Flavor fields" className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Layers className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => setProfilesFor(cat)} title="Flavor profiles" className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Boxes className="h-4 w-4" /></Button>
                     <Button size="sm" variant="ghost" onClick={() => openEdit(cat)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
                     <Button size="sm" variant="ghost" onClick={() => handleDelete(cat.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
                   </div>
@@ -1938,6 +2107,10 @@ function CategoriesSection() {
 
       {fieldsFor && (
         <FlavorFieldsDialog category={fieldsFor} onClose={() => setFieldsFor(null)} />
+      )}
+
+      {profilesFor && (
+        <FlavorProfilesDialog category={profilesFor} onClose={() => setProfilesFor(null)} />
       )}
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -2141,7 +2314,7 @@ function FlavorsSection() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Flavor | null>(null);
-  const [form, setForm] = useState({ name: '', categoryId: '', attributes: {} as Record<string, string>, description: '', zoneIds: [] as string[], regionIds: [] as string[], availabilityZoneIds: [] as string[], schedules: [] as (Partial<AvailabilitySchedule> & { deleted?: boolean })[], releaseDate: '', deprecationDate: '', eolDate: '' });
+  const [form, setForm] = useState({ name: '', categoryId: '', profileId: '', sizeLabel: '', sizeRank: '' as string, attributes: {} as Record<string, string>, description: '', zoneIds: [] as string[], regionIds: [] as string[], availabilityZoneIds: [] as string[], schedules: [] as (Partial<AvailabilitySchedule> & { deleted?: boolean })[], releaseDate: '', deprecationDate: '', eolDate: '' });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   const selectedDefs = useMemo(
@@ -2149,13 +2322,16 @@ function FlavorsSection() {
     [categories, form.categoryId]
   );
 
-  const resetForm = () => { setForm({ name: '', categoryId: '', attributes: {}, description: '', zoneIds: [], regionIds: [], availabilityZoneIds: [], schedules: [], releaseDate: '', deprecationDate: '', eolDate: '' }); setEditing(null); };
+  const selectedCategoryId = form.categoryId || ((editing as any)?.categoryId ?? '');
+  const { data: categoryProfiles } = useFlavorProfiles(selectedCategoryId || null);
+
+  const resetForm = () => { setForm({ name: '', categoryId: '', profileId: '', sizeLabel: '', sizeRank: '', attributes: {}, description: '', zoneIds: [], regionIds: [], availabilityZoneIds: [], schedules: [], releaseDate: '', deprecationDate: '', eolDate: '' }); setEditing(null); };
   const openCreate = () => { resetForm(); setIsOpen(true); };
   const openEdit = (f: Flavor) => {
     const attrStrings: Record<string, string> = {};
     Object.entries(f.attributes || {}).forEach(([k, v]) => { attrStrings[k] = String(v); });
     setEditing(f);
-    setForm({ name: f.name, categoryId: (f as any).categoryId || '', attributes: attrStrings, description: f.description || '', zoneIds: f.zones?.map((z: any) => z.zoneId) ?? [], regionIds: f.regions?.map((r: any) => r.regionId) ?? [], availabilityZoneIds: f.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [], schedules: f.availabilitySchedules ? [...f.availabilitySchedules] : [], releaseDate: f.releaseDate ? f.releaseDate.slice(0, 10) : '', deprecationDate: f.deprecationDate ? f.deprecationDate.slice(0, 10) : '', eolDate: f.eolDate ? f.eolDate.slice(0, 10) : '' });
+    setForm({ name: f.name, categoryId: (f as any).categoryId || '', profileId: (f as any).profileId || '', sizeLabel: (f as any).sizeLabel || '', sizeRank: (f as any).sizeRank != null ? String((f as any).sizeRank) : '', attributes: attrStrings, description: f.description || '', zoneIds: f.zones?.map((z: any) => z.zoneId) ?? [], regionIds: f.regions?.map((r: any) => r.regionId) ?? [], availabilityZoneIds: f.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [], schedules: f.availabilitySchedules ? [...f.availabilitySchedules] : [], releaseDate: f.releaseDate ? f.releaseDate.slice(0, 10) : '', deprecationDate: f.deprecationDate ? f.deprecationDate.slice(0, 10) : '', eolDate: f.eolDate ? f.eolDate.slice(0, 10) : '' });
     setIsOpen(true);
   };
 
@@ -2180,6 +2356,15 @@ function FlavorsSection() {
     const payload: any = { ...form, attributes: buildAttributes() };
     delete payload.attributesEmpty;
     if (!payload.categoryId) delete payload.categoryId;
+    if (payload.profileId) {
+      payload.sizeLabel = payload.sizeLabel || null;
+      const rank = parseInt(payload.sizeRank, 10);
+      payload.sizeRank = Number.isNaN(rank) ? null : rank;
+    } else {
+      payload.profileId = null;
+      payload.sizeLabel = null;
+      payload.sizeRank = null;
+    }
     if (Object.keys(payload.attributes).length === 0) delete payload.attributes;
     if (payload.releaseDate) payload.releaseDate = new Date(payload.releaseDate).toISOString();
     else delete payload.releaseDate;
@@ -2303,10 +2488,27 @@ function FlavorsSection() {
             <div className="space-y-2"><label className="text-sm font-medium text-slate-300">Name</label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" /></div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-300">Category</label>
-              <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value, attributes: {} })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+              <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value, attributes: {}, profileId: '', sizeLabel: '', sizeRank: '' })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
                 <option value="">— None —</option>
                 {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Profile</label>
+                <Select value={form.profileId} onChange={(e) => setForm({ ...form, profileId: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="">— None —</option>
+                  {(categoryProfiles ?? []).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Size label</label>
+                <Input value={form.sizeLabel} onChange={(e) => setForm({ ...form, sizeLabel: e.target.value })} placeholder="S, M, L, XL…" disabled={!form.profileId} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Size rank</label>
+                <Input type="number" value={form.sizeRank} onChange={(e) => setForm({ ...form, sizeRank: e.target.value })} placeholder="1" disabled={!form.profileId} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+              </div>
             </div>
             {selectedDefs.length > 0 && (
               <div className="grid grid-cols-2 gap-4">
@@ -2510,6 +2712,370 @@ function ScheduleEditor({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ============ VARIANTS SECTION (global, read-only) ============
+function VariantsSection() {
+  const { data: products } = useAdminProducts();
+  const { data: allAzs } = useAvailabilityZones();
+  const { data: allOs } = useOperatingSystems();
+  const { data: continuityLevels } = useContinuityLevels();
+  const createVariant = useCreateVariant();
+  const updateVariant = useUpdateVariant();
+  const deleteVariant = useDeleteVariant();
+  const [filterProduct, setFilterProduct] = useState('');
+  const [filterVersion, setFilterVersion] = useState('');
+  const [filterOs, setFilterOs] = useState('');
+  const [search, setSearch] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null; name?: string; blocking?: string }>({ open: false, id: null });
+  const [form, setForm] = useState({
+    productId: '',
+    name: '',
+    flavorId: '',
+    osId: '',
+    osVersionId: '',
+    productVersionId: '',
+    continuityLevelId: '',
+    isActive: true,
+    availabilityZoneIds: [] as string[],
+  });
+
+  const { data: variants, isLoading, isError, refetch } = useAdminVariants({
+    productId: filterProduct || undefined,
+    productVersionId: filterVersion || undefined,
+    osId: filterOs || undefined,
+  });
+
+  // Version options depend on the selected product
+  const versionOptions = useMemo(() => {
+    const list: { id: string; version: string; productName?: string }[] = [];
+    products?.forEach((p) => {
+      if (filterProduct && p.id !== filterProduct) return;
+      p.productVersions?.forEach((v) => list.push({ id: v.id, version: v.version, productName: p.name }));
+    });
+    return list;
+  }, [products, filterProduct]);
+
+  // OS options come from the products payload (variants nested per product),
+  // NOT from the filtered variants query — otherwise picking an OS would
+  // collapse the dropdown to that single OS and lock the filter.
+  const osOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    products?.forEach((p) => {
+      p.variants?.forEach((v: any) => {
+        if (v.os?.id && !map.has(v.os.id)) map.set(v.os.id, v.os.name);
+      });
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [products]);
+
+  const selectedProduct = products?.find((p) => p.id === form.productId);
+  const { data: allFlavorsForForm } = useFlavors();
+  const flavorOptions = useMemo(() => {
+    // Flavors of the product's category plus every flavor already claimed by
+    // its existing variants — sourcing from the variants alone would make the
+    // first variant of a product impossible to create.
+    const catId = (selectedProduct as any)?.categoryId;
+    const claimed = new Set(((selectedProduct as any)?.variants ?? []).map((v: any) => v.flavorId));
+    return (allFlavorsForForm as any[])
+      ?.filter((f: any) => f.categoryId === catId || claimed.has(f.id))
+      ?? [];
+  }, [allFlavorsForForm, selectedProduct]);
+  const osVersions = useMemo(
+    () => (allOs as any)?.find((o: any) => o.id === form.osId)?.versions ?? [],
+    [allOs, form.osId]
+  );
+
+  const resetForm = () => {
+    setForm({ productId: '', name: '', flavorId: '', osId: '', osVersionId: '', productVersionId: '', continuityLevelId: '', isActive: true, availabilityZoneIds: [] });
+    setEditing(null);
+  };
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (v: any) => {
+    setEditing(v);
+    setForm({
+      productId: v.productId ?? '',
+      name: v.name ?? '',
+      flavorId: v.flavorId ?? '',
+      osId: v.osId ?? '',
+      osVersionId: v.osVersionId ?? '',
+      productVersionId: v.productVersionId ?? '',
+      continuityLevelId: v.continuityLevelId ?? '',
+      isActive: v.isActive ?? true,
+      availabilityZoneIds: v.availabilityZones?.map((az: any) => az.availabilityZoneId) ?? [],
+    });
+    setIsOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload: any = {
+      name: form.name,
+      flavorId: form.flavorId,
+      isActive: form.isActive,
+      // Arrays/optional relations are ALWAYS sent: on edit, an emptied field
+      // must reach the API as null/[] so the old value is actually cleared
+      // (the PUT only overwrites fields present in the payload).
+      availabilityZoneIds: form.availabilityZoneIds,
+      osId: form.osId || null,
+      osVersionId: form.osVersionId || null,
+      productVersionId: form.productVersionId || null,
+      continuityLevelId: form.continuityLevelId || null,
+    };
+    if (!editing && !form.osId) delete payload.osId;
+    if (!editing && !form.osVersionId) delete payload.osVersionId;
+    if (!editing && !form.productVersionId) delete payload.productVersionId;
+    if (!editing && !form.continuityLevelId) delete payload.continuityLevelId;
+    try {
+      if (editing) await updateVariant.mutateAsync({ id: editing.id, ...payload });
+      else await createVariant.mutateAsync({ productId: form.productId, ...payload });
+      setIsOpen(false);
+      resetForm();
+    } catch { /* handled by hook onError */ }
+  };
+
+  const handleDelete = (v: any) => {
+    setConfirmDelete({ open: true, id: v.id, name: `${v.product?.name ?? ''} — ${v.name}`, blocking: v._count?.instances > 0 ? `${v._count.instances} instance(s)` : undefined });
+  };
+  const handleConfirmDelete = async () => {
+    try { if (confirmDelete.id) await deleteVariant.mutateAsync(confirmDelete.id); } catch { /* handled by hook */ }
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return variants ?? [];
+    const q = search.toLowerCase();
+    return (variants ?? []).filter((v: any) =>
+      v.name.toLowerCase().includes(q) ||
+      v.product?.name?.toLowerCase().includes(q) ||
+      v.flavor?.name?.toLowerCase().includes(q)
+    );
+  }, [variants, search]);
+
+  if (isError) return <QueryError message="Unable to load variants." onRetry={refetch} />;
+
+  const mobileCards = filtered.map((v: any) => (
+    <MobileCard key={v.id}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="font-medium text-white">{v.product?.name} — {v.name}</p>
+          <p className="text-sm text-slate-400">{v.flavor?.name}{v.os ? ` · ${v.os.name}${v.osVersion ? ` ${v.osVersion.version}` : ''}` : ''}</p>
+        </div>
+        <Badge variant="outline" className={v.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+          {v.isActive ? 'Active' : 'Inactive'}
+        </Badge>
+      </div>
+      {v.productVersion && <div className="mt-2 text-sm text-slate-500">Version: {v.productVersion.version}</div>}
+      <div className="mt-2 flex flex-wrap gap-1">
+        {v.availabilityZones?.map((az: any) => (
+          <Badge key={az.availabilityZoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{az.availabilityZone?.name}</Badge>
+        ))}
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add Variant</Button>
+      </div>
+      <div className="flex flex-wrap gap-2 items-center">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search variant, product or flavor…"
+          className="bg-slate-950 border-slate-700 text-white min-h-[44px] max-w-xs"
+        />
+        <select
+          value={filterProduct}
+          onChange={(e) => { setFilterProduct(e.target.value); setFilterVersion(''); }}
+          className="h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-900 px-3 text-sm text-white"
+        >
+          <option value="">All Products</option>
+          {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select
+          value={filterVersion}
+          onChange={(e) => setFilterVersion(e.target.value)}
+          className="h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-900 px-3 text-sm text-white"
+        >
+          <option value="">All Versions</option>
+          {versionOptions.map((v) => <option key={v.id} value={v.id}>{v.productName ? `${v.productName} ` : ''}{v.version}</option>)}
+        </select>
+        <select
+          value={filterOs}
+          onChange={(e) => setFilterOs(e.target.value)}
+          className="h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-900 px-3 text-sm text-white"
+        >
+          <option value="">All OS</option>
+          {osOptions.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+        {(filterProduct || filterVersion || filterOs || search) && (
+          <Button variant="ghost" size="sm" onClick={() => { setFilterProduct(''); setFilterVersion(''); setFilterOs(''); setSearch(''); }} className="text-slate-400 hover:text-white min-h-[44px]">
+            <X className="h-4 w-4 mr-1" /> Reset
+          </Button>
+        )}
+        <span className="ml-auto text-sm text-slate-500">{filtered.length} variant{filtered.length !== 1 ? 's' : ''}</span>
+      </div>
+      <p className="text-xs text-slate-500">
+        Every product variant (product → flavor + optional OS, optionally attached to a product version). Create, edit and delete variants here or from the product drawer in the Products tab.
+      </p>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable
+            headers={['Product', 'Name', 'Flavor', 'OS', 'Version', 'AZs', 'Instances', 'Status', '']}
+            isLoading={isLoading}
+            emptyMessage="No variants"
+            mobileCards={mobileCards}
+          >
+            {filtered.map((v: any) => (
+              <tr key={v.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{v.product?.name}</td>
+                <td className="py-3 text-slate-300">{v.name}</td>
+                <td className="py-3">
+                  <span className="text-blue-400">{v.flavor?.name}</span>
+                  {(v.flavor?.profile || v.flavor?.sizeLabel) && (
+                    <div className="text-[11px] text-slate-500">
+                      {v.flavor.profile?.name}{v.flavor.sizeLabel ? ` · ${v.flavor.sizeLabel}` : ''}
+                    </div>
+                  )}
+                </td>
+                <td className="py-3 text-slate-400">
+                  {v.os ? `${v.os.name}${v.osVersion ? ` ${v.osVersion.version}` : ''}` : <span className="text-slate-600">—</span>}
+                </td>
+                <td className="py-3">
+                  {v.productVersion ? (
+                    <Badge variant="outline" className="border-slate-600 text-slate-300">{v.productVersion.version}</Badge>
+                  ) : (
+                    <span className="text-slate-600">—</span>
+                  )}
+                </td>
+                <td className="py-3">
+                  <div className="flex flex-wrap gap-1 max-w-[200px]">
+                    {v.availabilityZones?.slice(0, 4).map((az: any) => (
+                      <Badge key={az.availabilityZoneId} variant="secondary" className="text-[10px] bg-slate-800 text-slate-300 border-slate-700">{az.availabilityZone?.name}</Badge>
+                    ))}
+                    {(v.availabilityZones?.length ?? 0) > 4 && (
+                      <Badge variant="secondary" className="text-[10px] bg-slate-800 text-slate-400 border-slate-700">+{v.availabilityZones.length - 4}</Badge>
+                    )}
+                    {(v.availabilityZones?.length ?? 0) === 0 && <span className="text-slate-600">—</span>}
+                  </div>
+                </td>
+                <td className="py-3 text-slate-400">{(v as any)._count?.instances ?? 0}</td>
+                <td className="py-3">
+                  <Badge variant="outline" className={v.isActive ? 'border-emerald-500/20 text-emerald-500' : 'border-slate-600 text-slate-500'}>
+                    {v.isActive ? 'Active' : 'Inactive'}
+                  </Badge>
+                </td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(v)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => handleDelete(v)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit variant' : 'New variant'}</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Product *</label>
+              <Select
+                value={form.productId}
+                onChange={(e) => setForm({ ...form, productId: e.target.value, flavorId: '', productVersionId: '' })}
+                disabled={!!editing}
+                required
+                className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+              >
+                <option value="">— Choose a product —</option>
+                {products?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Name *</label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="e.g. Server 2022 — BM Large" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Flavor *</label>
+              <Select value={form.flavorId} onChange={(e) => setForm({ ...form, flavorId: e.target.value })} required disabled={!form.productId} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="">— Choose a flavor —</option>
+                {flavorOptions.map((f: any) => <option key={f.id} value={f.id}>{f.name}{f.sizeLabel ? ` (${f.sizeLabel})` : ''}</option>)}
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">OS (optional)</label>
+                <Select value={form.osId} onChange={(e) => setForm({ ...form, osId: e.target.value, osVersionId: '' })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="">— None —</option>
+                  {(allOs as any)?.map((o: any) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">OS version</label>
+                <Select value={form.osVersionId} onChange={(e) => setForm({ ...form, osVersionId: e.target.value })} disabled={!form.osId} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="">— None —</option>
+                  {osVersions.map((ver: any) => <option key={ver.id} value={ver.id}>{ver.version}</option>)}
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Product version (optional)</label>
+              <Select value={form.productVersionId} onChange={(e) => setForm({ ...form, productVersionId: e.target.value })} disabled={!form.productId} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="">— None —</option>
+                {(() => {
+                  const p: any = products?.find((x) => x.id === form.productId);
+                  return p?.productVersions?.map((pv: any) => <option key={pv.id} value={pv.id}>{pv.version}</option>) ?? [];
+                })()}
+              </Select>
+            </div>
+            <MultiPickupInput
+              label="Availability Zones"
+              values={form.availabilityZoneIds}
+              onChange={(ids) => setForm({ ...form, availabilityZoneIds: ids })}
+              options={(allAzs as any)?.map((az: any) => ({ id: az.id, label: az.name })) ?? []}
+            />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Continuity level (optional)</label>
+                <Select value={form.continuityLevelId} onChange={(e) => setForm({ ...form, continuityLevelId: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                  <option value="">— None —</option>
+                  {(continuityLevels as any)?.map((cl: any) => <option key={cl.id} value={cl.id}>{cl.name}</option>)}
+                </Select>
+              </div>
+              <label className="flex items-end gap-2 pb-2 text-sm text-slate-300">
+                <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="accent-blue-500" />
+                Active
+              </label>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null, name: open ? confirmDelete.name : undefined, blocking: open ? confirmDelete.blocking : undefined })}
+        title="Delete Variant"
+        description={confirmDelete.blocking
+          ? `Cannot delete "${confirmDelete.name}" — it still has ${confirmDelete.blocking}. Delete or reassign them first.`
+          : `Delete "${confirmDelete.name}"? This action cannot be undone.`}
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 }
@@ -4741,6 +5307,7 @@ export default function Admin() {
   const tabs = [
     { value: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { value: 'products', label: 'Products', icon: Package },
+    { value: 'variants', label: 'Variants', icon: Boxes },
     { value: 'transitions', label: 'Transitions', icon: ArrowRightLeft },
     { value: 'product-versions', label: 'Product Versions', icon: Box },
     { value: 'infra-versions', label: 'Infra Versions', icon: Boxes },
@@ -4788,6 +5355,7 @@ export default function Admin() {
 
         <TabsContent value="dashboard" className="animate-fade-in"><DashboardSection onNavigate={setActiveTab} /></TabsContent>
         <TabsContent value="products" className="animate-fade-in"><ProductsSection /></TabsContent>
+        <TabsContent value="variants" className="animate-fade-in"><VariantsSection /></TabsContent>
         <TabsContent value="transitions" className="animate-fade-in"><TransitionsAdminSection /></TabsContent>
         <TabsContent value="os" className="animate-fade-in"><OSSection /></TabsContent>
         <TabsContent value="categories" className="animate-fade-in"><CategoriesSection /></TabsContent>

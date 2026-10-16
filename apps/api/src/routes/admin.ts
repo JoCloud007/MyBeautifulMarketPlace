@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
-import { generateSlug } from '../lib/slugify';
+import { generateSlug, slugify } from '../lib/slugify';
 
 const router = Router();
 
@@ -37,6 +37,10 @@ const productSchema = z.object({
 const flavorSchema = z.object({
   name: z.string().min(1),
   categoryId: z.string().uuid().optional(),
+  // Profile × Size grid — all nullable: existing flavors keep working without one
+  profileId: z.string().uuid().nullable().optional(),
+  sizeLabel: z.string().nullable().optional(),
+  sizeRank: z.number().int().nullable().optional(),
   vcpu: z.number().int().min(0).optional(),
   ramGb: z.number().int().min(0).optional(),
   attributes: z.record(z.union([z.string(), z.number()])).optional(),
@@ -69,6 +73,22 @@ const fieldDefinitionSchema = z.object({
 
 // Validates a flavor's `attributes` object against the target category's field definitions.
 // Returns an error message string, or null when valid.
+// Validates that a provided profileId references a FlavorProfile belonging to the
+// flavor's own category (Profile × Size grid). Returns an error message string,
+// or null when valid. profileId is optional/nullable — flavors may stay unprofiled.
+async function validateFlavorProfile(
+  categoryId: string | undefined | null,
+  profileId: string | undefined | null
+): Promise<string | null> {
+  if (profileId == null) return null;
+  const profile = await (prisma as any).flavorProfile.findUnique({ where: { id: profileId } });
+  if (!profile) return 'Flavor profile not found';
+  if (categoryId && profile.categoryId !== categoryId) {
+    return 'Flavor profile must belong to the same category as the flavor';
+  }
+  return null;
+}
+
 async function validateFlavorAttributes(categoryId: string | undefined, attributes: Record<string, string | number> | undefined): Promise<string | null> {
   if (!categoryId || !attributes) return null;
   const defs = await prisma.flavorFieldDefinition.findMany({ where: { categoryId } });
@@ -154,7 +174,10 @@ router.get('/products', async (_req, res, next) => {
   try {
     const products = await prisma.product.findMany({
       include: {
-        category: true,
+        // flavorFieldDefinitions lets the web UI detect compute categories
+        // (strict rule: the category defines a "vcpu" field). Without it the
+        // drawer cannot tell Compute from Data and mis-shows OS on variants.
+        category: { include: { flavorFieldDefinitions: { orderBy: { order: 'asc' } } } },
         variants: { include: { os: true, osVersion: true, flavor: true, availabilityZones: { include: { availabilityZone: true } }, zones: { include: { zone: true } }, continuityLevel: true } },
         zones: { include: { zone: true } },
         regions: { include: { region: true } },
@@ -564,13 +587,45 @@ router.delete('/categories/:id', async (req, res, next) => {
   }
 });
 
+// ===================== VARIANTS =====================
+
+// GET /api/admin/variants — global ProductVariant list for the Variants admin page.
+// Read-only: variants are managed from the product drawer (create/edit scoped to a product).
+router.get('/variants', async (req, res, next) => {
+  try {
+    const { productId, productVersionId, osId } = req.query;
+    const where: any = {};
+    if (typeof productId === 'string' && productId) where.productId = productId;
+    if (typeof productVersionId === 'string' && productVersionId) where.productVersionId = productVersionId;
+    if (typeof osId === 'string' && osId) where.osId = osId;
+
+    const variants = await prisma.productVariant.findMany({
+      where,
+      include: {
+        product: { select: { id: true, name: true, slug: true } },
+        os: true,
+        osVersion: true,
+        flavor: { include: { profile: { select: { id: true, name: true, slug: true, icon: true, color: true, order: true } } } },
+        productVersion: { select: { id: true, version: true } },
+        availabilityZones: { include: { availabilityZone: true } },
+        continuityLevel: true,
+        _count: { select: { instances: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(variants);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ===================== FLAVORS =====================
 
 // GET /api/admin/flavors
 router.get('/flavors', async (_req, res, next) => {
   try {
     const flavors = await prisma.flavor.findMany({
-      include: { category: { include: { flavorFieldDefinitions: { orderBy: { order: 'asc' } } } }, zones: { include: { zone: true } }, regions: { include: { region: true } }, availabilityZones: { include: { availabilityZone: true } }, _count: { select: { variants: true, forecastLines: true, instances: true } } },
+      include: { category: { include: { flavorFieldDefinitions: { orderBy: { order: 'asc' } } } }, profile: { select: { id: true, name: true, slug: true, icon: true, color: true } }, zones: { include: { zone: true } }, regions: { include: { region: true } }, availabilityZones: { include: { availabilityZone: true } }, _count: { select: { variants: true, forecastLines: true, instances: true } } },
       orderBy: { createdAt: 'desc' },
     });
     res.json(flavors);
@@ -585,6 +640,9 @@ router.post('/flavors', async (req, res, next) => {
     const data = flavorSchema.parse(req.body);
     const attrError = await validateFlavorAttributes(data.categoryId, data.attributes);
     if (attrError) return res.status(400).json({ error: attrError });
+    // Cross-validate: a provided profileId must belong to the flavor's own category
+    const profileError = await validateFlavorProfile(data.categoryId, data.profileId);
+    if (profileError) return res.status(400).json({ error: profileError });
     const { zoneIds, regionIds, availabilityZoneIds, schedules, ...flavorData } = data;
 
     const flavor = await prisma.flavor.create({
@@ -594,7 +652,7 @@ router.post('/flavors', async (req, res, next) => {
         regions: regionIds ? { create: regionIds.map((rid) => ({ regionId: rid })) } : undefined,
         availabilityZones: availabilityZoneIds ? { create: availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) } : undefined,
       },
-      include: { zones: { include: { zone: true } }, regions: { include: { region: true } }, availabilityZones: { include: { availabilityZone: true } } },
+      include: { profile: { select: { id: true, name: true, slug: true, icon: true, color: true } }, zones: { include: { zone: true } }, regions: { include: { region: true } }, availabilityZones: { include: { availabilityZone: true } } },
     });
 
     if (schedules && schedules.length > 0) {
@@ -674,6 +732,21 @@ router.patch('/flavors/:id', async (req, res, next) => {
     const attrError = await validateFlavorAttributes(effectiveCategoryId, data.attributes);
     if (attrError) return res.status(400).json({ error: attrError });
 
+    // Cross-validate: a provided profileId must belong to the flavor's own category.
+    // Also revalidate the STORED profile when the PATCH changes categoryId — otherwise
+    // moving a profiled flavor to another category would silently break the invariant.
+    const profileError = await validateFlavorProfile(effectiveCategoryId, data.profileId);
+    if (profileError) return res.status(400).json({ error: profileError });
+    if (data.categoryId && data.profileId === undefined) {
+      const existing = await prisma.flavor.findUnique({ where: { id }, select: { profileId: true } });
+      const staleProfileError = await validateFlavorProfile(effectiveCategoryId, existing?.profileId);
+      if (staleProfileError) {
+        return res.status(400).json({
+          error: `${staleProfileError} — the flavor keeps its current profile; move it to a profile of category "${effectiveCategoryId}" or clear the profile in the same request.`,
+        });
+      }
+    }
+
     // Handle relation updates
     if (zoneIds) {
       await prisma.flavorZone.deleteMany({ where: { flavorId: id } });
@@ -730,7 +803,7 @@ router.patch('/flavors/:id', async (req, res, next) => {
         regions: regionIds ? { create: regionIds.map((rid) => ({ regionId: rid })) } : undefined,
         availabilityZones: availabilityZoneIds ? { create: availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) } : undefined,
       },
-      include: { zones: { include: { zone: true } }, regions: { include: { region: true } }, availabilityZones: { include: { availabilityZone: true } }, _count: { select: { variants: true } } },
+      include: { profile: { select: { id: true, name: true, slug: true, icon: true, color: true } }, zones: { include: { zone: true } }, regions: { include: { region: true } }, availabilityZones: { include: { availabilityZone: true } }, _count: { select: { variants: true } } },
     });
     res.json(flavor);
   } catch (err) {
@@ -859,6 +932,116 @@ router.delete('/categories/:id/field-definitions/:key', async (req, res, next) =
       }
     }
 
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ===================== FLAVOR PROFILES (Profile × Size grid) =====================
+// Unrelated to PerformanceProfile (metric model). Owned per Category.
+// slug is unique per category and must not be renamed after creation.
+
+const flavorProfileSchema = z.object({
+  name: z.string().min(1),
+  slug: z.string().min(1).regex(/^[a-z0-9-]+$/).optional(),
+  description: z.string().nullable().optional(),
+  icon: z.string().nullable().optional(),
+  color: z.string().nullable().optional(),
+  order: z.number().int().optional(),
+});
+
+// GET /api/admin/categories/:id/flavor-profiles
+router.get('/categories/:id/flavor-profiles', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    idParamSchema.parse(id);
+    const profiles = await (prisma as any).flavorProfile.findMany({
+      where: { categoryId: id },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
+    res.json(profiles);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/admin/categories/:id/flavor-profiles
+router.post('/categories/:id/flavor-profiles', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    idParamSchema.parse(id);
+    const data = flavorProfileSchema.parse(req.body);
+
+    const category = await prisma.category.findUnique({ where: { id } });
+    if (!category) return res.status(404).json({ error: 'Category not found' });
+
+    const slug = data.slug || slugify(data.name);
+    const exists = await (prisma as any).flavorProfile.findUnique({
+      where: { categoryId_slug: { categoryId: id, slug } },
+    });
+    if (exists) return res.status(409).json({ error: `Flavor profile "${slug}" already exists for this category` });
+
+    const profile = await (prisma as any).flavorProfile.create({
+      data: { ...data, slug, categoryId: id },
+    });
+    res.status(201).json(profile);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/admin/categories/:id/flavor-profiles/:profileId
+router.patch('/categories/:id/flavor-profiles/:profileId', async (req, res, next) => {
+  try {
+    const { id, profileId } = req.params;
+    idParamSchema.parse(id);
+    idParamSchema.parse(profileId);
+    const data = flavorProfileSchema.partial().parse(req.body);
+
+    const profile = await (prisma as any).flavorProfile.findUnique({
+      where: { id: profileId },
+    });
+    if (!profile || profile.categoryId !== id) {
+      return res.status(404).json({ error: 'Flavor profile not found' });
+    }
+
+    // Renaming the slug would break the Profile × Size grid references — forbid it
+    if (data.slug && data.slug !== profile.slug) {
+      return res.status(400).json({ error: 'Slug cannot be changed (existing flavors reference it). Delete and recreate instead.' });
+    }
+    const { slug: _slug, ...updateData } = data;
+
+    const updated = await (prisma as any).flavorProfile.update({
+      where: { id: profileId },
+      data: updateData,
+    });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/admin/categories/:id/flavor-profiles/:profileId
+router.delete('/categories/:id/flavor-profiles/:profileId', async (req, res, next) => {
+  try {
+    const { id, profileId } = req.params;
+    idParamSchema.parse(id);
+    idParamSchema.parse(profileId);
+
+    const profile = await (prisma as any).flavorProfile.findUnique({ where: { id: profileId } });
+    if (!profile || profile.categoryId !== id) {
+      return res.status(404).json({ error: 'Flavor profile not found' });
+    }
+
+    const flavorCount = await prisma.flavor.count({ where: { profileId } });
+    if (flavorCount > 0) {
+      return res.status(409).json({
+        error: `Cannot delete flavor profile with ${flavorCount} attached flavor(s). Please reassign or remove them first.`,
+      });
+    }
+
+    await (prisma as any).flavorProfile.delete({ where: { id: profileId } });
     res.status(204).send();
   } catch (err) {
     next(err);

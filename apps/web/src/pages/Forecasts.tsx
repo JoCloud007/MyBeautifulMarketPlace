@@ -1103,7 +1103,11 @@ export default function Forecasts() {
                           } else {
                             meta = `${f.vcpu ?? 0} vCPU · ${f.ramGb ?? 0} GB`;
                           }
-                          return { id: f.id, name: f.name, description: f.description, meta };
+                          // Profile × Size grid: prepend profile + size as secondary info
+                          const prof = (f as any).profile?.name;
+                          const size = (f as any).sizeLabel;
+                          const desc = [prof ? `${prof}${size ? ` · ${size}` : ''}` : null, f.description].filter(Boolean).join(' — ') || f.description;
+                          return { id: f.id, name: f.name, description: desc, meta };
                         })}
                         value={draftLine.flavorId || null}
                         onChange={(id) => setDraftLine({ ...draftLine, flavorId: id })}

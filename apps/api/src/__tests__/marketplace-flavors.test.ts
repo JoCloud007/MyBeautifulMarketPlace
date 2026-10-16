@@ -134,6 +134,8 @@ describe('Flavor Routes — Marketplace Feature', () => {
 
   describe('PATCH /api/flavors/:id', () => {
     it('updates flavor specs', async () => {
+      prismaMock.flavorProfile = { findUnique: jest.fn().mockResolvedValue(null) };
+      prismaMock.flavor.findUnique.mockResolvedValue({ id: FL1, name: 'Small', categoryId: null });
       prismaMock.flavor.update.mockResolvedValue({
         id: FL1,
         name: 'Small',

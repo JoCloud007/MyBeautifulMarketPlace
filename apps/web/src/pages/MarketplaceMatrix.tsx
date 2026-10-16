@@ -27,7 +27,7 @@ function getRegionDisplayName(code: string): string {
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
-type Axis = 'PRODUCT' | 'FLAVOR' | 'OS' | 'OS_VERSION' | 'PRODUCT_VERSION' | 'INFRA_VERSION' | 'ZONE' | 'AZ' | 'REGION' | 'COUNTRIES' | 'NONE';
+type Axis = 'PRODUCT' | 'FLAVOR' | 'PROFILE' | 'SIZE' | 'OS' | 'OS_VERSION' | 'PRODUCT_VERSION' | 'INFRA_VERSION' | 'ZONE' | 'AZ' | 'REGION' | 'COUNTRIES' | 'NONE';
 type RowAxis = Axis;
 type ColAxis = Axis;
 type ViewMode = 'grouped' | 'flat';
@@ -325,6 +325,10 @@ function matchesAxis(
       return variant.productId === id;
     case 'FLAVOR':
       return variant.flavorId === id || variant.flavor?.id === id;
+    case 'PROFILE':
+      return (variant.flavor as any)?.profile?.id === id;
+    case 'SIZE':
+      return (variant.flavor as any)?.sizeLabel === id;
     case 'OS':
       return variant.osId === id || variant.os?.id === id;
     case 'OS_VERSION':
@@ -348,6 +352,34 @@ function matchesAxis(
 
 function getAxisItems(axis: ColAxis, zones?: any[], azs?: AvailabilityZone[], products?: Product[]): { id: string; label: string }[] {
   switch (axis) {
+    case 'PROFILE': {
+      const seen = new Set<string>();
+      const items: { id: string; label: string }[] = [];
+      for (const p of products ?? []) {
+        for (const v of p.variants ?? []) {
+          const prof = (v.flavor as any)?.profile;
+          if (prof?.id && !seen.has(prof.id)) {
+            seen.add(prof.id);
+            items.push({ id: prof.id, label: prof.name });
+          }
+        }
+      }
+      return items;
+    }
+    case 'SIZE': {
+      const seen = new Map<string, number>();
+      const items: { id: string; label: string }[] = [];
+      for (const p of products ?? []) {
+        for (const v of p.variants ?? []) {
+          const fl = (v.flavor as any);
+          if (fl?.sizeLabel && !seen.has(fl.sizeLabel)) {
+            seen.set(fl.sizeLabel, fl.sizeRank ?? 99);
+            items.push({ id: fl.sizeLabel, label: fl.sizeLabel });
+          }
+        }
+      }
+      return items.sort((a, b) => (seen.get(a.id) ?? 99) - (seen.get(b.id) ?? 99));
+    }
     case 'ZONE':
       return zones?.map((z: any) => ({ id: z.id, label: z.name })) ?? [];
     case 'AZ':
@@ -649,6 +681,27 @@ export default function MarketplaceMatrix() {
             const id = v.flavor?.id || v.id || 'unknown';
             if (!groups.has(key)) {
               groups.set(key, { id, label: key, variants: [] });
+            }
+            groups.get(key)!.variants.push(v);
+          }
+          break;
+        case 'PROFILE':
+          for (const v of variants) {
+            const prof = (v.flavor as any)?.profile;
+            const key = prof?.id || 'unprofiled';
+            const label = prof?.name || 'No profile';
+            if (!groups.has(key)) {
+              groups.set(key, { id: key, label, variants: [] });
+            }
+            groups.get(key)!.variants.push(v);
+          }
+          break;
+        case 'SIZE':
+          for (const v of variants) {
+            const fl = (v.flavor as any);
+            const key = fl?.sizeLabel || 'unranked';
+            if (!groups.has(key)) {
+              groups.set(key, { id: key, label: key, variants: [] });
             }
             groups.get(key)!.variants.push(v);
           }
@@ -968,6 +1021,8 @@ export default function MarketplaceMatrix() {
                   options={[
                     { value: 'PRODUCT', label: 'Products' },
                     { value: 'FLAVOR', label: 'Flavors' },
+                    { value: 'PROFILE', label: 'Profile' },
+                    { value: 'SIZE', label: 'Size' },
                     { value: 'OS', label: 'OS' },
                     { value: 'OS_VERSION', label: 'OS Version' },
                     { value: 'PRODUCT_VERSION', label: 'Product Version' },
@@ -1009,6 +1064,8 @@ export default function MarketplaceMatrix() {
                   options={[
                     { value: 'PRODUCT', label: 'Products' },
                     { value: 'FLAVOR', label: 'Flavors' },
+                    { value: 'PROFILE', label: 'Profile' },
+                    { value: 'SIZE', label: 'Size' },
                     { value: 'OS', label: 'OS' },
                     { value: 'OS_VERSION', label: 'OS Version' },
                     { value: 'PRODUCT_VERSION', label: 'Product Version' },
@@ -1176,7 +1233,7 @@ export default function MarketplaceMatrix() {
                         className="text-left p-3 text-blue-400 font-semibold border-b border-r border-slate-800 sticky bg-slate-950 z-20 min-w-[140px] relative"
                         style={{ left: flatRowLefts[i], width: colWidths[`row-header-${i}`] || 140 }}
                       >
-                        {axis === 'OS_VERSION' ? 'Version' : axis === 'PRODUCT' ? 'Product' : axis === 'FLAVOR' ? 'Flavor' : axis === 'OS' ? 'OS' : axis === 'PRODUCT_VERSION' ? 'Product Version' : axis === 'ZONE' ? 'Zone' : axis === 'AZ' ? 'AZ' : axis === 'REGION' ? 'Region' : axis === 'COUNTRIES' ? 'Country' : axis}
+                        {axis === 'OS_VERSION' ? 'Version' : axis === 'PRODUCT' ? 'Product' : axis === 'FLAVOR' ? 'Flavor' : axis === 'PROFILE' ? 'Profile' : axis === 'SIZE' ? 'Size' : axis === 'OS' ? 'OS' : axis === 'PRODUCT_VERSION' ? 'Product Version' : axis === 'ZONE' ? 'Zone' : axis === 'AZ' ? 'AZ' : axis === 'REGION' ? 'Region' : axis === 'COUNTRIES' ? 'Country' : axis}
                         <div
                           className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize bg-slate-600/40 hover:bg-blue-400 active:bg-blue-400 transition-colors"
                           title="Drag to resize"
@@ -1193,7 +1250,7 @@ export default function MarketplaceMatrix() {
                       className="text-left p-3 text-slate-500 font-semibold border-b border-r border-slate-800 sticky left-0 bg-slate-950 z-20 min-w-[180px] relative"
                       style={{ width: colWidths['row-header'] || 180 }}
                     >
-                      {activeRowAxes.map((a) => a === 'OS_VERSION' ? 'Version' : a === 'PRODUCT' ? 'Product' : a === 'FLAVOR' ? 'Flavor' : a === 'OS' ? 'OS' : a === 'PRODUCT_VERSION' ? 'Product Version' : a === 'ZONE' ? 'Zone' : a === 'AZ' ? 'AZ' : a === 'REGION' ? 'Region' : a === 'COUNTRIES' ? 'Country' : a).join(' / ')}
+                      {activeRowAxes.map((a) => a === 'OS_VERSION' ? 'Version' : a === 'PRODUCT' ? 'Product' : a === 'FLAVOR' ? 'Flavor' : a === 'PROFILE' ? 'Profile' : a === 'SIZE' ? 'Size' : a === 'OS' ? 'OS' : a === 'PRODUCT_VERSION' ? 'Product Version' : a === 'ZONE' ? 'Zone' : a === 'AZ' ? 'AZ' : a === 'REGION' ? 'Region' : a === 'COUNTRIES' ? 'Country' : a).join(' / ')}
                       <div
                         className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize bg-slate-600/40 hover:bg-blue-400 active:bg-blue-400 transition-colors"
                         title="Drag to resize"

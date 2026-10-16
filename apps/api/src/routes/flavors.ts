@@ -39,6 +39,22 @@ async function validateFlavorAttributes(categoryId: string | undefined | null, a
   return null;
 }
 
+// Validates that a provided profileId references a FlavorProfile belonging to the
+// flavor's own category (Profile × Size grid). Returns an error message string,
+// or null when valid. profileId is optional/nullable — flavors may stay unprofiled.
+async function validateFlavorProfile(
+  categoryId: string | undefined | null,
+  profileId: string | undefined | null
+): Promise<string | null> {
+  if (profileId == null) return null;
+  const profile = await (prisma as any).flavorProfile.findUnique({ where: { id: profileId } });
+  if (!profile) return 'Flavor profile not found';
+  if (categoryId && profile.categoryId !== categoryId) {
+    return 'Flavor profile must belong to the same category as the flavor';
+  }
+  return null;
+}
+
 async function validateScheduleRefs(schedules: any[]) {
   const regionIds = [...new Set(schedules.map((s) => s.regionId).filter(Boolean))];
   const azIds = [...new Set(schedules.map((s) => s.azId).filter(Boolean))];
@@ -67,6 +83,10 @@ async function validateScheduleRefs(schedules: any[]) {
 const createFlavorSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   categoryId: z.string().uuid().optional(),
+  // Profile × Size grid — all nullable: existing flavors keep working without one
+  profileId: z.string().uuid().nullable().optional(),
+  sizeLabel: z.string().nullable().optional(),
+  sizeRank: z.number().int().nullable().optional(),
   vcpu: z.number().int().min(0, 'vCPU must be a non-negative integer').optional(),
   ramGb: z.number().int().min(0, 'RAM must be a non-negative integer').optional(),
   attributes: z.record(z.union([z.string(), z.number()])).optional(),
@@ -83,6 +103,9 @@ const createFlavorSchema = z.object({
 const updateFlavorSchema = z.object({
   name: z.string().min(1).optional(),
   categoryId: z.string().uuid().optional(),
+  profileId: z.string().uuid().nullable().optional(),
+  sizeLabel: z.string().nullable().optional(),
+  sizeRank: z.number().int().nullable().optional(),
   vcpu: z.number().int().min(0).optional(),
   ramGb: z.number().int().min(0).optional(),
   attributes: z.record(z.union([z.string(), z.number()])).optional(),
@@ -102,6 +125,7 @@ router.get('/', async (_req, res, next) => {
     const flavors = await prisma.flavor.findMany({
       include: {
         category: { include: { flavorFieldDefinitions: { orderBy: { order: 'asc' } } } },
+        profile: { select: { id: true, name: true, slug: true, icon: true, color: true } },
         zones: { include: { zone: true } },
         regions: { include: { region: true } },
         availabilityZones: { include: { availabilityZone: true } },
@@ -164,6 +188,10 @@ router.post('/', async (req, res, next) => {
     const attrError = await validateFlavorAttributes(data.categoryId, data.attributes);
     if (attrError) return res.status(400).json({ error: attrError });
 
+    // Cross-validate: a provided profileId must belong to the flavor's own category
+    const profileError = await validateFlavorProfile(data.categoryId, data.profileId);
+    if (profileError) return res.status(400).json({ error: profileError });
+
     const flavor = await prisma.flavor.create({
       data: {
         ...flavorData,
@@ -172,6 +200,7 @@ router.post('/', async (req, res, next) => {
         availabilityZones: availabilityZoneIds ? { create: availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) } : undefined,
       },
       include: {
+        profile: { select: { id: true, name: true, slug: true, icon: true, color: true } },
         zones: { include: { zone: true } },
         regions: { include: { region: true } },
         availabilityZones: { include: { availabilityZone: true } },
@@ -213,6 +242,7 @@ router.get('/:id', async (req, res, next) => {
     const flavor = await prisma.flavor.findUnique({
       where: { id },
       include: {
+        profile: { select: { id: true, name: true, slug: true, icon: true, color: true } },
         variants: {
           include: {
             product: { select: { id: true, name: true, slug: true } },
@@ -295,6 +325,20 @@ router.patch('/:id', async (req, res, next) => {
     const attrError = await validateFlavorAttributes(effectiveCategoryId, data.attributes);
     if (attrError) return res.status(400).json({ error: attrError });
 
+    // Cross-validate: a provided profileId must belong to the flavor's own category.
+    // Also revalidate the STORED profile when the PATCH changes categoryId — otherwise
+    // moving a profiled flavor to another category would silently break the invariant.
+    const profileError = await validateFlavorProfile(effectiveCategoryId, data.profileId);
+    if (profileError) return res.status(400).json({ error: profileError });
+    if (data.categoryId && data.profileId === undefined && existing.profileId) {
+      const staleProfileError = await validateFlavorProfile(effectiveCategoryId, existing.profileId);
+      if (staleProfileError) {
+        return res.status(400).json({
+          error: `${staleProfileError} — the flavor keeps its current profile; move it to a profile of category "${effectiveCategoryId}" or clear the profile in the same request.`,
+        });
+      }
+    }
+
     // Handle zone links update
     if (zoneIds) {
       await prisma.flavorZone.deleteMany({ where: { flavorId: id } });
@@ -353,6 +397,7 @@ router.patch('/:id', async (req, res, next) => {
         availabilityZones: availabilityZoneIds ? { create: availabilityZoneIds.map((azId) => ({ availabilityZoneId: azId })) } : undefined,
       },
       include: {
+        profile: { select: { id: true, name: true, slug: true, icon: true, color: true } },
         zones: { include: { zone: true } },
         regions: { include: { region: true } },
         availabilityZones: { include: { availabilityZone: true } },

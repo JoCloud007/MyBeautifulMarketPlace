@@ -237,6 +237,38 @@ async function main() {
   const rhel9 = osVersions['9'];
   const rhel10 = osVersions['10'];
 
+  // ===================== FLAVOR PROFILES (Profile × Size grid, AWS-style) =====================
+  console.log('  🧭 Flavor profiles...');
+  const profileSpecs: { category: string; name: string; slug: string; description: string; icon: string; color: string; order: number }[] = [
+    { category: 'Compute', name: 'General purpose', slug: 'general-purpose', description: 'Balanced CPU/RAM for web servers, dev & test', icon: 'Server', color: 'blue', order: 0 },
+    { category: 'Compute', name: 'Compute oriented', slug: 'compute-oriented', description: 'High-frequency cores, compute-bound workloads', icon: 'Cpu', color: 'amber', order: 1 },
+    { category: 'Compute', name: 'Memory oriented', slug: 'memory-oriented', description: 'High RAM per core, in-memory databases and caching', icon: 'MemoryStick', color: 'violet', order: 2 },
+    { category: 'Compute', name: 'Storage optimized', slug: 'storage-optimized', description: 'Local NVMe and high sequential throughput', icon: 'HardDrive', color: 'green', order: 3 },
+    { category: 'Compute', name: 'Accelerated', slug: 'accelerated', description: 'GPU/FPGA accelerated computing', icon: 'Zap', color: 'red', order: 4 },
+    { category: 'Data', name: 'Throughput', slug: 'throughput', description: 'Sequential throughput oriented storage', icon: 'Gauge', color: 'blue', order: 0 },
+    { category: 'Data', name: 'IOPS', slug: 'iops', description: 'High random IOPS for transactional workloads', icon: 'Activity', color: 'amber', order: 1 },
+    { category: 'Data', name: 'Archive', slug: 'archive', description: 'Long-term retention, cold data', icon: 'Archive', color: 'violet', order: 2 },
+  ];
+
+  const profiles: Record<string, { id: string; name: string; slug: string }> = {};
+  for (const spec of profileSpecs) {
+    const categoryId = spec.category === 'Compute' ? compute.id : spec.category === 'Data' ? data.id : platform.id;
+    const rec = await prisma.flavorProfile.upsert({
+      where: { categoryId_slug: { categoryId, slug: spec.slug } },
+      update: {},
+      create: {
+        categoryId,
+        name: spec.name,
+        slug: spec.slug,
+        description: spec.description,
+        icon: spec.icon,
+        color: spec.color,
+        order: spec.order,
+      },
+    });
+    profiles[spec.slug] = { id: rec.id, name: rec.name, slug: rec.slug };
+  }
+
   // ===================== FLAVORS =====================
   console.log('  ⚙️ Flavors...');
 
@@ -266,9 +298,39 @@ async function main() {
     { name: 'Object Archive', vcpu: 0, ramGb: 0, description: 'Archive tier — long-term retention, retrieval in hours' },
   ];
 
+  // Profile × Size positioning per flavor (Compute grid + Data grid)
+  const flavorGrid: Record<string, { profileSlug: string; categoryId: string; sizeLabel: string; sizeRank: number }> = {
+    // VM — General purpose
+    'Small': { profileSlug: 'general-purpose', categoryId: compute.id, sizeLabel: 'S', sizeRank: 1 },
+    'Medium': { profileSlug: 'general-purpose', categoryId: compute.id, sizeLabel: 'M', sizeRank: 2 },
+    'Large': { profileSlug: 'general-purpose', categoryId: compute.id, sizeLabel: 'L', sizeRank: 3 },
+    'XL': { profileSlug: 'general-purpose', categoryId: compute.id, sizeLabel: 'XL', sizeRank: 4 },
+    // Bare Metal — Memory oriented (high RAM/core, single-tenant)
+    'BM Medium': { profileSlug: 'memory-oriented', categoryId: compute.id, sizeLabel: 'M', sizeRank: 2 },
+    'BM Large': { profileSlug: 'memory-oriented', categoryId: compute.id, sizeLabel: 'L', sizeRank: 3 },
+    'BM XL': { profileSlug: 'memory-oriented', categoryId: compute.id, sizeLabel: 'XL', sizeRank: 4 },
+    // HPC — Compute oriented / Accelerated
+    'HPC Compute': { profileSlug: 'compute-oriented', categoryId: compute.id, sizeLabel: 'XL', sizeRank: 4 },
+    'HPC Memory': { profileSlug: 'memory-oriented', categoryId: compute.id, sizeLabel: '2XL', sizeRank: 5 },
+    'HPC GPU': { profileSlug: 'accelerated', categoryId: compute.id, sizeLabel: 'XL', sizeRank: 4 },
+    // NAS — Data IOPS grid
+    'NAS 1TB': { profileSlug: 'iops', categoryId: data.id, sizeLabel: 'S', sizeRank: 1 },
+    'NAS 10TB': { profileSlug: 'iops', categoryId: data.id, sizeLabel: 'M', sizeRank: 2 },
+    'NAS 50TB': { profileSlug: 'iops', categoryId: data.id, sizeLabel: 'L', sizeRank: 3 },
+    'NAS 100TB': { profileSlug: 'iops', categoryId: data.id, sizeLabel: 'XL', sizeRank: 4 },
+    // Object Storage — Data Archive/Throughput tiers
+    'Object Standard': { profileSlug: 'throughput', categoryId: data.id, sizeLabel: 'STD', sizeRank: 1 },
+    'Object Cold': { profileSlug: 'archive', categoryId: data.id, sizeLabel: 'COLD', sizeRank: 2 },
+    'Object Archive': { profileSlug: 'archive', categoryId: data.id, sizeLabel: 'ARCH', sizeRank: 3 },
+  };
+
   const flavors: Record<string, { id: string; name: string }> = {};
   for (const spec of flavorSpecs) {
-    const rec = await prisma.flavor.create({ data: spec });
+    const grid = flavorGrid[spec.name];
+    const data = grid
+      ? { ...spec, categoryId: grid.categoryId, profileId: profiles[grid.profileSlug].id, sizeLabel: grid.sizeLabel, sizeRank: grid.sizeRank }
+      : spec;
+    const rec = await prisma.flavor.create({ data });
     flavors[spec.name] = { id: rec.id, name: rec.name };
   }
 
@@ -670,15 +732,14 @@ async function main() {
   await prisma.dependency.create({ data: { productId: hpcProduct.id, dependsOnId: objectProduct.id, type: DependencyType.RECOMMENDED, description: 'Results archiving' } });
   await prisma.dependency.create({ data: { productId: citrixProduct.id, dependsOnId: vmwareProduct.id, type: DependencyType.REQUIRED, description: 'Citrix VDI requires VMware vSphere as underlying hypervisor' } });
 
-  // ===================== UPGRADE PATHS & TRANSITIONS =====================
-  await prisma.upgradePath.create({ data: { fromProductId: vmProduct.id, toProductId: vmProduct.id, fromVersion: 'gen7', toVersion: 'gen8', migrationType: 'IN_PLACE', notes: 'Live migration from IV1 to IV2 host fleet' } });
-  await prisma.upgradePath.create({ data: { fromProductId: bmProduct.id, toProductId: bmProduct.id, fromVersion: 'bm-gen2', toVersion: 'bm-gen3', migrationType: 'REBUILD', notes: 'Reprovision on IV2 hardware' } });
-  await prisma.upgradePath.create({ data: { fromProductId: objectProduct.id, toProductId: objectProduct.id, fromVersion: 'v2', toVersion: 'v3', migrationType: 'BLUE_GREEN', notes: 'Bucket-level copy, cutover per region' } });
-
+  // ===================== TRANSITIONS =====================
+  // Transition is the single source of truth — no UpgradePath writes here.
   await prisma.transition.create({ data: { name: 'VM gen7 → gen8', slug: 'vm-gen7-to-gen8', description: 'Migrate legacy VMs from the gen7 (IV1) platform to gen8 (IV2).', fromProductId: vmProduct.id, toProductId: vmProduct.id, fromVersion: 'gen7', toVersion: 'gen8', migrationType: 'IN_PLACE', status: 'AVAILABLE', availableFrom: d('2024-06-01'), eolDate: d('2028-06-30'), notes: 'Live migration supported between AZs hosting both generations.' } });
   await prisma.transition.create({ data: { name: 'Windows Server 2019 → 2022', slug: 'windows-2019-to-2022', description: 'Windows Server 2019 exits normal support (2024-01-09). Migrate to Server 2022.', fromProductId: vmProduct.id, toProductId: vmProduct.id, fromVersion: 'Server 2019', toVersion: 'Server 2022', migrationType: 'BLUE_GREEN', status: 'AVAILABLE', availableFrom: d('2024-01-09'), notes: 'Blue-green migration recommended for zero downtime.' } });
   await prisma.transition.create({ data: { name: 'Debian 11 → 12', slug: 'debian-11-to-12', description: 'Debian 11 LTS ends 2026-08-31. Migrate to Debian 12.', fromProductId: vmProduct.id, toProductId: vmProduct.id, fromVersion: '11 (Bullseye)', toVersion: '12 (Bookworm)', migrationType: 'REBUILD', status: 'AVAILABLE', availableFrom: d('2023-06-10'), notes: 'Rebuild recommended; in-place apt upgrade possible.' } });
   await prisma.transition.create({ data: { name: 'RHEL 8 → 9', slug: 'rhel-8-to-9', description: 'RHEL 8 maintenance support ended 2024-05-31. Migrate to RHEL 9.', fromProductId: vmProduct.id, toProductId: vmProduct.id, fromVersion: '8', toVersion: '9', migrationType: 'REBUILD', status: 'AVAILABLE', availableFrom: d('2022-05-17'), notes: 'Leapp in-place upgrade supported.' } });
+  await prisma.transition.create({ data: { name: 'Bare Metal bm-gen2 → bm-gen3', slug: 'bare-metal-bm-gen2-to-bm-gen3', description: 'Reprovision on IV2 hardware.', fromProductId: bmProduct.id, toProductId: bmProduct.id, fromVersion: 'bm-gen2', toVersion: 'bm-gen3', migrationType: 'REBUILD', status: 'AVAILABLE', notes: 'Reprovision on IV2 hardware' } });
+  await prisma.transition.create({ data: { name: 'Object Storage v2 → v3', slug: 'object-storage-v2-to-v3', description: 'Bucket-level copy, cutover per region.', fromProductId: objectProduct.id, toProductId: objectProduct.id, fromVersion: 'v2', toVersion: 'v3', migrationType: 'BLUE_GREEN', status: 'AVAILABLE', notes: 'Bucket-level copy, cutover per region' } });
 
   // ===================== USERS (forecast lifecycle roles) =====================
   const managerUser = await prisma.user.create({ data: { email: 'manager@cloudmarket.local', name: 'Carol Manager', role: 'USER', roles: ['MANAGER'] } });

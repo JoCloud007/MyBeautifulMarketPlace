@@ -2,7 +2,7 @@
 # Simplifies build, deploy, and run workflows for both online (build)
 # and air-gapped (deploy) environments.
 
-.PHONY: clean build deploy run help backfill-variants restart-api seed-incremental update
+.PHONY: clean build deploy run help backfill-variants restart-api seed-incremental update fix-client-db fix-client-db-profiles
 
 # Force bash — avoids POSIX/dash incompatibilities on Ubuntu
 SHELL := /bin/bash
@@ -231,6 +231,23 @@ fix-client-db:
 		< apps/api/prisma/migrations/202610121700_add_flavor_fields/migration.sql
 	@echo "==> 3/3 Seeding flavor field definitions + backfilling attributes"
 	@docker compose exec -T api npx tsx prisma/migrate-flavor-fields.ts
+	@echo ""
+	@echo "✓ Done. Restart API to clear caches: make restart-api"
+
+## Fix client DB (flavor profiles) — applies the Profile × Size grid schema.
+## Adds FlavorProfile table + nullable Flavor.profileId/sizeLabel/sizeRank.
+## For databases provisioned by db push (no _prisma_migrations table).
+## Non-destructive: nullable columns + new table only, then backfills the
+## default profile rows. Idempotent: safe to re-run (IF NOT EXISTS / DO $$ FK).
+fix-client-db-profiles:
+	@echo "==> 1/3 Backing up database"
+	@docker compose exec -T db pg_dump -U cloudmarket -d cloudmarket > backup_flavor_profiles_`date +%F_%H%M`.sql
+	@echo "==> 2/3 Applying flavor-profile schema patch"
+	@docker compose exec -T db psql -U cloudmarket -d cloudmarket -v ON_ERROR_STOP=1 \
+		< apps/api/prisma/migrations/202610151200_add_flavor_profile/migration.sql
+	@echo "==> 3/3 Backfilling flavor profiles"
+	@docker compose exec -T db psql -U cloudmarket -d cloudmarket -v ON_ERROR_STOP=1 \
+		< apps/api/prisma/migrations/202610151200_add_flavor_profile/backfill.sql
 	@echo ""
 	@echo "✓ Done. Restart API to clear caches: make restart-api"
 

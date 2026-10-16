@@ -9,6 +9,7 @@ interface AppState {
     category?: string;
     os?: string;
     flavor?: string;
+    profile?: string;
     search?: string;
     computeType?: string;
   };

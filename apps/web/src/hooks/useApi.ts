@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToastStore } from '@/stores/useToastStore';
-import type { Product, Category, Forecast, ForecastStats, ForecastTransition, GovernanceDefinition, ServiceNowStatus, Flavor, FlavorFieldDefinition, Dependency, User, AvailabilityZone, Zone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, ProductVersion, UpgradePath, Transition, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats, PresentationOrder, PresentationStepType, PerformanceProfile, Country, Region, InfraVersion, ResiliencyLevelConfig, ProductResiliencyOptions } from '@cloudmarket/shared-types';
+import type { Product, Category, Forecast, ForecastStats, ForecastTransition, GovernanceDefinition, ServiceNowStatus, Flavor, FlavorProfile, FlavorFieldDefinition, Dependency, User, AvailabilityZone, Zone, Application, ContinuityLevel, OperatingSystem, OsVersion, ProductVariant, ProductVersion, UpgradePath, Transition, ForecastTrend, ResourceByZone, ProductDemand, Instance, InstanceStatus, HealthCheck, HealthStatus, MaintenanceWindow, MaintenanceStatus, ApplicationCompliance, TopologyData, MaintenanceAlert, MaintenanceRecommendation, MaintenanceImpact, OrchestratorStats, PresentationOrder, PresentationStepType, PerformanceProfile, Country, Region, InfraVersion, ResiliencyLevelConfig, ProductResiliencyOptions } from '@cloudmarket/shared-types';
 import type { ForecastStatus } from '@cloudmarket/shared-types';
 import { useAuthStore, type SimulatedUser } from '@/stores/useAuthStore';
 
@@ -369,6 +369,72 @@ export function useDeleteFieldDefinition(categoryId: string) {
     },
     onError: (err: any) => {
       addToast(err.response?.data?.error || 'Unable to delete this field', 'error');
+    },
+  });
+}
+
+// ========== FLAVOR PROFILES (Profile × Size grid) ==========
+
+export function useFlavorProfiles(categoryId: string | undefined | null) {
+  return useQuery<FlavorProfile[]>({
+    queryKey: ['flavor-profiles', categoryId],
+    queryFn: () => fetchJson(`/admin/categories/${categoryId}/flavor-profiles`),
+    enabled: !!categoryId,
+  });
+}
+
+export function useCreateFlavorProfile(categoryId: string) {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (payload: Partial<FlavorProfile>) => {
+      const { data } = await api.post(`/admin/categories/${categoryId}/flavor-profiles`, payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flavor-profiles', categoryId] });
+      queryClient.invalidateQueries({ queryKey: ['flavors'] });
+      addToast('Flavor profile added', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.error || 'Error during creation', 'error');
+    },
+  });
+}
+
+export function useUpdateFlavorProfile(categoryId: string) {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ id, ...payload }: { id: string } & Partial<FlavorProfile>) => {
+      const { data } = await api.patch(`/admin/categories/${categoryId}/flavor-profiles/${id}`, payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flavor-profiles', categoryId] });
+      queryClient.invalidateQueries({ queryKey: ['flavors'] });
+      addToast('Flavor profile updated', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.error || 'Error during update', 'error');
+    },
+  });
+}
+
+export function useDeleteFlavorProfile(categoryId: string) {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/admin/categories/${categoryId}/flavor-profiles/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flavor-profiles', categoryId] });
+      queryClient.invalidateQueries({ queryKey: ['flavors'] });
+      addToast('Flavor profile deleted', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.error || 'Unable to delete this profile', 'error');
     },
   });
 }
@@ -967,6 +1033,23 @@ export function useAdminDependencies() {
   });
 }
 
+// ========== VARIANTS (global admin list) ==========
+
+export function useAdminVariants(filters?: { productId?: string; productVersionId?: string; osId?: string }) {
+  return useQuery<ProductVariant[]>({
+    queryKey: ['admin-variants', filters?.productId ?? '', filters?.productVersionId ?? '', filters?.osId ?? ''],
+    queryFn: () => {
+      const params: Record<string, string> = {};
+      if (filters?.productId) params.productId = filters.productId;
+      if (filters?.productVersionId) params.productVersionId = filters.productVersionId;
+      if (filters?.osId) params.osId = filters.osId;
+      return fetchJson('/admin/variants', params);
+    },
+    retry: 3,
+    retryDelay: 2000,
+  });
+}
+
 export function useAdminUsers() {
   return useQuery<User[]>({
     queryKey: ['admin-users'],
@@ -1258,6 +1341,7 @@ export function useCreateVariant() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['product-variants', variables.productId] });
+      queryClient.invalidateQueries({ queryKey: ['admin-variants'] });
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       addToast('Variant created successfully', 'success');
@@ -1278,6 +1362,7 @@ export function useUpdateVariant() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product-variants'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-variants'] });
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       addToast('Variant updated', 'success');
@@ -1297,6 +1382,7 @@ export function useDeleteVariant() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['product-variants'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-variants'] });
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       addToast('Variant deleted', 'success');
