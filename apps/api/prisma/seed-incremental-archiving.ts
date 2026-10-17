@@ -1,4 +1,4 @@
-import { PrismaClient, ComputeType, DependencyType, InstanceStatus, LifecyclePhase } from '@prisma/client';
+import { PrismaClient, DependencyType, InstanceStatus, LifecyclePhase } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -105,7 +105,6 @@ async function main() {
       slug: 'archiving-as-a-service',
       description: 'Enterprise-grade archiving with regulatory compliance (GDPR, SEC 17a-4), WORM immutability, legal hold, and AES-256 encryption.',
       categoryId: dataCategory.id,
-      computeType: ComputeType.VIRTUAL,
       os: 'Linux',
       zones: { create: [{ zoneId: zoneToto.id }, { zoneId: zoneProd.id }] },
       documentation: '# Archiving as a Service\n\n## Overview\nEnterprise-grade long-term archiving solution with full regulatory compliance.\n\n## Features\n- **WORM Immutability**: Write-Once-Read-Many protection\n- **Legal Hold**: Litigation-ready retention policies\n- **AES-256 Encryption**: At-rest and in-transit encryption\n- **Compliance**: GDPR, SEC 17a-4, HIPAA, FINRA ready\n- **Retention Policies**: Configurable from 1 year to unlimited\n- **AI Classification**: Automatic data categorization (roadmap)\n\n## Tiers\n| Tier | Capacity | Retention | Features |\n|------|----------|-----------|----------|\n| Basic | 1 TB | 1 year | Standard encryption |\n| Standard | 5 TB | 7 years | Legal compliance |\n| Enterprise | 20 TB | 10 years | WORM immutability |\n| Compliance | 100 TB | Unlimited | WORM + legal hold |\n\n## APIs\n- S3-compatible API\n- REST API for policy management\n- Webhook notifications for retention events',
