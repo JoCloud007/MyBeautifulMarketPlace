@@ -1704,23 +1704,25 @@ function CardsView({ versions, timelineStart, timelineEnd, showTodayBar, sort = 
     updateDesigns(designs.map((d) => d.id === activeDesign.id ? { ...d, config: { ...defaultCardConfig } } : d));
   };
 
-  // Aggregate by the chosen title field (e.g. one card per OS)
+  // Aggregate by the card's displayed header identity: BOTH the "Header label"
+  // and the "Card title" slots. Grouping on the title alone merged cards whose
+  // header labels differ — e.g. title=OS + headerLabel=Product collapsed Bare
+  // Metal and Virtual Machine into a single OS card labelled with group[0].
   const byTitle = new Map<string, RoadmapVersion[]>();
   for (const v of versions) {
-    const key = getCardFieldValue(v, designConfig.title);
+    const key = `${getCardFieldValue(v, designConfig.headerLabel)}§${getCardFieldValue(v, designConfig.title)}`;
     if (!byTitle.has(key)) byTitle.set(key, []);
     byTitle.get(key)!.push(v);
   }
-  // Card order: clicking the card title sorts cards alphabetically; the
-  // default stays chronological on the group's earliest release date.
+  // Card order: clicking the card title sorts cards alphabetically on the
+  // displayed title (ties keep grouping order); the default stays
+  // chronological on the group's earliest release date.
   const cards = (() => {
-    const groups = Array.from(byTitle.entries());
+    const groups = Array.from(byTitle.values());
     if (sort?.key === 'COL:TITLE') {
-      return applyRowSort(groups, sort, ([title]) => title).map(([, vs]) => vs);
+      return applyRowSort(groups, sort, (vs) => getCardFieldValue(vs[0], designConfig.title));
     }
-    return groups
-      .map(([, vs]) => vs)
-      .sort((a, b) => new Date(a[0].releaseDate).getTime() - new Date(b[0].releaseDate).getTime());
+    return groups.sort((a, b) => new Date(a[0].releaseDate).getTime() - new Date(b[0].releaseDate).getTime());
   })();
 
   // Transitions render as rows inside their product cards, indexed by product name
@@ -2037,8 +2039,12 @@ export default function Roadmap() {
     if (products) {
       for (const product of products) {
         if (perspective === 'compute') {
-          // Compute view: only compute product variants
-          if (product.computeType) {
+          // Compute view: only products of the Compute category. computeType
+          // (PHYSICAL/VIRTUAL) is an attribute inside that category; rows
+          // outside it can carry a stale computeType (legacy/seed data), so the
+          // category is the reliable criterion — same rule as the API's write
+          // validation ("computeType can only be set for Compute category").
+          if (product.category?.name?.toLowerCase() === 'compute') {
             for (const variant of product.variants || []) {
               // Inclusion mirrors the date resolution in productVariantToRoadmap:
               // a variant without its own releaseDate inherits the OsVersion's —
