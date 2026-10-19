@@ -5746,6 +5746,7 @@ const ADMIN_TAB_GROUPS: AdminTabGroup[] = [
       { value: 'variants', label: 'Variants', icon: Boxes },
       { value: 'os', label: 'OS', icon: Monitor },
       { value: 'flavors', label: 'Flavors', icon: Cpu },
+      { value: 'flavor-profiles', label: 'Profiles', icon: Boxes },
       { value: 'performance-profiles', label: 'Performance', icon: BarChart3 },
       { value: 'dependencies', label: 'Dependencies', icon: Link2 },
       { value: 'transitions', label: 'Transitions', icon: ArrowRightLeft },
