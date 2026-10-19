@@ -643,6 +643,44 @@ function buildTree(versions: RoadmapVersion[], axes: Axis[]): TreeNode[] {
   return mapToArray(root);
 }
 
+/* ── Leaf display rows ─────────────────────────────────────────── */
+
+interface DisplayRow {
+  /** Version driving the label and the Gantt bar. */
+  primary: RoadmapVersion;
+  /** Every version folded into this line (length > 1 when dates are identical). */
+  folded: RoadmapVersion[];
+  /** Flavour shown to disambiguate split lines of one group. */
+  subtitle?: string;
+}
+
+// Versions sharing a version name AND identical dates fold into ONE line;
+// differing dates split one line per version, labelled by flavour.
+function buildDisplayRows(versions: RoadmapVersion[]): DisplayRow[] {
+  const groups = new Map<string, RoadmapVersion[]>();
+  for (const v of versions) {
+    const key = v.osVersionName;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(v);
+  }
+  const rows: DisplayRow[] = [];
+  for (const [, group] of groups) {
+    const first = group[0];
+    const allSame = group.every((v) =>
+      v.releaseDate === first.releaseDate &&
+      v.normalSupportEnd === first.normalSupportEnd &&
+      v.extendedSupportEnd === first.extendedSupportEnd &&
+      v.eolDate === first.eolDate
+    );
+    if (allSame) {
+      rows.push({ primary: first, folded: group });
+    } else {
+      for (const v of group) rows.push({ primary: v, folded: [v], subtitle: v.flavor });
+    }
+  }
+  return rows;
+}
+
 /* ── Grouped Tree Node ─────────────────────────────────────────── */
 
 function TreeNodeRow({
@@ -667,6 +705,13 @@ function TreeNodeRow({
   const [expanded, setExpanded] = useState(true);
   const hasChildren = node.children.length > 0;
   const isLeaf = !hasChildren && node.versions.length > 0;
+  // Leaf display lines: versions sharing a name AND identical dates fold into
+  // one line (a hover bubble lists them); differing dates split per version.
+  const displayRows = isLeaf ? buildDisplayRows(node.versions) : [];
+  // A group whose versions fold into a single line is pure overhead: its
+  // header ("Phase — 2 versions") just repeats the line it wraps. Show the
+  // line directly, at the group's own indent level, with no header row.
+  const directLine = isLeaf && displayRows.length === 1;
   // Clicking a node label sorts its SIBLINGS at this axis level. The key is
   // namespaced by axis so every node of the same level shares one sort state.
   const sortKey = `NODE:${node.axis}`;
@@ -677,6 +722,24 @@ function TreeNodeRow({
   const childAxis = node.children[0]?.axis;
   const childrenSorted = childAxis ? sort?.key === `NODE:${childAxis}` : false;
   const sortedChildren = applyRowSort(node.children, childrenSorted ? sort : null, (c) => c.label);
+
+  const renderRow = (row: DisplayRow) => (
+    <VersionRow
+      key={row.primary.id}
+      version={row.primary}
+      folded={row.folded}
+      subtitle={row.subtitle}
+      timelineStart={timelineStart}
+      timelineEnd={timelineEnd}
+      showTodayBar={showTodayBar}
+      displayAxis={node.axis}
+      labelWidth={labelWidth}
+    />
+  );
+
+  if (directLine) {
+    return <div className={`${depth > 0 ? 'ml-4 ' : ''}mb-1`}>{renderRow(displayRows[0])}</div>;
+  }
 
   return (
     <div className={depth > 0 ? 'ml-4' : ''}>
@@ -727,68 +790,7 @@ function TreeNodeRow({
           ))}
           {isLeaf && (
             <div className="ml-5 space-y-1">
-              {(() => {
-                // Group versions by osVersionName
-                const groups = new Map<string, RoadmapVersion[]>();
-                for (const v of node.versions) {
-                  const key = v.osVersionName;
-                  if (!groups.has(key)) groups.set(key, []);
-                  groups.get(key)!.push(v);
-                }
-                const rows: React.ReactNode[] = [];
-                for (const [, versions] of groups) {
-                  if (versions.length === 1) {
-                    rows.push(
-                      <VersionRow
-                        key={versions[0].id}
-                        version={versions[0]}
-                        timelineStart={timelineStart}
-                        timelineEnd={timelineEnd}
-                        showTodayBar={showTodayBar}
-                        displayAxis={node.axis}
-                        labelWidth={labelWidth}
-                      />
-                    );
-                  } else {
-                    // Check if all dates are identical
-                    const allSame = versions.every((v) =>
-                      v.releaseDate === versions[0].releaseDate &&
-                      v.normalSupportEnd === versions[0].normalSupportEnd &&
-                      v.extendedSupportEnd === versions[0].extendedSupportEnd &&
-                      v.eolDate === versions[0].eolDate
-                    );
-                    if (allSame) {
-                      rows.push(
-                        <VersionRow
-                          key={versions[0].id}
-                          version={versions[0]}
-                          timelineStart={timelineStart}
-                          timelineEnd={timelineEnd}
-                          showTodayBar={showTodayBar}
-                          displayAxis={node.axis}
-                          labelWidth={labelWidth}
-                        />
-                      );
-                    } else {
-                      for (const v of versions) {
-                        rows.push(
-                          <VersionRow
-                            key={v.id}
-                            version={v}
-                            timelineStart={timelineStart}
-                            timelineEnd={timelineEnd}
-                            showTodayBar={showTodayBar}
-                            displayAxis={node.axis}
-                            subtitle={v.flavor}
-                            labelWidth={labelWidth}
-                          />
-                        );
-                      }
-                    }
-                  }
-                }
-                return rows;
-              })()}
+              {displayRows.map((row) => renderRow(row))}
             </div>
           )}
         </div>
@@ -799,11 +801,14 @@ function TreeNodeRow({
 
 /* ── Version Row ───────────────────────────────────────────────── */
 
-function VersionRow({ version, timelineStart, timelineEnd, showTodayBar, displayAxis, subtitle, labelWidth = 240 }: { version: RoadmapVersion; timelineStart: Date; timelineEnd: Date; showTodayBar: boolean; displayAxis?: Axis; subtitle?: string; labelWidth?: number }) {
+function VersionRow({ version, folded, timelineStart, timelineEnd, showTodayBar, displayAxis, subtitle, labelWidth = 240 }: { version: RoadmapVersion; folded?: RoadmapVersion[]; timelineStart: Date; timelineEnd: Date; showTodayBar: boolean; displayAxis?: Axis; subtitle?: string; labelWidth?: number }) {
   const phase = getPhaseConfig(version.phase);
   const label = displayAxis ? getAxisValue(version, displayAxis).label : version.name;
+  // A line folding several versions with identical dates discloses them in a
+  // hover bubble — the group header that used to count them is gone.
+  const merged = (folded?.length ?? 0) > 1;
   return (
-    <div className="flex items-center gap-3 h-7">
+    <div className="flex items-center gap-3 h-7 relative group">
       <div className="flex items-center gap-2 shrink-0" style={{ width: labelWidth }}>
         <span className={`inline-block w-1.5 h-1.5 rounded-full ${phase.bg}`} />
         <span className="text-xs text-slate-300 font-medium truncate">{label}</span>
@@ -822,6 +827,21 @@ function VersionRow({ version, timelineStart, timelineEnd, showTodayBar, display
         </span>
       </div>
       <GanttBar version={version} timelineStart={timelineStart} timelineEnd={timelineEnd} showTodayBar={showTodayBar} />
+      {merged && (
+        <div className="pointer-events-none absolute left-0 top-full z-30 mt-0.5 hidden w-64 rounded-lg border border-slate-700 bg-slate-900 p-2.5 shadow-xl group-hover:block">
+          <p className="text-[10px] font-semibold text-slate-300">
+            {folded!.length} versions — identical dates
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {folded!.map((v) => (
+              <li key={v.id} className="text-[10px] text-slate-400 truncate">
+                {v.name}
+                {v.flavor && v.flavor !== '—' && !v.name.includes(v.flavor) ? ` — ${v.flavor}` : ''}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
