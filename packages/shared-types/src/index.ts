@@ -163,6 +163,8 @@ export interface OsVersion {
   eolDate: string;
   phase: LifecyclePhase;
   isActive: boolean;
+  // Per-version availability override; null/absent inherits OperatingSystem.availabilityType.
+  availabilityType?: AvailabilityType | null;
   createdAt: string;
   updatedAt: string;
 }

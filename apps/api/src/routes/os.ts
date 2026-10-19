@@ -25,6 +25,13 @@ const updateOsSchema = z.object({
   zoneIds: z.array(z.string().uuid()).optional(),
 });
 
+// Per-version availability override: absent (undefined) keeps the stored
+// value, explicit null clears it back to inheriting OperatingSystem.availabilityType.
+const versionAvailabilitySchema = z
+  .enum(['STANDARD', 'RECOMMENDED', 'RESTRICTED', 'ON_DEMAND'])
+  .nullable()
+  .optional();
+
 const createVersionSchema = z.object({
   version: z.string().min(1, 'Version is required'),
   releaseDate: z.string().datetime(),
@@ -33,14 +40,17 @@ const createVersionSchema = z.object({
   eolDate: z.string().datetime(),
   phase: z.enum(['RELEASED', 'NORMAL_SUPPORT', 'EXTENDED_SUPPORT', 'NO_SUPPORT', 'EOL']).optional(),
   isActive: z.boolean().optional(),
+  availabilityType: versionAvailabilitySchema,
 }).refine((data) => {
   const release = new Date(data.releaseDate).getTime();
   const normal = new Date(data.normalSupportEnd).getTime();
   const extended = new Date(data.extendedSupportEnd).getTime();
   const eol = new Date(data.eolDate).getTime();
-  return release < normal && normal < extended && extended < eol;
+  // Adjacent phases may collapse to the same date (e.g. RHEL extended support
+  // runs until EOL): equal boundaries are valid, only reversed ones are not.
+  return release < normal && normal <= extended && extended <= eol;
 }, {
-  message: 'Dates must be in chronological order: releaseDate < normalSupportEnd < extendedSupportEnd < eolDate',
+  message: 'Dates must be in chronological order: releaseDate < normalSupportEnd <= extendedSupportEnd <= eolDate',
 });
 
 const updateVersionSchema = z.object({
@@ -51,6 +61,7 @@ const updateVersionSchema = z.object({
   eolDate: z.string().datetime().optional(),
   phase: z.enum(['RELEASED', 'NORMAL_SUPPORT', 'EXTENDED_SUPPORT', 'NO_SUPPORT', 'EOL']).optional(),
   isActive: z.boolean().optional(),
+  availabilityType: versionAvailabilitySchema,
 });
 
 // GET /api/os
@@ -272,6 +283,8 @@ router.post('/:id/versions', async (req, res, next) => {
         eolDate: new Date(data.eolDate),
         phase: data.phase,
         isActive: data.isActive,
+        // null (or absent) = inherit OperatingSystem.availabilityType
+        availabilityType: data.availabilityType ?? null,
       },
     });
     res.status(201).json(version);
@@ -301,17 +314,22 @@ router.put('/:id/versions/:versionId', async (req, res, next) => {
     const extendedSupportEnd = data.extendedSupportEnd ? new Date(data.extendedSupportEnd) : version.extendedSupportEnd;
     const eolDate = data.eolDate ? new Date(data.eolDate) : version.eolDate;
 
+    // Adjacent phases may collapse to the same date (e.g. RHEL extended
+    // support runs until EOL): equal boundaries are valid, only reversed ones
+    // are not.
     if (releaseDate.getTime() >= normalSupportEnd.getTime() ||
-        normalSupportEnd.getTime() >= extendedSupportEnd.getTime() ||
-        extendedSupportEnd.getTime() >= eolDate.getTime()) {
+        normalSupportEnd.getTime() > extendedSupportEnd.getTime() ||
+        extendedSupportEnd.getTime() > eolDate.getTime()) {
       return res.status(400).json({
-        error: 'Dates must be in chronological order: releaseDate < normalSupportEnd < extendedSupportEnd < eolDate',
+        error: 'Dates must be in chronological order: releaseDate < normalSupportEnd <= extendedSupportEnd <= eolDate',
       });
     }
 
     const updated = await prisma.osVersion.update({
       where: { id: versionId },
       data: {
+        // availabilityType rides along in `...data`: absent (undefined) keeps
+        // the stored override, explicit null clears it back to OS inheritance.
         ...data,
         releaseDate: data.releaseDate ? new Date(data.releaseDate) : undefined,
         normalSupportEnd: data.normalSupportEnd ? new Date(data.normalSupportEnd) : undefined,

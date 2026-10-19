@@ -508,6 +508,7 @@ function OSSection() {
   const [editingVersion, setEditingVersion] = useState<OsVersion | null>(null);
   const [versionForm, setVersionForm] = useState({
     version: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: 'RELEASED', isActive: true,
+    availabilityType: '', // '' = inherit OperatingSystem.availabilityType
   });
 
   const resetForm = () => { setForm({ family: '', name: '', isActive: true, availabilityType: 'STANDARD' as AvailabilityType, zoneIds: [] }); setEditing(null); };
@@ -545,10 +546,11 @@ function OSSection() {
         eolDate: v.eolDate.slice(0, 10),
         phase: v.phase,
         isActive: v.isActive,
+        availabilityType: v.availabilityType ?? '',
       });
     } else {
       setEditingVersion(null);
-      setVersionForm({ version: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: 'RELEASED', isActive: true });
+      setVersionForm({ version: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: 'RELEASED', isActive: true, availabilityType: '' });
     }
     setVersionOpen(true);
   };
@@ -559,6 +561,8 @@ function OSSection() {
       const payload = {
         ...versionForm,
         phase: versionForm.phase as import('@cloudmarket/shared-types').LifecyclePhase,
+        // '' (Inherit from OS) → explicit null: clears the version override
+        availabilityType: versionForm.availabilityType === '' ? null : versionForm.availabilityType as AvailabilityType,
         releaseDate: new Date(versionForm.releaseDate).toISOString(),
         normalSupportEnd: new Date(versionForm.normalSupportEnd).toISOString(),
         extendedSupportEnd: new Date(versionForm.extendedSupportEnd).toISOString(),
@@ -625,11 +629,26 @@ function OSSection() {
                     <Button size="sm" variant="ghost" onClick={() => openVersionModal(os.id)} className="h-6 w-6 p-0 text-slate-400 hover:text-blue-400"><Plus className="h-3 w-3" /></Button>
                   </div>
                   <div className="flex flex-wrap gap-1 mt-1">
-                    {os.versions?.slice(0, 3).map((v: OsVersion) => (
-                      <Badge key={v.id} variant="outline" className="text-[10px] border-slate-700 text-slate-400 cursor-pointer" onClick={() => openVersionModal(os.id, v)}>
-                        {v.version}
-                      </Badge>
-                    ))}
+                    {os.versions?.slice(0, 3).map((v: OsVersion) => {
+                      // Effective availability: version override, else OS-level
+                      const effective = v.availabilityType ?? os.availabilityType ?? 'STANDARD';
+                      const availClass =
+                        effective === 'RECOMMENDED' ? 'border-emerald-500/20 text-emerald-500' :
+                        effective === 'RESTRICTED' ? 'border-red-500/20 text-red-500' :
+                        effective === 'ON_DEMAND' ? 'border-amber-500/20 text-amber-500' :
+                        'border-slate-700 text-slate-400';
+                      return (
+                        <Badge
+                          key={v.id}
+                          variant="outline"
+                          className={`text-[10px] cursor-pointer ${availClass}`}
+                          onClick={() => openVersionModal(os.id, v)}
+                          title={`Availability: ${effective.replace('_', ' ')} — ${v.availabilityType ? 'set on this version' : 'inherited from OS'}`}
+                        >
+                          {v.version}{effective !== 'STANDARD' ? ` · ${effective.replace('_', ' ')}` : ''}
+                        </Badge>
+                      );
+                    })}
                     {(os.versions?.length ?? 0) > 3 && <span className="text-[10px] text-slate-500">+{(os.versions.length - 3)} more</span>}
                   </div>
                 </td>
@@ -720,6 +739,17 @@ function OSSection() {
                 <option value="NO_SUPPORT">No Support</option>
                 <option value="EOL">EOL</option>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Availability</label>
+              <Select value={versionForm.availabilityType} onChange={(e) => setVersionForm({ ...versionForm, availabilityType: e.target.value })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="">Inherit from OS</option>
+                <option value="STANDARD">Standard</option>
+                <option value="RECOMMENDED">Recommended</option>
+                <option value="RESTRICTED">Restricted</option>
+                <option value="ON_DEMAND">On Demand</option>
+              </Select>
+              <p className="text-xs text-slate-500">Overrides the OS-level availability for this version only.</p>
             </div>
             <div className="flex items-center gap-2">
               <input type="checkbox" id="vActive" checked={versionForm.isActive} onChange={(e) => setVersionForm({ ...versionForm, isActive: e.target.checked })} className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-blue-600" />

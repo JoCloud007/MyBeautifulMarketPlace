@@ -141,6 +141,8 @@ model OsVersion {
   eolDate            DateTime
   phase              LifecyclePhase   @default(RELEASED)
   isActive           Boolean          @default(true)
+  // Per-version availability override; null inherits OperatingSystem.availabilityType.
+  availabilityType   AvailabilityType?
   variants           ProductVariant[]
   transitionsFrom    Transition[]     @relation("TransitionFromOsVersion")
   transitionsTo      Transition[]     @relation("TransitionToOsVersion")

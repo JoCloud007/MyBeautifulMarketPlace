@@ -39,6 +39,45 @@ function getPhaseConfig(phase: LifecyclePhase | string | undefined) {
   return phaseConfig[phase as LifecyclePhase] ?? defaultPhaseConfig;
 }
 
+/* ── OS availability (OsVersion override ?? OperatingSystem) ───── */
+
+// severity = how restrictive the value is; used to aggregate a card header
+// (any RESTRICTED version marks the whole card Restricted).
+const availabilityConfig: Record<string, { label: string; color: string; bg: string; border: string; severity: number }> = {
+  RECOMMENDED: { label: 'Recommended', color: 'text-emerald-300', bg: 'bg-emerald-500', border: 'border-emerald-500/40', severity: 0 },
+  STANDARD: { label: 'Standard', color: 'text-slate-300', bg: 'bg-slate-500', border: 'border-slate-500/40', severity: 1 },
+  ON_DEMAND: { label: 'On Demand', color: 'text-amber-300', bg: 'bg-amber-500', border: 'border-amber-500/40', severity: 2 },
+  RESTRICTED: { label: 'Restricted', color: 'text-red-300', bg: 'bg-red-500', border: 'border-red-500/40', severity: 3 },
+};
+
+function getAvailabilityConfig(type: string | null | undefined) {
+  return (type && availabilityConfig[type]) || null;
+}
+
+function worstAvailability(types: (string | null | undefined)[]): string | null {
+  let worst: string | null = null;
+  for (const t of types) {
+    if (!t || !availabilityConfig[t]) continue;
+    if (worst === null || availabilityConfig[t].severity > availabilityConfig[worst].severity) worst = t;
+  }
+  return worst;
+}
+
+function AvailabilityChip({ type, explicit = false, xs = false, title }: { type: string; explicit?: boolean; xs?: boolean; title?: string }) {
+  const cfg = getAvailabilityConfig(type);
+  if (!cfg) return null;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border font-medium ${xs ? 'px-1.5 py-0 text-[9px]' : 'px-2 py-0.5 text-[10px]'} ${cfg.color} ${cfg.border}`}
+      style={{ background: 'rgba(2, 6, 23, 0.6)' }}
+      title={title || `OS availability: ${cfg.label}${explicit ? ' (set on this version)' : ' (inherited from OS)'}`}
+    >
+      <span className={`inline-block rounded-full ${xs ? 'w-1.5 h-1.5' : 'w-2 h-2'} ${cfg.bg}`} />
+      {cfg.label}
+    </span>
+  );
+}
+
 /* ── Axis config ───────────────────────────────────────────────── */
 
 type Axis = 'FAMILY' | 'OS' | 'PHASE' | 'VERSION' | 'CATEGORY' | 'PRODUCT' | 'FLAVOR' | 'REGION' | 'COUNTRY' | 'AZ' | 'ZONE' | 'PRODUCT_VERSION' | 'OS_VERSION' | 'INFRA_VERSION';
@@ -83,6 +122,10 @@ interface RoadmapVersion {
   product: string;
   flavor: string;
   status: string;
+  /** Effective OS availability: OsVersion.availabilityType ?? OperatingSystem.availabilityType (null when no OS). */
+  availabilityType: string | null;
+  /** True when the OsVersion carries its own availabilityType override. */
+  availabilityExplicit: boolean;
   transitionsTo: string[];
   transitionsFrom: string[];
   type: 'os' | 'product' | 'product-version' | 'flavor' | 'infra';
@@ -132,6 +175,9 @@ function productVariantToRoadmap(product: Product, variant: ProductVariant): Roa
     product: product.name,
     flavor: variant.flavor?.name || '—',
     status: product.status || 'AVAILABLE',
+    // Effective availability: per-version override, else OS-level
+    availabilityType: variant.osVersion?.availabilityType ?? variant.os?.availabilityType ?? null,
+    availabilityExplicit: variant.osVersion?.availabilityType != null,
     transitionsTo: transitions.to,
     transitionsFrom: transitions.from,
     type: 'product',
@@ -145,6 +191,12 @@ function productVariantToRoadmap(product: Product, variant: ProductVariant): Roa
 
 function productVersionToRoadmap(product: Product, pv: ProductVersion): RoadmapVersion {
   const transitions = productTransitions(product);
+  // The row displays ONE OS (the first variant's — same source as the `os`
+  // field below), so the availability chip must describe THAT OS: a worst-case
+  // across the other OSes this version also runs on would mislabel an
+  // OS-grouped card (e.g. paint a Debian card Restricted because a sibling
+  // variant runs on RHEL).
+  const refVariant = pv.variants?.[0] || product.variants?.[0];
   const azList = [
     ...(pv.availabilityZones?.map((z) => z.availabilityZone).filter(Boolean) || []),
     ...(pv.variants?.flatMap((v) => v.availabilityZones?.map((z) => z.availabilityZone) || []) || []),
@@ -174,6 +226,8 @@ function productVersionToRoadmap(product: Product, pv: ProductVersion): RoadmapV
     product: product.name,
     flavor: '—',
     status: product.status || 'AVAILABLE',
+    availabilityType: refVariant ? (refVariant.osVersion?.availabilityType ?? refVariant.os?.availabilityType ?? null) : null,
+    availabilityExplicit: refVariant?.osVersion?.availabilityType != null,
     transitionsTo: transitions.to,
     transitionsFrom: transitions.from,
     type: 'product-version',
@@ -202,6 +256,9 @@ function infraVersionToRoadmap(iv: InfraVersion): RoadmapVersion {
     product: iv.name,
     flavor: '—',
     status: iv.isActive ? 'AVAILABLE' : 'CANCELLED',
+    // Infra rows are not OS-scoped: no availability chip
+    availabilityType: null,
+    availabilityExplicit: false,
     transitionsTo: [],
     transitionsFrom: [],
     type: 'infra',
@@ -751,6 +808,9 @@ function VersionRow({ version, timelineStart, timelineEnd, showTodayBar, display
         <span className={`inline-block w-1.5 h-1.5 rounded-full ${phase.bg}`} />
         <span className="text-xs text-slate-300 font-medium truncate">{label}</span>
         {subtitle && <span className="text-[10px] text-slate-500">({subtitle})</span>}
+        {version.availabilityType && (version.availabilityType !== 'STANDARD' || version.availabilityExplicit) && (
+          <AvailabilityChip type={version.availabilityType} explicit={version.availabilityExplicit} xs />
+        )}
         <span className="text-[10px] text-slate-500 ml-auto">
           {(() => {
             const r = new Date(version.releaseDate);
@@ -1239,6 +1299,8 @@ interface CardRow {
   cell1Status?: string;
   cell2: string;
   cell2Status?: string;
+  availabilityType: string | null;
+  availabilityExplicit: boolean;
   dates: { release: string; normalEnd: string; extendedEnd: string; eol: string };
 }
 
@@ -1253,6 +1315,7 @@ function buildCardRows(versions: RoadmapVersion[], config: CardDesignConfig, sor
     const cell2 = getCardFieldValue(v, config.cell2);
     const key = [
       cell1, cell2,
+      v.availabilityType,
       v.releaseDate, v.normalSupportEnd, v.extendedSupportEnd, v.eolDate,
     ].join('§');
     const label = getCardFieldValue(v, config.rowLabel);
@@ -1269,6 +1332,8 @@ function buildCardRows(versions: RoadmapVersion[], config: CardDesignConfig, sor
         cell1Status: config.cell1 === 'STATUS' ? v.status : config.cell1 === 'PHASE' ? v.phase : undefined,
         cell2,
         cell2Status: config.cell2 === 'STATUS' ? v.status : config.cell2 === 'PHASE' ? v.phase : undefined,
+        availabilityType: v.availabilityType,
+        availabilityExplicit: v.availabilityExplicit,
         dates: {
           release: v.releaseDate,
           normalEnd: v.normalSupportEnd,
@@ -1522,6 +1587,9 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
   const headerLabel = getCardFieldValue(group[0], config.headerLabel);
   const rows = buildCardRows(group, config, sortNewest, sort);
   const cardStatus = getStatusConfig(group[0].status);
+  // Worst effective OS availability among the card's versions: any RESTRICTED
+  // version marks the whole card Restricted. STANDARD stays unchipped.
+  const cardAvailability = worstAvailability(group.map((v) => v.availabilityType));
   // Transition entities attached to this product (from + to), rendered as rows in
   // the card. The "Transitions:" FILTERS selection keeps only Product or OS rows.
   const groupTransitions: Transition[] = [
@@ -1563,6 +1631,10 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
               <span className="ml-1 text-[9px] text-slate-500">{sort?.key === 'COL:TITLE' ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
             </span>
             {phase === 'RELEASED' && <span className="text-emerald-400">✓</span>}
+            {/* OS availability chip — mirrors the admin OS badge */}
+            {cardAvailability && cardAvailability !== 'STANDARD' && (
+              <AvailabilityChip type={cardAvailability} title="OS availability — worst of this card's versions" />
+            )}
             {/* status chip with the legend label */}
             <span
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${cardStatus.color} ${cardStatus.border}`}
@@ -1574,7 +1646,14 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
           </div>
         </div>
         {/* mapped rows */}
-        {rows.map((row, i) => (
+        {rows.map((row, i) => {
+          // Per-version chip: shown when the effective availability is not
+          // STANDARD, or when the version carries an explicit override.
+          const rowAvailability =
+            row.availabilityType && (row.availabilityType !== 'STANDARD' || row.availabilityExplicit)
+              ? row.availabilityType
+              : null;
+          return (
           <div key={i} className={`border-b ${style.cellBorder} last:border-b-0`}>
             {/* version cells */}
             <div className="flex">
@@ -1587,6 +1666,11 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
                   {row.label}
                   <span className="ml-1 text-[8px] opacity-70">{sort?.key === 'FIELD:LABEL' ? (sort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
                 </span>
+                {rowAvailability && (
+                  <span className="ml-1.5 shrink-0">
+                    <AvailabilityChip type={rowAvailability} explicit={row.availabilityExplicit} xs />
+                  </span>
+                )}
               </div>
               <div className={row.cell2 ? 'flex-1 min-w-0 px-2 py-1' : 'flex-1 px-2 py-1 basis-full'}>
                 {row.cell1 && (
@@ -1628,7 +1712,8 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
             {/* lifecycle timeline of THIS version: blue normal, amber extended, red EOL */}
             {showLifecycleBar && <LifecycleBar dates={row.dates} toPct={toPct} cardStartPct={indentPct} cardWidthPct={widthPct} />}
           </div>
-        ))}
+          );
+        })}
         {/* transitions as rows inside the card */}
         {groupTransitions.length > 0 && groupTransitions.map((t) => (
           <TransitionRow key={t.id} transition={t} osVersionStrings={osVersionStrings} />
@@ -2565,6 +2650,16 @@ export default function Roadmap() {
         <div className="flex flex-wrap gap-4 mb-4 text-xs">
           {Object.entries(productStatusConfig).map(([status, cfg]) => (
             <div key={status} className="flex items-center gap-1.5">
+              <span className={`inline-block w-2.5 h-2.5 rounded-full border ${cfg.bg} ${cfg.border}`} />
+              <span className="text-slate-400">{cfg.label}</span>
+            </div>
+          ))}
+        </div>
+        {/* OS availability legend */}
+        <div className="flex flex-wrap gap-4 mb-4 text-xs">
+          <span className="text-slate-500 font-medium">OS availability:</span>
+          {Object.entries(availabilityConfig).map(([key, cfg]) => (
+            <div key={key} className="flex items-center gap-1.5">
               <span className={`inline-block w-2.5 h-2.5 rounded-full border ${cfg.bg} ${cfg.border}`} />
               <span className="text-slate-400">{cfg.label}</span>
             </div>
