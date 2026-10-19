@@ -19,7 +19,23 @@ const mockUseContinuityLevels = vi.fn();
 const mockMutateAsync = vi.fn();
 const mockMutate = vi.fn();
 
-vi.mock('@/hooks/useApi', () => ({
+vi.mock('@/hooks/useApi', async (importOriginal) => {
+  // Spread the real module so every export name exists (vitest validates named
+  // exports), then stub every `use*` hook to a safe empty query/mutation so
+  // unrelated sections render without crashing. Declared inside the factory
+  // because vi.mock is hoisted above module scope.
+  const actual = await importOriginal<typeof import('@/hooks/useApi')>();
+  const hookFallback = () => ({
+    data: [],
+    options: { associatedCodes: [], allActive: [] },
+    isLoading: false,
+    isError: false,
+    refetch: async () => {},
+    mutateAsync: vi.fn(),
+    mutate: vi.fn(),
+    isPending: false,
+  });
+  const explicit: Record<string, unknown> = {
   useAdminDashboard: () => mockUseAdminDashboard(),
   useAdminProducts: () => mockUseAdminProducts(),
   useAdminCategories: () => mockUseAdminCategories(),
@@ -69,7 +85,20 @@ vi.mock('@/hooks/useApi', () => ({
   useCreateAvailabilityZone: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
   useUpdateAvailabilityZone: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
   useDeleteAvailabilityZone: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
-}));
+  useProductResiliency: () => ({ data: { associatedCodes: [], allActive: [] }, isLoading: false, isError: false, refetch: async () => {} }),
+  useUpdateProductResiliency: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
+  useResiliencyScopes: () => ({ data: [], isLoading: false, isError: false, refetch: async () => {} }),
+  useCreateResiliencyScope: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
+  useDeleteResiliencyScope: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
+  };
+  const result: Record<string, unknown> = { ...actual };
+  for (const key of Object.keys(actual)) {
+    if (typeof (actual as any)[key] === 'function' && /^use[A-Z]/.test(key)) {
+      result[key] = hookFallback;
+    }
+  }
+  return { ...result, ...explicit };
+});
 
 vi.mock('@/hooks/useScrollReveal', () => ({
   useScrollReveal: () => ({ ref: { current: null }, isVisible: true }),
@@ -165,7 +194,7 @@ const variants = [
     os: { name: 'Debian' },
     osVersion: { version: '12 (Bookworm)', phase: 'RELEASED' },
     flavor: { name: 'Small' },
-    availabilityZones: [{ availabilityZoneId: 'az1', availabilityZone: { code: 'eu-west-par1' } }],
+    availabilityZones: [{ availabilityZoneId: 'az1', availabilityZone: { code: 'eu-west-par1', name: 'eu-west-par1' } }],
     continuityLevel: { name: 'MODERATE', color: 'yellow' },
     isActive: true,
   },
@@ -206,12 +235,27 @@ function expectTextOnPage(text: string) {
   expect(screen.queryAllByText(text).length).toBeGreaterThan(0);
 }
 
-// Helper: find tab button by index (0=dashboard, 1=products, 2=os, 3=categories, 4=flavors, ...)
+// Helper: the admin nav is hierarchical (group ribbon + sub-tab ribbon). Opening a
+// section means clicking its domain group first, then the sub-tab. `getTabButton`
+// keeps the historical index contract used across this suite.
+const TAB_VALUE_BY_INDEX: Record<number, string> = {
+  0: 'dashboard',
+  1: 'products',
+  2: 'os',
+  3: 'categories',
+  4: 'flavors',
+};
+
+function openSection(tabValue: string) {
+  const group = screen
+    .getAllByRole('button')
+    .find((b) => (b.getAttribute('data-tabs') || '').split(' ').includes(tabValue));
+  if (group) fireEvent.click(group);
+  return screen.getByTestId(`admin-tab-${tabValue}`);
+}
+
 function getTabButton(index: number) {
-  const buttons = screen.getAllByRole('button');
-  // Filter to only tab buttons (they have specific class patterns or are inside TabsList)
-  // The tabs are the first N buttons in the document
-  return buttons[index];
+  return openSection(TAB_VALUE_BY_INDEX[index]);
 }
 
 // Helper: click a product row in the desktop table
@@ -348,7 +392,9 @@ describe('Admin Dashboard Refactor — Frontend', () => {
       clickProductRow('Object Storage');
       await waitFor(() => {
         expectTextOnPage('Product Details');
-        expect(screen.queryAllByText('Add Variant').length).toBe(0);
+        // "Add Variant" is deliberately always visible (even non-Compute) so every
+        // product can be entered in the Marketplace Matrix.
+        expect(screen.queryAllByText('Add Variant').length).toBeGreaterThan(0);
       }, { timeout: 3000 });
     });
 
@@ -465,7 +511,7 @@ describe('Admin Dashboard Refactor — Frontend', () => {
       render(<Admin />, { wrapper: Wrapper });
       fireEvent.click(getTabButton(2));
       await waitFor(() => {
-        expect(screen.getByText('Unable to load OS.')).toBeInTheDocument();
+        expect(screen.getByText('Unable to load OS list.')).toBeInTheDocument();
       }, { timeout: 3000 });
     });
 

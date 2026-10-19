@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -64,7 +64,23 @@ const mockUseUpdateVariant = vi.fn(() => createMockMutation());
 const mockUseDeleteVariant = vi.fn(() => createMockMutation());
 const mockUseFlavors = vi.fn();
 
-vi.mock('@/hooks/useApi', () => ({
+vi.mock('@/hooks/useApi', async (importOriginal) => {
+  // Spread the real module so every export name exists (vitest validates named
+  // exports), then stub every `use*` hook to a safe empty query/mutation so
+  // unrelated sections render without crashing. Declared inside the factory
+  // because vi.mock is hoisted above module scope.
+  const actual = await importOriginal<typeof import('@/hooks/useApi')>();
+  const hookFallback = () => ({
+    data: [],
+    options: { associatedCodes: [], allActive: [] },
+    isLoading: false,
+    isError: false,
+    refetch: async () => {},
+    mutateAsync: vi.fn(),
+    mutate: vi.fn(),
+    isPending: false,
+  });
+  const explicit: Record<string, unknown> = {
   useAdminDashboard: () => mockUseAdminDashboard(),
   useAdminProducts: () => mockUseAdminProducts(),
   useAdminCategories: () => mockUseAdminCategories(),
@@ -114,7 +130,20 @@ vi.mock('@/hooks/useApi', () => ({
   useUpdateVariant: () => mockUseUpdateVariant(),
   useDeleteVariant: () => mockUseDeleteVariant(),
   useFlavors: () => mockUseFlavors(),
-}));
+  useProductResiliency: () => ({ data: { associatedCodes: [], allActive: [] }, isLoading: false, isError: false, refetch: async () => {} }),
+  useUpdateProductResiliency: () => createMockMutation(),
+  useResiliencyScopes: () => ({ data: [], isLoading: false, isError: false, refetch: async () => {} }),
+  useCreateResiliencyScope: () => createMockMutation(),
+  useDeleteResiliencyScope: () => createMockMutation(),
+  };
+  const result: Record<string, unknown> = { ...actual };
+  for (const key of Object.keys(actual)) {
+    if (typeof (actual as any)[key] === 'function' && /^use[A-Z]/.test(key)) {
+      result[key] = hookFallback;
+    }
+  }
+  return { ...result, ...explicit };
+});
 
 vi.mock('@/hooks/useScrollReveal', () => ({
   useScrollReveal: () => ({ ref: { current: null }, isVisible: true }),
@@ -196,6 +225,23 @@ const allOS = osList;
 const allAZs = [{ id: 'az-1', code: 'par1', name: 'Paris' }];
 const allCL = [{ id: 'cl-1', name: 'LOW' }];
 
+// The admin nav is hierarchical: a domain group ribbon plus a sub-tab ribbon that
+// only shows the active group's tabs. Opening a section = click its group first,
+// then the sub-tab. Returns the sub-tab element for the caller to click.
+function openSection(tabValue: string) {
+  const group = screen
+    .getAllByRole('button')
+    .find((b) => (b.getAttribute('data-tabs') || '').split(' ').includes(tabValue));
+  if (group) fireEvent.click(group);
+  return screen.getByTestId(`admin-tab-${tabValue}`);
+}
+
+// The responsive table renders both a desktop table and mobile cards in jsdom,
+// so some values appear twice. Assert presence, not uniqueness.
+function expectTextOnPage(text: string) {
+  expect(screen.queryAllByText(text).length).toBeGreaterThan(0);
+}
+
 function setLoadedState() {
   mockUseAdminDashboard.mockReturnValue({ data: { counts: { products: 3, categories: 2, forecasts: 0, users: 0 } }, isLoading: false, isError: false });
   mockUseAdminProducts.mockReturnValue({ data: products, isLoading: false, isError: false, refetch: vi.fn() });
@@ -238,10 +284,16 @@ describe('Admin — Prisma Schema Refactor', () => {
   describe('Tab Navigation', () => {
     it('renders all tab triggers', () => {
       render(<AdminPage />, { wrapper: Wrapper });
-      expect(screen.getByText('Dashboard')).toBeInTheDocument();
-      expect(screen.getByText('Products')).toBeInTheDocument();
-      expect(screen.getByText('OS')).toBeInTheDocument();
-      expect(screen.getByText('Flavors')).toBeInTheDocument();
+      // Group ribbon is always visible: 4 domains + the Architecture view.
+      expect(screen.getByTestId('admin-group-product')).toBeInTheDocument();
+      expect(screen.getByTestId('admin-group-geo')).toBeInTheDocument();
+      expect(screen.getByTestId('admin-group-resilience')).toBeInTheDocument();
+      expect(screen.getByTestId('admin-group-system')).toBeInTheDocument();
+      expect(screen.getByTestId('admin-group-architecture')).toBeInTheDocument();
+      // Sub-tab ribbon exposes each section once its group is selected.
+      expect(openSection('products')).toBeInTheDocument();
+      expect(openSection('os')).toBeInTheDocument();
+      expect(openSection('flavors')).toBeInTheDocument();
     });
   });
 
@@ -250,21 +302,21 @@ describe('Admin — Prisma Schema Refactor', () => {
       const user = userEvent.setup();
       render(<AdminPage />, { wrapper: Wrapper });
 
-      const osTab = screen.getByText('OS');
+      const osTab = openSection('os');
       await user.click(osTab);
 
       await waitFor(() => {
-        expect(screen.getByText('Windows')).toBeInTheDocument();
+        expectTextOnPage('Windows');
       }, { timeout: 3000 });
-      expect(screen.getByText('Debian')).toBeInTheDocument();
-      expect(screen.getByText('WINDOWS')).toBeInTheDocument();
-      expect(screen.getByText('LINUX')).toBeInTheDocument();
+      expectTextOnPage('Debian');
+      expectTextOnPage('WINDOWS');
+      expectTextOnPage('LINUX');
     });
 
     it('shows Add OS button in OS tab', async () => {
       const user = userEvent.setup();
       render(<AdminPage />, { wrapper: Wrapper });
-      await user.click(screen.getByText('OS'));
+      await user.click(openSection('os'));
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /add os/i })).toBeInTheDocument();
       }, { timeout: 3000 });
@@ -274,7 +326,7 @@ describe('Admin — Prisma Schema Refactor', () => {
       mockUseOperatingSystems.mockReturnValue({ data: undefined, isLoading: false, isError: true, refetch: vi.fn() });
       const user = userEvent.setup();
       render(<AdminPage />, { wrapper: Wrapper });
-      await user.click(screen.getByText('OS'));
+      await user.click(openSection('os'));
       await waitFor(() => {
         expect(screen.getByText(/unable to load os list/i)).toBeInTheDocument();
       }, { timeout: 3000 });
@@ -286,19 +338,19 @@ describe('Admin — Prisma Schema Refactor', () => {
       const user = userEvent.setup();
       render(<AdminPage />, { wrapper: Wrapper });
 
-      await user.click(screen.getByText('Products'));
+      await user.click(openSection('products'));
       await waitFor(() => {
-        expect(screen.getByText('Virtual Machine')).toBeInTheDocument();
+        expectTextOnPage('Virtual Machine');
       }, { timeout: 3000 });
-      expect(screen.getByText('VIRTUAL')).toBeInTheDocument();
-      expect(screen.getByText('PHYSICAL')).toBeInTheDocument();
-      expect(screen.getByText('Object Storage')).toBeInTheDocument();
+      expectTextOnPage('VIRTUAL');
+      expectTextOnPage('PHYSICAL');
+      expectTextOnPage('Object Storage');
     });
 
     it('shows Add Product button in Products tab', async () => {
       const user = userEvent.setup();
       render(<AdminPage />, { wrapper: Wrapper });
-      await user.click(screen.getByText('Products'));
+      await user.click(openSection('products'));
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /add product/i })).toBeInTheDocument();
       }, { timeout: 3000 });
@@ -308,7 +360,7 @@ describe('Admin — Prisma Schema Refactor', () => {
       mockUseAdminProducts.mockReturnValue({ data: undefined, isLoading: false, isError: true, refetch: vi.fn() });
       const user = userEvent.setup();
       render(<AdminPage />, { wrapper: Wrapper });
-      await user.click(screen.getByText('Products'));
+      await user.click(openSection('products'));
       await waitFor(() => {
         expect(screen.getByText(/unable to load products/i)).toBeInTheDocument();
       }, { timeout: 3000 });
@@ -320,17 +372,17 @@ describe('Admin — Prisma Schema Refactor', () => {
       const user = userEvent.setup();
       render(<AdminPage />, { wrapper: Wrapper });
 
-      await user.click(screen.getByText('Flavors'));
+      await user.click(openSection('flavors'));
       await waitFor(() => {
-        expect(screen.getByText('Small')).toBeInTheDocument();
+        expectTextOnPage('Small');
       }, { timeout: 3000 });
-      expect(screen.getByText('Large')).toBeInTheDocument();
+      expectTextOnPage('Large');
     });
 
     it('shows Add Flavor button in Flavors tab', async () => {
       const user = userEvent.setup();
       render(<AdminPage />, { wrapper: Wrapper });
-      await user.click(screen.getByText('Flavors'));
+      await user.click(openSection('flavors'));
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /add flavor/i })).toBeInTheDocument();
       }, { timeout: 3000 });
@@ -340,7 +392,7 @@ describe('Admin — Prisma Schema Refactor', () => {
       mockUseAdminFlavors.mockReturnValue({ data: undefined, isLoading: false, isError: true, refetch: vi.fn() });
       const user = userEvent.setup();
       render(<AdminPage />, { wrapper: Wrapper });
-      await user.click(screen.getByText('Flavors'));
+      await user.click(openSection('flavors'));
       await waitFor(() => {
         expect(screen.getByText(/unable to load flavors/i)).toBeInTheDocument();
       }, { timeout: 3000 });

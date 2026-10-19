@@ -112,7 +112,7 @@ import { Badge } from '@/components/ui/badge';
 import { MultiPickupInput } from '@/components/ui/multi-pickup';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import AdminPresentationOrders from './AdminPresentationOrders';
 import {
   Dialog,
@@ -152,7 +152,10 @@ import {
   Plug,
   ShieldCheck,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { Network, Workflow } from 'lucide-react';
 import McpStatus from './McpStatus';
+import AdminArchitecture from './AdminArchitecture';
 import { formatFlavorAttrs } from '@/lib/utils';
 import type { ForecastStatus, Product, Category, Flavor, FlavorFieldDefinition, Dependency, User, Forecast, AvailabilityZone, Zone, Instance, InstanceStatus, Environment, OperatingSystem, OsVersion, ProductVariant, AvailabilityType, AvailabilitySchedule, ProductVersion, Region, Transition, TransitionKind, InfraVersion } from '@cloudmarket/shared-types';
 import { LifecyclePhase, MigrationType } from '@cloudmarket/shared-types';
@@ -1634,7 +1637,7 @@ function ProductResiliencyInline({ product }: { product: Product }) {
       setSelected(new Set(codes));
       setDirty(false);
     }
-  }, [options?.associatedCodes.join(','), product.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [options?.associatedCodes?.join(','), product.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = (code: string) => {
     setSelected((prev) => {
@@ -5542,32 +5545,87 @@ function InfraVersionsSection() {
 }
 
 // ============ MAIN ADMIN PAGE ============
+// ============ ADMIN NAVIGATION (grouped) ============
+// The 22 admin sections are grouped into 4 domains + the cross-cutting
+// Architecture view. `groupOf` maps a tab value to its group, so the group
+// ribbon can highlight itself whenever a sub-tab is active.
+
+type AdminTab = { value: string; label: string; icon: LucideIcon };
+type AdminTabGroup = { id: string; label: string; icon: LucideIcon; accent: string; tabs: AdminTab[] };
+
+const ADMIN_TAB_GROUPS: AdminTabGroup[] = [
+  {
+    id: 'product',
+    label: 'Product',
+    icon: Package,
+    accent: 'text-blue-400 border-blue-500/40',
+    tabs: [
+      { value: 'categories', label: 'Categories', icon: Layers },
+      { value: 'products', label: 'Products', icon: Package },
+      { value: 'product-versions', label: 'Product Versions', icon: Box },
+      { value: 'variants', label: 'Variants', icon: Boxes },
+      { value: 'os', label: 'OS', icon: Monitor },
+      { value: 'flavors', label: 'Flavors', icon: Cpu },
+      { value: 'performance-profiles', label: 'Performance', icon: BarChart3 },
+      { value: 'dependencies', label: 'Dependencies', icon: Link2 },
+      { value: 'transitions', label: 'Transitions', icon: ArrowRightLeft },
+    ],
+  },
+  {
+    id: 'geo',
+    label: 'Geography & Infra',
+    icon: Globe,
+    accent: 'text-emerald-400 border-emerald-500/40',
+    tabs: [
+      { value: 'regions', label: 'Regions', icon: Globe },
+      { value: 'zones', label: 'Zones', icon: Box },
+      { value: 'availability-zones', label: 'Availability Zones', icon: MapPin },
+      { value: 'infra-versions', label: 'Infra Versions', icon: Boxes },
+    ],
+  },
+  {
+    id: 'resilience',
+    label: 'Resilience & Ops',
+    icon: ShieldCheck,
+    accent: 'text-amber-400 border-amber-500/40',
+    tabs: [
+      { value: 'applications', label: 'Applications', icon: Shield },
+      { value: 'continuity-levels', label: 'Continuity', icon: TrendingUp },
+      { value: 'resiliency', label: 'Resiliency', icon: ShieldCheck },
+      { value: 'forecasts', label: 'Forecasts', icon: Activity },
+    ],
+  },
+  {
+    id: 'system',
+    label: 'System',
+    icon: UserCog,
+    accent: 'text-violet-400 border-violet-500/40',
+    tabs: [
+      { value: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+      { value: 'users', label: 'Users', icon: UserCog },
+      { value: 'presentation-orders', label: 'Presentation', icon: LayoutList },
+      { value: 'mcp', label: 'MCP', icon: Plug },
+    ],
+  },
+];
+
+// Returns the group id for a tab value. 'architecture' is its own cross-cutting
+// cluster (not a member of ADMIN_TAB_GROUPS), so it is a first-class id here —
+// unknown values fall back to the same sentinel rather than to a real group.
+const groupOf = (tabValue: string): string =>
+  ADMIN_TAB_GROUPS.find((g) => g.tabs.some((t) => t.value === tabValue))?.id ?? 'architecture';
+
 export default function Admin() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeGroup, setActiveGroup] = useState(() => groupOf('dashboard'));
 
-  const tabs = [
-    { value: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-    { value: 'products', label: 'Products', icon: Package },
-    { value: 'variants', label: 'Variants', icon: Boxes },
-    { value: 'transitions', label: 'Transitions', icon: ArrowRightLeft },
-    { value: 'product-versions', label: 'Product Versions', icon: Box },
-    { value: 'infra-versions', label: 'Infra Versions', icon: Boxes },
-    { value: 'os', label: 'OS', icon: Monitor },
-    { value: 'categories', label: 'Categories', icon: Layers },
-    { value: 'flavors', label: 'Flavors', icon: Cpu },
-    { value: 'dependencies', label: 'Dependencies', icon: Link2 },
-    { value: 'applications', label: 'Applications', icon: Shield },
-    { value: 'continuity-levels', label: 'Continuity', icon: TrendingUp },
-    { value: 'resiliency', label: 'Resiliency', icon: ShieldCheck },
-    { value: 'forecasts', label: 'Forecasts', icon: Activity },
-    { value: 'users', label: 'Users', icon: UserCog },
-    { value: 'regions', label: 'Regions', icon: Globe },
-    { value: 'zones', label: 'Zones', icon: Box },
-    { value: 'availability-zones', label: 'Availability Zones', icon: MapPin },
-    { value: 'performance-profiles', label: 'Performance', icon: BarChart3 },
-    { value: 'presentation-orders', label: 'Presentation', icon: LayoutList },
-    { value: 'mcp', label: 'MCP', icon: Plug },
-  ];
+  // Keep the group ribbon in sync when a tab is selected from elsewhere
+  // (e.g. Architecture boxes navigating directly to a section).
+  useEffect(() => {
+    setActiveGroup(groupOf(activeTab));
+  }, [activeTab]);
+
+  // (group cluster is derived inline during render)
 
   return (
     <div className="space-y-6">
@@ -5577,22 +5635,80 @@ export default function Admin() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-slate-900 border border-slate-800 flex-wrap h-auto gap-1 p-1 justify-center w-full">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
+        {/* Grouped ribbon — one visible cluster per domain + the Architecture view.
+            All sections stay reachable; the cluster label jumps to its first section. */}
+        <div className="flex flex-wrap items-stretch gap-2 w-full">
+          {ADMIN_TAB_GROUPS.map((g) => {
+            const GroupIcon = g.icon;
+            const isActive = g.id === activeGroup;
             return (
-              <TabsTrigger
-                key={tab.value}
-                value={tab.value}
-                className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[40px] text-xs sm:text-sm"
+              <div
+                key={g.id}
+                className={`flex-1 min-w-[240px] rounded-lg border p-1.5 ${
+                  isActive ? g.accent : 'border-slate-800'
+                }`}
               >
-                <Icon className="mr-1.5 sm:mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">{tab.label}</span>
-                <span className="sm:hidden">{tab.label.slice(0, 4)}</span>
-              </TabsTrigger>
+                <button
+                  type="button"
+                  data-testid={`admin-group-${g.id}`}
+                  data-tabs={g.tabs.map((t) => t.value).join(' ')}
+                  aria-pressed={isActive}
+                  onClick={() => {
+                    const first = g.tabs[0];
+                    if (first) setActiveTab(first.value);
+                  }}
+                  className={`mb-1 inline-flex w-full items-center gap-1.5 rounded px-2 py-1 text-[11px] font-bold uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                    isActive ? g.accent.split(' ')[0] : 'text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  <GroupIcon className="h-3.5 w-3.5" />
+                  {g.label}
+                </button>
+                <div className="flex flex-wrap gap-1">
+                  {g.tabs.map((tab) => {
+                    const Icon = tab.icon;
+                    return (
+                      <TabsTrigger
+                        key={tab.value}
+                        value={tab.value}
+                        data-testid={`admin-tab-${tab.value}`}
+                        className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[32px] px-2 py-1 text-xs"
+                      >
+                        <Icon className="mr-1 h-3.5 w-3.5" />
+                        <span>{tab.label}</span>
+                      </TabsTrigger>
+                    );
+                  })}
+                </div>
+              </div>
             );
           })}
-        </TabsList>
+
+          <div className="flex-1 min-w-[240px] rounded-lg border border-blue-500/40 bg-blue-500/5 p-1.5">
+            <button
+              type="button"
+              data-testid="admin-group-architecture"
+              aria-pressed={activeTab === 'architecture'}
+              onClick={() => setActiveTab('architecture')}
+              className={`inline-flex w-full items-center gap-1.5 rounded px-2 py-1 text-[11px] font-bold uppercase tracking-wider transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                activeTab === 'architecture' ? 'text-blue-300' : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              <Network className="h-3.5 w-3.5" />
+              Architecture
+            </button>
+            <div className="flex flex-wrap gap-1">
+              <TabsTrigger
+                value="architecture"
+                data-testid="admin-tab-architecture"
+                className="data-[state=active]:bg-blue-600 data-[state=active]:text-white text-slate-300 min-h-[32px] px-2 py-1 text-xs"
+              >
+                <Workflow className="mr-1 h-3.5 w-3.5" />
+                <span>Dependencies &amp; workflows</span>
+              </TabsTrigger>
+            </div>
+          </div>
+        </div>
 
         <TabsContent value="dashboard" className="animate-fade-in"><DashboardSection onNavigate={setActiveTab} /></TabsContent>
         <TabsContent value="products" className="animate-fade-in"><ProductsSection /></TabsContent>
@@ -5615,6 +5731,7 @@ export default function Admin() {
         <TabsContent value="performance-profiles" className="animate-fade-in"><PerformanceProfilesSection /></TabsContent>
         <TabsContent value="presentation-orders" className="animate-fade-in"><AdminPresentationOrders /></TabsContent>
         <TabsContent value="mcp" className="animate-fade-in"><McpStatus /></TabsContent>
+        <TabsContent value="architecture" className="animate-fade-in"><AdminArchitecture onNavigate={setActiveTab} /></TabsContent>
       </Tabs>
     </div>
   );
