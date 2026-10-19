@@ -951,6 +951,25 @@ const flavorProfileSchema = z.object({
   order: z.number().int().optional(),
 });
 
+// GET /api/admin/flavor-profiles — cross-category list (Admin "Profiles" page)
+router.get('/flavor-profiles', async (req, res, next) => {
+  try {
+    const categoryId = typeof req.query.categoryId === 'string' ? req.query.categoryId : undefined;
+    if (categoryId) idParamSchema.parse(categoryId);
+    const profiles = await (prisma as any).flavorProfile.findMany({
+      where: categoryId ? { categoryId } : undefined,
+      include: {
+        category: { select: { id: true, name: true, slug: true } },
+        _count: { select: { flavors: true } },
+      },
+      orderBy: [{ category: { name: 'asc' } }, { order: 'asc' }, { createdAt: 'asc' }],
+    });
+    res.json(profiles.map(({ _count, ...p }: any) => ({ ...p, flavorCount: _count.flavors })));
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/admin/categories/:id/flavor-profiles
 router.get('/categories/:id/flavor-profiles', async (req, res, next) => {
   try {

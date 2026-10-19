@@ -458,6 +458,8 @@ export interface FlavorProfile {
   order: number;
   category?: Category;
   flavors?: Flavor[];
+  /** Number of flavors referencing this profile (admin list endpoint only). */
+  flavorCount?: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -439,6 +439,72 @@ export function useDeleteFlavorProfile(categoryId: string) {
   });
 }
 
+// Cross-category flavor profile hooks (Admin "Profiles" page).
+// categoryId travels in the mutation payload — the page picks the category
+// in the form instead of binding it at hook creation time.
+export function useAllFlavorProfiles(categoryId?: string | null) {
+  return useQuery<FlavorProfile[]>({
+    queryKey: ['flavor-profiles', 'all', categoryId ?? null],
+    queryFn: () => fetchJson('/admin/flavor-profiles', categoryId ? { categoryId } : undefined),
+  });
+}
+
+export function useCreateFlavorProfileGlobal() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ categoryId, ...payload }: { categoryId: string } & Partial<FlavorProfile>) => {
+      const { data } = await api.post(`/admin/categories/${categoryId}/flavor-profiles`, payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flavor-profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['flavors'] });
+      addToast('Flavor profile added', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.error || 'Error during creation', 'error');
+    },
+  });
+}
+
+export function useUpdateFlavorProfileGlobal() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ categoryId, id, ...payload }: { categoryId: string; id: string } & Partial<FlavorProfile>) => {
+      const { data } = await api.patch(`/admin/categories/${categoryId}/flavor-profiles/${id}`, payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flavor-profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['flavors'] });
+      addToast('Flavor profile updated', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.error || 'Error during update', 'error');
+    },
+  });
+}
+
+export function useDeleteFlavorProfileGlobal() {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  return useMutation({
+    mutationFn: async ({ categoryId, id }: { categoryId: string; id: string }) => {
+      await api.delete(`/admin/categories/${categoryId}/flavor-profiles/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flavor-profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['flavors'] });
+      addToast('Flavor profile deleted', 'success');
+    },
+    onError: (err: any) => {
+      addToast(err.response?.data?.error || 'Unable to delete this profile', 'error');
+    },
+  });
+}
+
 // ========== FLAVORS ==========
 
 export function useFlavors() {

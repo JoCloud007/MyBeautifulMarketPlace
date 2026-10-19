@@ -23,6 +23,10 @@ import {
   useCreateFlavorProfile,
   useUpdateFlavorProfile,
   useDeleteFlavorProfile,
+  useAllFlavorProfiles,
+  useCreateFlavorProfileGlobal,
+  useUpdateFlavorProfileGlobal,
+  useDeleteFlavorProfileGlobal,
   useAdminVariants,
   useCreateDependency,
   useUpdateDependency,
@@ -2246,6 +2250,182 @@ function FlavorProfilesDialog({ category, onClose }: { category: Category; onClo
         />
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ============ FLAVOR PROFILES SECTION (cross-category, Profile × Size grid) ============
+function FlavorProfilesSection() {
+  const { data: categories } = useAdminCategories();
+  const [filterCategoryId, setFilterCategoryId] = useState('');
+  const { data: profiles, isLoading, isError, refetch } = useAllFlavorProfiles(filterCategoryId || null);
+  const createProfile = useCreateFlavorProfileGlobal();
+  const updateProfile = useUpdateFlavorProfileGlobal();
+  const deleteProfile = useDeleteFlavorProfileGlobal();
+
+  const [isOpen, setIsOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [form, setForm] = useState({ categoryId: '', name: '', slug: '', description: '', icon: '', color: '', order: 0 });
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null; categoryId: string | null }>({ open: false, id: null, categoryId: null });
+
+  const resetForm = () => { setForm({ categoryId: '', name: '', slug: '', description: '', icon: '', color: '', order: 0 }); setEditing(null); };
+  const openCreate = () => { resetForm(); setIsOpen(true); };
+  const openEdit = (p: any) => {
+    setEditing(p);
+    setForm({ categoryId: p.categoryId, name: p.name, slug: p.slug, description: p.description || '', icon: p.icon || '', color: p.color || '', order: p.order ?? 0 });
+    setIsOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload: any = {
+      name: form.name,
+      // Send null (not undefined) so a cleared field is actually persisted on edit
+      description: form.description || null,
+      icon: form.icon || null,
+      color: form.color || null,
+      order: form.order,
+    };
+    try {
+      if (editing) {
+        await updateProfile.mutateAsync({ categoryId: editing.categoryId, id: editing.id, ...payload });
+      } else {
+        if (form.slug.trim()) payload.slug = form.slug.trim();
+        await createProfile.mutateAsync({ categoryId: form.categoryId, ...payload });
+      }
+      setIsOpen(false);
+      resetForm();
+    } catch { /* mutation error handled by hook onError */ }
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      if (confirmDelete.id && confirmDelete.categoryId) {
+        await deleteProfile.mutateAsync({ categoryId: confirmDelete.categoryId, id: confirmDelete.id });
+      }
+    } catch { /* handled by hook */ }
+    setConfirmDelete({ open: false, id: null, categoryId: null });
+  };
+
+  if (isError) return <QueryError message="Unable to load flavor profiles." onRetry={refetch} />;
+
+  const mobileCards = profiles?.map((p: any) => (
+    <MobileCard key={p.id}>
+      <div className="flex items-start justify-between">
+        <div className="min-w-0">
+          <p className="font-medium text-white">{p.name}</p>
+          <p className="text-xs text-slate-500"><code>{p.slug}</code> · {p.category?.name || '—'}</p>
+          <p className="mt-1 text-sm text-slate-400">{p.description || '—'}</p>
+        </div>
+        <Badge variant="outline" className="ml-2 shrink-0 bg-blue-500/10 text-blue-400 border-blue-500/20">{p.flavorCount ?? 0} flavor(s)</Badge>
+      </div>
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openEdit(p)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ open: true, id: p.id, categoryId: p.categoryId })} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-slate-400">Category</label>
+          <Select value={filterCategoryId} onChange={(e) => setFilterCategoryId(e.target.value)} className="bg-slate-950 border-slate-700 text-white min-h-[44px] sm:w-56">
+            <option value="">All categories</option>
+            {(categories ?? []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+        </div>
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"><Plus className="mr-2 h-4 w-4" /> Add Profile</Button>
+      </div>
+
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable headers={['Category', 'Name', 'Slug', 'Description', 'Icon', 'Color', 'Order', 'Flavors']} isLoading={isLoading} emptyMessage="No flavor profiles" mobileCards={mobileCards}>
+            {profiles?.map((p: any) => (
+              <tr key={p.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 text-slate-400">{p.category?.name || '—'}</td>
+                <td className="py-3 font-medium text-white">{p.name}</td>
+                <td className="py-3"><code className="text-xs text-slate-500">{p.slug}</code></td>
+                <td className="py-3 text-slate-400 max-w-[280px] truncate">{p.description || '—'}</td>
+                <td className="py-3 text-slate-400">{p.icon || '—'}</td>
+                <td className="py-3 text-slate-400">{p.color || '—'}</td>
+                <td className="py-3 text-slate-400">{p.order ?? 0}</td>
+                <td className="py-3 text-slate-400">{p.flavorCount ?? 0}</td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(p)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ open: true, id: p.id, categoryId: p.categoryId })} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-white">{editing ? 'Edit Flavor Profile' : 'New Flavor Profile'}</DialogTitle></DialogHeader>
+          <p className="text-xs text-slate-500">
+            Workload profiles of the Profile × Size grid (e.g. Throughput, IOPS). Flavors reference a profile plus a size label/rank.
+          </p>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Category *</label>
+              <Select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} disabled={!!editing} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]">
+                <option value="">Select a category…</option>
+                {(categories ?? []).map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+              {editing && <p className="text-xs text-slate-500">The category is fixed after creation (slug uniqueness is per category).</p>}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Name *</label>
+                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Slug {!editing && '(optional, derived from name)'}</label>
+                <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} disabled={!!editing} placeholder="throughput" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+                {editing && <p className="text-xs text-slate-500">Slug is immutable (flavors reference it). Delete and recreate instead.</p>}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300">Description</label>
+              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Sequential throughput oriented storage" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Icon (lucide)</label>
+                <Input value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value })} placeholder="Gauge" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Color</label>
+                <Input value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} placeholder="blue" className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">Display order</label>
+                <Input type="number" value={form.order} onChange={(e) => setForm({ ...form, order: parseInt(e.target.value, 10) || 0 })} className="bg-slate-950 border-slate-700 text-white min-h-[44px]" />
+              </div>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]">Cancel</Button>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]">{editing ? 'Save' : 'Create'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null, categoryId: open ? confirmDelete.categoryId : null })}
+        title="Delete Flavor Profile"
+        description="Delete this profile? Flavors still attached to it block the deletion (409) — reassign them first. This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
+    </div>
   );
 }
 
@@ -5717,6 +5897,7 @@ export default function Admin() {
         <TabsContent value="os" className="animate-fade-in"><OSSection /></TabsContent>
         <TabsContent value="categories" className="animate-fade-in"><CategoriesSection /></TabsContent>
         <TabsContent value="flavors" className="animate-fade-in"><FlavorsSection /></TabsContent>
+        <TabsContent value="flavor-profiles" className="animate-fade-in"><FlavorProfilesSection /></TabsContent>
         <TabsContent value="product-versions" className="animate-fade-in"><ProductVersionsSection /></TabsContent>
         <TabsContent value="infra-versions" className="animate-fade-in"><InfraVersionsSection /></TabsContent>
         <TabsContent value="dependencies" className="animate-fade-in"><DependenciesSection /></TabsContent>

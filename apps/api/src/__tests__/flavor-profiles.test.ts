@@ -53,6 +53,54 @@ describe('FlavorProfile CRUD + cross-category validation', () => {
     };
   });
 
+  describe('GET /api/admin/flavor-profiles (cross-category list)', () => {
+    it('lists all profiles with category and flavorCount', async () => {
+      prismaMock.flavorProfile.findMany.mockResolvedValue([
+        {
+          id: PROF1, categoryId: CAT1, name: 'General purpose', slug: 'general-purpose', order: 0,
+          category: { id: CAT1, name: 'Compute', slug: 'compute' }, _count: { flavors: 4 },
+        },
+      ]);
+
+      const res = await request(createApp()).get('/api/admin/flavor-profiles');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].category.name).toBe('Compute');
+      expect(res.body[0].flavorCount).toBe(4);
+      expect(res.body[0]._count).toBeUndefined();
+    });
+
+    it('filters by categoryId when provided', async () => {
+      prismaMock.flavorProfile.findMany.mockResolvedValue([]);
+
+      const res = await request(createApp()).get(`/api/admin/flavor-profiles?categoryId=${CAT1}`);
+
+      expect(res.status).toBe(200);
+      expect(prismaMock.flavorProfile.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { categoryId: CAT1 } })
+      );
+    });
+
+    it('returns every category when no filter is given', async () => {
+      prismaMock.flavorProfile.findMany.mockResolvedValue([]);
+
+      const res = await request(createApp()).get('/api/admin/flavor-profiles');
+
+      expect(res.status).toBe(200);
+      expect(prismaMock.flavorProfile.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: undefined })
+      );
+    });
+
+    it('rejects an invalid categoryId (400)', async () => {
+      const res = await request(createApp()).get('/api/admin/flavor-profiles?categoryId=not-a-uuid');
+
+      expect(res.status).toBe(400);
+      expect(prismaMock.flavorProfile.findMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('CRUD /api/admin/categories/:id/flavor-profiles', () => {
     it('lists profiles of a category ordered', async () => {
       prismaMock.flavorProfile.findMany.mockResolvedValue([
