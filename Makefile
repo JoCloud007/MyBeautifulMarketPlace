@@ -2,7 +2,7 @@
 # Simplifies build, deploy, and run workflows for both online (build)
 # and air-gapped (deploy) environments.
 
-.PHONY: clean build deploy run help backfill-variants restart-api seed-incremental update fix-client-db fix-client-db-profiles fix-client-db-variant-os fix-client-db-transition-kind
+.PHONY: clean build deploy run help backfill-variants restart-api seed-incremental update fix-client-db fix-client-db-profiles fix-client-db-variant-os fix-client-db-transition-kind fix-client-db-osversion-availability
 
 # Force bash — avoids POSIX/dash incompatibilities on Ubuntu
 SHELL := /bin/bash
@@ -283,6 +283,23 @@ fix-client-db-variant-os:
 		< apps/api/prisma/migrations/202610161800_variant_optional_columns/migration.sql
 	@echo ""
 	@echo "✓ Done. Restart API to clear caches: make restart-api"
+
+## Fix client DB — adds OsVersion.availabilityType (per-version availability).
+## Schema-ONLY patch for deployments where `make deploy`/`make run` left the
+## database behind ("column OsVersion.availabilityType does not exist").
+## Additive and idempotent: nullable column, NULL = inherit the OS-level
+## availability. NO seed runs and no row is inserted, updated or deleted —
+## use this instead of `make update` when the client data must stay untouched.
+fix-client-db-osversion-availability:
+	@echo "==> 1/3 Backing up database"
+	@docker compose exec -T db pg_dump -U cloudmarket -d cloudmarket > backup_osversion_availability_`date +%F_%H%M`.sql
+	@echo "==> 2/3 Adding OsVersion.availabilityType (nullable column, idempotent)"
+	@docker compose exec -T db psql -U cloudmarket -d cloudmarket -v ON_ERROR_STOP=1 \
+		< apps/api/prisma/migrations/202610191000_osversion_availability/migration.sql
+	@echo "==> 3/3 Restarting API"
+	$(MAKE) restart-api
+	@echo ""
+	@echo "✓ Schema fixed — no seed ran, no data modified"
 
 ## Incremental seed — adds new objects without wiping existing data.
 ## Safe to run on a database that already contains production data.
