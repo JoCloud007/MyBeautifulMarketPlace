@@ -43,11 +43,11 @@ function getPhaseConfig(phase: LifecyclePhase | string | undefined) {
 
 // severity = how restrictive the value is; used to aggregate a card header
 // (any RESTRICTED version marks the whole card Restricted).
-const availabilityConfig: Record<string, { label: string; color: string; bg: string; border: string; severity: number }> = {
-  RECOMMENDED: { label: 'Recommended', color: 'text-emerald-300', bg: 'bg-emerald-500', border: 'border-emerald-500/40', severity: 0 },
-  STANDARD: { label: 'Standard', color: 'text-slate-300', bg: 'bg-slate-500', border: 'border-slate-500/40', severity: 1 },
-  ON_DEMAND: { label: 'On Demand', color: 'text-amber-300', bg: 'bg-amber-500', border: 'border-amber-500/40', severity: 2 },
-  RESTRICTED: { label: 'Restricted', color: 'text-red-300', bg: 'bg-red-500', border: 'border-red-500/40', severity: 3 },
+const availabilityConfig: Record<string, { label: string; color: string; bg: string; border: string; frame: string; severity: number }> = {
+  RECOMMENDED: { label: 'Recommended', color: 'text-emerald-300', bg: 'bg-emerald-500', border: 'border-emerald-500/40', frame: 'border-emerald-500', severity: 0 },
+  STANDARD: { label: 'Standard', color: 'text-slate-300', bg: 'bg-slate-500', border: 'border-slate-500/40', frame: '', severity: 1 },
+  ON_DEMAND: { label: 'On Demand', color: 'text-amber-300', bg: 'bg-amber-500', border: 'border-amber-500/40', frame: 'border-amber-500', severity: 2 },
+  RESTRICTED: { label: 'Restricted', color: 'text-red-300', bg: 'bg-red-500', border: 'border-red-500/40', frame: 'border-red-500', severity: 3 },
 };
 
 function getAvailabilityConfig(type: string | null | undefined) {
@@ -1590,6 +1590,10 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
   // Worst effective OS availability among the card's versions: any RESTRICTED
   // version marks the whole card Restricted. STANDARD stays unchipped.
   const cardAvailability = worstAvailability(group.map((v) => v.availabilityType));
+  // Non-standard availability paints the card frame (e.g. red for Restricted);
+  // standard availability leaves the phase-based frame untouched.
+  const availabilityFrame =
+    cardAvailability && cardAvailability !== 'STANDARD' ? getAvailabilityConfig(cardAvailability)?.frame : '';
   // Transition entities attached to this product (from + to), rendered as rows in
   // the card. The "Transitions:" FILTERS selection keeps only Product or OS rows.
   const groupTransitions: Transition[] = [
@@ -1615,7 +1619,7 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
           border: isEol ? 'none' : '1px solid rgba(234, 220, 90, 0.25)',
         }}
       />
-      <div className={`border-2 ${style.cardBorder} rounded-lg overflow-hidden bg-slate-900/90 shadow-[0_4px_14px_rgba(0,0,0,0.4)]`}>
+      <div className={`border-2 ${availabilityFrame || style.cardBorder} rounded-lg overflow-hidden bg-slate-900/90 shadow-[0_4px_14px_rgba(0,0,0,0.4)]`}>
         {/* header row: left label + aggregated title */}
         <div className={`flex border-b ${style.cellBorder}`}>
           <div className={`shrink-0 px-2 py-1.5 text-[11px] font-bold ${style.labelColor} ${style.cellBg} border-r ${style.cellBorder}`} style={{ minWidth: CARDS_LEFT_WIDTH }}>
@@ -1635,14 +1639,19 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
             {cardAvailability && cardAvailability !== 'STANDARD' && (
               <AvailabilityChip type={cardAvailability} title="OS availability — worst of this card's versions" />
             )}
-            {/* status chip with the legend label */}
-            <span
-              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${cardStatus.color} ${cardStatus.border}`}
-              style={{ background: 'rgba(2, 6, 23, 0.6)' }}
-            >
-              <span className={`inline-block w-2 h-2 rounded-full ${cardStatus.bg}`} />
-              {cardStatus.label}
-            </span>
+            {/* Product status chip — only shown when the card IS a product.
+                On an OS-titled card it reads as a false "available" next to the
+                OS name (e.g. Available beside a Restricted RHEL); the product
+                status stays reachable through the card design's STATUS field. */}
+            {config.title === 'PRODUCT' && (
+              <span
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${cardStatus.color} ${cardStatus.border}`}
+                style={{ background: 'rgba(2, 6, 23, 0.6)' }}
+              >
+                <span className={`inline-block w-2 h-2 rounded-full ${cardStatus.bg}`} />
+                {cardStatus.label}
+              </span>
+            )}
           </div>
         </div>
         {/* mapped rows */}
