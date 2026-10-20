@@ -64,7 +64,10 @@ export default function MarketplaceGeo() {
 
   const productId = selections['PRODUCT'];
   const { data: perfProfiles } = usePerformanceProfiles('PRODUCT', productId);
-  const perfProfile = perfProfiles?.[0];
+  // Only show a benchmark when a PRODUCT was actually chosen. Without one
+  // (e.g. the zone-only "By Zones" flow) the unscoped query returns every
+  // product profile and we'd pick an arbitrary unrelated one.
+  const perfProfile = productId ? perfProfiles?.[0] : undefined;
 
   const handleSelect = (item: StepData) => {
     const newSelections = { ...selections, [stepType]: item.id };
