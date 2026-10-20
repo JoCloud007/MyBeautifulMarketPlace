@@ -165,10 +165,10 @@ export default function MarketplaceGeo() {
             <div
               key={item.id}
               onClick={() => handleSelect(item)}
-              className="group cursor-pointer"
+              className={`group cursor-pointer ${selections[stepType] === item.id ? 'ring-1 ring-blue-500/60 rounded-lg' : ''}`}
               style={{ animationDelay: `${index * 80}ms` }}
             >
-              <Card className={`relative bg-slate-900 border-slate-800 transition-all duration-300 hover:border-blue-500/40 hover:bg-slate-800/50 hover:-translate-y-1 ${cs ? `border-l-4 ${cs.border}` : ''}`}>
+              <Card className={`relative bg-slate-900 border-slate-800 transition-all duration-300 hover:border-blue-500/40 hover:bg-slate-800/50 hover:-translate-y-1 ${selections[stepType] === item.id ? 'border-blue-500/50 bg-slate-800/60' : ''} ${cs ? `border-l-4 ${cs.border}` : ''}`}>
                 <div className="p-3">
                   <div className="flex items-center gap-2.5">
                     <div className={`shrink-0 flex h-6 w-6 items-center justify-center rounded transition-colors ${cs ? cs.bg : 'bg-blue-500/10 group-hover:bg-blue-500/20'}`}>
@@ -317,8 +317,8 @@ export default function MarketplaceGeo() {
         </div>
       )}
 
-      {/* Items Grid — hidden when last step is already selected */}
-      {!(isLastStep && selections[stepType]) && renderItems()}
+      {/* Items Grid — always visible so the user can see and change their pick */}
+      {renderItems()}
 
     </div>
   );
