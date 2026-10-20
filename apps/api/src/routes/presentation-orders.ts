@@ -270,18 +270,20 @@ router.get('/:id/browse', async (req, res, next) => {
       }
 
       case 'ZONE': {
-        if (!country) {
-          return res.status(400).json({ error: 'country query parameter is required for zone step' });
+        // `country` is optional: a presentation flow may start directly on the
+        // ZONE step (e.g. the "By Zones" view), in which case no prior step has
+        // produced a country filter. When present, narrow zones to that country;
+        // otherwise return all active zones.
+        const whereZone: any = { isActive: true };
+        if (country) {
+          whereZone.availabilityZones = {
+            some: {
+              availabilityZone: { country: { equals: country, mode: 'insensitive' } },
+            },
+          };
         }
         const zones = await prisma.zone.findMany({
-          where: {
-            isActive: true,
-            availabilityZones: {
-              some: {
-                availabilityZone: { country: { equals: country, mode: 'insensitive' } },
-              },
-            },
-          },
+          where: whereZone,
           select: { id: true, name: true, slug: true, description: true },
           orderBy: { name: 'asc' },
         });

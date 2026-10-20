@@ -123,13 +123,16 @@ app.use((_req, res) => {
 });
 
 // Global error handler
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // Always log method + URL: a bare ZodError message (e.g. "Invalid uuid")
+  // is untraceable without knowing which request produced it.
+  const where = `(${req.method} ${req.originalUrl})`;
   if (res.headersSent) {
-    console.error('Unhandled error after headers sent:', err?.message || String(err));
+    console.error('Unhandled error after headers sent:', err?.message || String(err), where);
     return;
   }
 
-  console.error('Unhandled error:', err?.message || String(err));
+  console.error('Unhandled error:', err?.message || String(err), where);
 
   // Zod validation errors
   if (err instanceof ZodError) {
