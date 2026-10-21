@@ -1406,6 +1406,28 @@ function transitionKindOf(t: Transition, osVersionStrings?: Set<string>): 'OS' |
   return t.fromOsVersionId || t.toOsVersionId ? 'OS' : 'PRODUCT';
 }
 
+/**
+ * A card lists only the transitions that concern ITS rows. PRODUCT-kind
+ * transitions are platform-wide (e.g. VM gen7 → gen8) and show on every card of
+ * the product; OS-kind transitions concern ONE OS (e.g. "RHEL 8 → 9") and must
+ * not show on cards whose rows run another OS — a FictionalOS card listing
+ * Debian/RHEL/Windows migrations is wrong even though they hang off the same
+ * product. Legacy OS-kind rows without OsVersion links fall back to matching
+ * their version strings against the card's OS version rows.
+ */
+export function transitionInCardScope(
+  t: Transition,
+  cardOsNames: Set<string>,
+  cardOsVersionNames: Set<string>,
+  osVersionStrings?: Set<string>,
+): boolean {
+  if (transitionKindOf(t, osVersionStrings) === 'PRODUCT') return true;
+  const osNames = [t.fromOsVersion?.os?.name, t.toOsVersion?.os?.name].filter(Boolean) as string[];
+  if (osNames.length > 0) return osNames.some((n) => cardOsNames.has(n));
+  if (cardOsVersionNames.size === 0) return true;
+  return cardOsVersionNames.has(t.fromVersion) || cardOsVersionNames.has(t.toVersion);
+}
+
 /* ── Transition row rendered inside a product card ─────────────── */
 
 function TransitionRow({ transition, osVersionStrings }: { transition: Transition; osVersionStrings?: Set<string> }) {
@@ -1615,11 +1637,20 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
   const availabilityFrame =
     cardAvailability && cardAvailability !== 'STANDARD' ? getAvailabilityConfig(cardAvailability)?.frame : '';
   // Transition entities attached to this product (from + to), rendered as rows in
-  // the card. The "Transitions:" FILTERS selection keeps only Product or OS rows.
+  // the card. The "Transitions:" FILTERS selection keeps only Product or OS rows,
+  // and OS rows are scoped to the OS(es) this card's rows actually run —
+  // otherwise a FictionalOS card lists every Debian/RHEL/Windows migration
+  // declared anywhere on the shared product.
+  const cardOsNames = new Set(group.map((v) => v.os).filter((n) => n && n !== '—'));
+  const cardOsVersionNames = new Set(group.map((v) => v.osVersionName).filter(Boolean));
   const groupTransitions: Transition[] = [
     ...(productTransitionsMap?.from.get(group[0].product) || []),
     ...(productTransitionsMap?.to.get(group[0].product) || []),
-  ].filter((t) => !transitionKindFilter || transitionKindOf(t, osVersionStrings) === transitionKindFilter);
+  ].filter(
+    (t) =>
+      (!transitionKindFilter || transitionKindOf(t, osVersionStrings) === transitionKindFilter) &&
+      transitionInCardScope(t, cardOsNames, cardOsVersionNames, osVersionStrings)
+  );
   const isEol = phase === 'EOL' || phase === 'NO_SUPPORT';
 
   return (
