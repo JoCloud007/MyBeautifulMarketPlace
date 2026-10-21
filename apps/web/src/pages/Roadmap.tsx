@@ -1428,6 +1428,45 @@ export function transitionInCardScope(
   return cardOsVersionNames.has(t.fromVersion) || cardOsVersionNames.has(t.toVersion);
 }
 
+/**
+ * The transitions a card shows, deduplicated by id.
+ *
+ * PRODUCT-kind transitions come from EVERY product the card's rows belong to
+ * (a card is keyed by header+title — e.g. zone=Core, OS=Debian — and can span
+ * several products; indexing by group[0] alone dropped e.g. the Debian OS
+ * migration from the Debian card). OS-kind transitions attach to their OS
+ * through `byOs`, wherever they were declared: "Debian 11 → 12" hangs off
+ * Virtual Machine in the catalog but belongs on every Debian card. OS rows are
+ * then scoped to the card's OS by {@link transitionInCardScope}.
+ */
+export function collectCardTransitions(
+  group: { product: string; os: string; osVersionName: string }[],
+  map: {
+    from: Map<string, Transition[]>;
+    to: Map<string, Transition[]>;
+    byOs?: Map<string, Transition[]>;
+  },
+  transitionKindFilter: TransitionKindFilter = '',
+  osVersionStrings?: Set<string>,
+): Transition[] {
+  const cardOsNames = new Set(group.map((v) => v.os).filter((n) => n && n !== '—'));
+  const cardOsVersionNames = new Set(group.map((v) => v.osVersionName).filter(Boolean));
+  const candidates = new Map<string, Transition>();
+  const add = (list: Transition[] | undefined) => {
+    for (const t of list || []) candidates.set(t.id, t);
+  };
+  for (const product of new Set(group.map((v) => v.product).filter(Boolean))) {
+    add(map.from.get(product));
+    add(map.to.get(product));
+  }
+  for (const osName of cardOsNames) add(map.byOs?.get(osName));
+  return [...candidates.values()].filter(
+    (t) =>
+      (!transitionKindFilter || transitionKindOf(t, osVersionStrings) === transitionKindFilter) &&
+      transitionInCardScope(t, cardOsNames, cardOsVersionNames, osVersionStrings)
+  );
+}
+
 /* ── Transition row rendered inside a product card ─────────────── */
 
 function TransitionRow({ transition, osVersionStrings }: { transition: Transition; osVersionStrings?: Set<string> }) {
@@ -1600,7 +1639,7 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
   indentPct: number;
   widthPct: number;
   config: CardDesignConfig;
-  productTransitionsMap?: { from: Map<string, Transition[]>; to: Map<string, Transition[]> };
+  productTransitionsMap?: { from: Map<string, Transition[]>; to: Map<string, Transition[]>; byOs?: Map<string, Transition[]> };
   transitionKindFilter?: TransitionKindFilter;
   osVersionStrings?: Set<string>;
   showLifecycleBar?: boolean;
@@ -1636,21 +1675,12 @@ function SupportCard({ group, timelineStart, timelineEnd, showTodayBar, indentPc
   // standard availability leaves the phase-based frame untouched.
   const availabilityFrame =
     cardAvailability && cardAvailability !== 'STANDARD' ? getAvailabilityConfig(cardAvailability)?.frame : '';
-  // Transition entities attached to this product (from + to), rendered as rows in
-  // the card. The "Transitions:" FILTERS selection keeps only Product or OS rows,
-  // and OS rows are scoped to the OS(es) this card's rows actually run —
-  // otherwise a FictionalOS card lists every Debian/RHEL/Windows migration
-  // declared anywhere on the shared product.
-  const cardOsNames = new Set(group.map((v) => v.os).filter((n) => n && n !== '—'));
-  const cardOsVersionNames = new Set(group.map((v) => v.osVersionName).filter(Boolean));
-  const groupTransitions: Transition[] = [
-    ...(productTransitionsMap?.from.get(group[0].product) || []),
-    ...(productTransitionsMap?.to.get(group[0].product) || []),
-  ].filter(
-    (t) =>
-      (!transitionKindFilter || transitionKindOf(t, osVersionStrings) === transitionKindFilter) &&
-      transitionInCardScope(t, cardOsNames, cardOsVersionNames, osVersionStrings)
-  );
+  // Transition entities attached to this card (from + to), rendered as rows in
+  // the card: see collectCardTransitions — product-wide rows plus OS rows scoped
+  // to the OS(es) this card's rows actually run.
+  const groupTransitions: Transition[] = productTransitionsMap
+    ? collectCardTransitions(group, productTransitionsMap, transitionKindFilter, osVersionStrings)
+    : [];
   const isEol = phase === 'EOL' || phase === 'NO_SUPPORT';
 
   return (
@@ -1886,13 +1916,20 @@ function CardsView({ versions, timelineStart, timelineEnd, showTodayBar, sort = 
   const productTransitionsMap = useMemo(() => {
     const from = new Map<string, Transition[]>();
     const to = new Map<string, Transition[]>();
+    const byOs = new Map<string, Transition[]>();
     for (const t of allTransitions || []) {
       const fromKey = t.fromProduct?.name;
       const toKey = t.toProduct?.name;
       if (fromKey) from.set(fromKey, [...(from.get(fromKey) || []), t]);
       if (toKey && toKey !== fromKey) to.set(toKey, [...(to.get(toKey) || []), t]);
+      // OS-kind transitions belong to their OS, not to the product they hang
+      // off — "Debian 11 → 12" declared on Virtual Machine must show on the
+      // Debian card wherever that card is built from.
+      for (const osName of [t.fromOsVersion?.os?.name, t.toOsVersion?.os?.name]) {
+        if (osName) byOs.set(osName, [...(byOs.get(osName) || []), t]);
+      }
     }
-    return { from, to };
+    return { from, to, byOs };
   }, [allTransitions]);
 
   return (

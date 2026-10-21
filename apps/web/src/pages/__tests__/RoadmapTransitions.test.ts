@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Transition, MigrationType, ProductStatus } from '@cloudmarket/shared-types';
-import { transitionInCardScope } from '@/pages/Roadmap';
+import { transitionInCardScope, collectCardTransitions } from '@/pages/Roadmap';
 
 function osTransition(osName: string, fromVersion: string, toVersion: string): Transition {
   return {
@@ -111,5 +111,72 @@ describe('transitionInCardScope', () => {
     const osStrings = new Set(['8', '9']);
     const gen = productTransition('8', '9');
     expect(transitionInCardScope(gen, fictionalCard.osNames, fictionalCard.osVersions, osStrings)).toBe(true);
+  });
+});
+
+describe('collectCardTransitions', () => {
+  const debian11to12 = osTransition('Debian', '11 (Bullseye)', '12 (Bookworm)');
+  const rhel8to9 = osTransition('Red Hat Enterprise Linux', '8', '9');
+  const gen7to8 = productTransition('gen7', 'gen8');
+  const bmGen2to3 = { ...productTransition('bm-gen2', 'bm-gen3'), id: 't-bm', fromProduct: { id: 'p2', name: 'Bare Metal', slug: 'bare-metal' }, toProduct: { id: 'p2', name: 'Bare Metal', slug: 'bare-metal' } } as Transition;
+
+  // Mirrors the live seed: OS migrations are DECLARED on Virtual Machine but
+  // BELONG to their OS. The map indexes products (from/to) and OSes (byOs).
+  const map = {
+    from: new Map<string, Transition[]>([
+      ['Virtual Machine', [debian11to12, rhel8to9, gen7to8]],
+      ['Bare Metal', [bmGen2to3]],
+    ]),
+    to: new Map<string, Transition[]>(),
+    byOs: new Map<string, Transition[]>([
+      ['Debian', [debian11to12]],
+      ['Red Hat Enterprise Linux', [rhel8to9]],
+    ]),
+  };
+
+  it('shows only OS-relevant rows on a FictionalOS card (regression: was listing Debian/RHEL/Windows)', () => {
+    // Live card: 22 "1.0 (Fictive)" rows, all Virtual Machine — must show only
+    // the VM platform transition, never the Debian/RHEL/Windows OS migrations.
+    const group = [{ product: 'Virtual Machine', os: 'FictionalOS', osVersionName: '1.0 (Fictive)' }];
+    const result = collectCardTransitions(group, map);
+    expect(result.map((t) => t.id)).toEqual(['t-product-gen7']);
+  });
+
+  it('shows each covered product\'s own platform transitions on a multi-product card', () => {
+    const group = [
+      { product: 'Virtual Machine', os: 'FictionalOS', osVersionName: '1.0 (Fictive)' },
+      { product: 'Bare Metal', os: 'FictionalOS', osVersionName: '1.0 (Fictive)' },
+    ];
+    const ids = collectCardTransitions(group, map).map((t) => t.id).sort();
+    expect(ids).toEqual(['t-bm', 't-product-gen7'].sort());
+  });
+
+  it('shows the Debian OS migration on the Debian card even though it is declared on Virtual Machine (regression)', () => {
+    // Debian card: rows from Virtual Machine AND from another product — the
+    // old group[0].product indexing missed the migration entirely.
+    const group = [
+      { product: 'Bare Metal', os: 'Debian', osVersionName: '12 (Bookworm)' },
+      { product: 'Virtual Machine', os: 'Debian', osVersionName: '12 (Bookworm)' },
+    ];
+    const result = collectCardTransitions(group, map);
+    const ids = result.map((t) => t.id);
+    expect(ids).toContain('t-Debian-11 (Bullseye)');
+    expect(ids).toContain('t-product-gen7'); // VM platform transition (from product index)
+    expect(ids).toContain('t-bm'); // Bare Metal platform transition
+    expect(ids).not.toContain('t-Red Hat Enterprise Linux-8'); // no RHEL rows here
+  });
+
+  it('keeps the RHEL migration on the RHEL card', () => {
+    const group = [{ product: 'Virtual Machine', os: 'Red Hat Enterprise Linux', osVersionName: '8' }];
+    const result = collectCardTransitions(group, map);
+    const ids = result.map((t) => t.id);
+    expect(ids).toContain('t-Red Hat Enterprise Linux-8');
+    expect(ids).not.toContain('t-Debian-11 (Bullseye)');
+  });
+
+  it('respects the Product/OS kind filter on top of card scoping', () => {
+    const group = [{ product: 'Virtual Machine', os: 'Red Hat Enterprise Linux', osVersionName: '8' }];
+    expect(collectCardTransitions(group, map, 'OS').map((t) => t.id)).toEqual(['t-Red Hat Enterprise Linux-8']);
+    expect(collectCardTransitions(group, map, 'PRODUCT').map((t) => t.id)).toEqual(['t-product-gen7']);
   });
 });
