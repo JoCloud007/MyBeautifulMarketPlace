@@ -17,6 +17,7 @@ const navGroups = [
     items: [
       { path: '/marketplace', label: 'Marketplace', icon: LayoutGrid },
       { path: '/marketplace/matrix', label: 'Matrix', icon: BarChart3 },
+      { path: '/compatibility', label: 'Compatibility', icon: BarChart3 },
       { path: '/availability-zones', label: 'Regions', icon: Globe },
       { path: '/roadmap', label: 'Roadmap', icon: Map },
     ],

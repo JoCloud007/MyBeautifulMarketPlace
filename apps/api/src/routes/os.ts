@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { generateSlug } from '../lib/slugify';
+import { versionTupleFields } from '../lib/version';
 
 const router = Router();
 
@@ -277,6 +278,8 @@ router.post('/:id/versions', async (req, res, next) => {
       data: {
         osId: id,
         version: data.version,
+        // Write-time version tuple derivation (spec §1.1) — shared helper.
+        ...versionTupleFields(data.version),
         releaseDate: new Date(data.releaseDate),
         normalSupportEnd: new Date(data.normalSupportEnd),
         extendedSupportEnd: new Date(data.extendedSupportEnd),
@@ -331,6 +334,8 @@ router.put('/:id/versions/:versionId', async (req, res, next) => {
         // availabilityType rides along in `...data`: absent (undefined) keeps
         // the stored override, explicit null clears it back to OS inheritance.
         ...data,
+        // Re-derive the tuple only when the version string itself changes.
+        ...(data.version !== undefined ? versionTupleFields(data.version) : {}),
         releaseDate: data.releaseDate ? new Date(data.releaseDate) : undefined,
         normalSupportEnd: data.normalSupportEnd ? new Date(data.normalSupportEnd) : undefined,
         extendedSupportEnd: data.extendedSupportEnd ? new Date(data.extendedSupportEnd) : undefined,

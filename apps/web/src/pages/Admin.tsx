@@ -1,4 +1,4 @@
-import { useState, useMemo, Children, useEffect } from 'react';
+import { useState, useMemo, Children, useEffect, Fragment } from 'react';
 import { PickupList, productStatusPicklist } from '@/components/ui/pickup-list';
 import {
   useAdminDashboard,
@@ -104,6 +104,17 @@ import {
 } from '@/hooks/useApi';
 import PickerList from '@/components/PickerList';
 import FlavorProductLinks from '@/components/FlavorProductLinks';
+import CompatibilityRuleModal, { type RuleFormValues } from '@/components/CompatibilityRuleModal';
+import StackComposerModal from '@/components/StackComposerModal';
+import {
+  useCompatibilityRules,
+  useCreateCompatibilityRule,
+  useUpdateCompatibilityRule,
+  useDeleteCompatibilityRule,
+  useProductVersionComponents,
+  useReplaceProductVersionComponents,
+  type CompatibilityRule,
+} from '@/hooks/useCompatibilityAdmin';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import { osVersionLabel } from '@/components/OsLifecycleTab';
@@ -155,6 +166,7 @@ import {
   Boxes,
   Plug,
   ShieldCheck,
+  Grid3x3,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Network, Workflow } from 'lucide-react';
@@ -3504,6 +3516,321 @@ function VariantsSection() {
   );
 }
 
+// ============ COMPATIBILITY RULES SECTION ============
+/** Short label for a version constraint (any version when empty). */
+function constraintLabel(constraint: string | null | undefined): string {
+  const trimmed = (constraint ?? '').trim();
+  return trimmed.length > 0 ? trimmed : 'toutes versions';
+}
+
+function CompatibilityRulesSection() {
+  const { data: products } = useAdminProducts();
+  const { data: rules, isLoading, isError, refetch } = useCompatibilityRules();
+  const createRule = useCreateCompatibilityRule();
+  const updateRule = useUpdateCompatibilityRule();
+  const deleteRule = useDeleteCompatibilityRule();
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editing, setEditing] = useState<CompatibilityRule | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+
+  const productOptions = useMemo(
+    () => (products ?? []).map((p) => ({ id: p.id, name: p.name })),
+    [products]
+  );
+  const productName = (id: string | null | undefined) =>
+    productOptions.find((p) => p.id === id)?.name ?? '—';
+
+  const openCreate = () => { setEditing(null); setIsModalOpen(true); };
+  const openEdit = (rule: CompatibilityRule) => { setEditing(rule); setIsModalOpen(true); };
+
+  const handleSubmit = async (values: RuleFormValues) => {
+    const payload = {
+      name: values.name.trim(),
+      description: values.description.trim() || undefined,
+      fromProductId: values.fromProductId,
+      fromVersionConstraint: values.fromVersionConstraint.trim() || null,
+      toProductId: values.toProductId,
+      toVersionConstraint: values.toVersionConstraint.trim() || null,
+      kind: values.kind,
+      severity: values.severity,
+      scopeType: values.scopeType,
+      scopeProductId: values.scopeType === 'PRODUCT' ? values.scopeProductId : null,
+      justification: values.justification.trim() || null,
+      isActive: values.isActive,
+    };
+    try {
+      if (editing) {
+        await updateRule.mutateAsync({ id: editing.id, ...payload });
+      } else {
+        await createRule.mutateAsync(payload);
+      }
+      setIsModalOpen(false);
+      setEditing(null);
+    } catch { /* 400 findings / missing justification are toasted by the hooks */ }
+  };
+
+  const handleConfirmDelete = async () => {
+    try { if (confirmDelete.id) await deleteRule.mutateAsync(confirmDelete.id); } catch { }
+    setConfirmDelete({ open: false, id: null });
+  };
+
+  if (isError) return <QueryError message="Unable to load compatibility rules." onRetry={refetch} />;
+
+  const mobileCards = rules?.map((rule) => (
+    <MobileCard key={rule.id}>
+      <p className="font-medium text-white">{rule.name}</p>
+      <p className="mt-1 text-sm text-slate-400">
+        {productName(rule.fromProductId)} <span className="text-slate-500">{constraintLabel(rule.fromVersionConstraint)}</span>
+        {' → '}
+        {productName(rule.toProductId)} <span className="text-slate-500">{constraintLabel(rule.toVersionConstraint)}</span>
+      </p>
+      <div className="mt-2 flex flex-wrap gap-1">
+        <Badge variant="outline" className="border-blue-500/20 text-blue-400">{rule.kind}</Badge>
+        <Badge variant="outline" className={rule.severity === 'HARD' ? 'border-red-500/20 text-red-400' : 'border-amber-500/20 text-amber-400'}>{rule.severity}</Badge>
+        <Badge variant="outline" className="border-slate-600 text-slate-400">
+          {rule.scopeType === 'PRODUCT' ? `Scope: ${productName(rule.scopeProductId)}` : 'GLOBAL'}
+        </Badge>
+      </div>
+      {rule.justification && <p className="mt-2 text-xs text-slate-500">{rule.justification}</p>}
+      <div className="mt-3 flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={() => openEdit(rule)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+        <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ open: true, id: rule.id })} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+      </div>
+    </MobileCard>
+  ));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]">
+          <Plus className="mr-2 h-4 w-4" /> Add Rule
+        </Button>
+      </div>
+      <Card className="bg-slate-900 border-slate-800">
+        <CardContent className="p-4 sm:p-6">
+          <ResponsiveTable
+            headers={['Produit source', 'Contrainte', 'Produit cible', 'Contrainte', 'Kind', 'Severity', 'Scope', 'Justification']}
+            isLoading={isLoading}
+            emptyMessage="No compatibility rules"
+            mobileCards={mobileCards}
+          >
+            {rules?.map((rule) => (
+              <tr key={rule.id} className="hover:bg-slate-800/50 transition-colors">
+                <td className="py-3 font-medium text-white">{rule.fromProduct?.name ?? productName(rule.fromProductId)}</td>
+                <td className="py-3 font-mono text-xs text-slate-400">{constraintLabel(rule.fromVersionConstraint)}</td>
+                <td className="py-3 font-medium text-white">{rule.toProduct?.name ?? productName(rule.toProductId)}</td>
+                <td className="py-3 font-mono text-xs text-slate-400">{constraintLabel(rule.toVersionConstraint)}</td>
+                <td className="py-3">
+                  <Badge variant="outline" className="border-blue-500/20 text-blue-400">{rule.kind}</Badge>
+                </td>
+                <td className="py-3">
+                  <Badge variant="outline" className={rule.severity === 'HARD' ? 'border-red-500/20 text-red-400' : 'border-amber-500/20 text-amber-400'}>
+                    {rule.severity}
+                  </Badge>
+                </td>
+                <td className="py-3">
+                  <Badge variant="outline" className="border-slate-600 text-slate-400">
+                    {rule.scopeType === 'PRODUCT'
+                      ? `Produit: ${rule.scopeProduct?.name ?? productName(rule.scopeProductId)}`
+                      : 'GLOBAL'}
+                  </Badge>
+                </td>
+                <td className="py-3 text-xs text-slate-500">{rule.justification || '—'}</td>
+                <td className="py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => openEdit(rule)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => setConfirmDelete({ open: true, id: rule.id })} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </ResponsiveTable>
+        </CardContent>
+      </Card>
+
+      <CompatibilityRuleModal
+        open={isModalOpen}
+        onOpenChange={(open) => { setIsModalOpen(open); if (!open) setEditing(null); }}
+        rule={editing}
+        products={productOptions}
+        onSubmit={handleSubmit}
+        isSubmitting={createRule.isPending || updateRule.isPending}
+      />
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: open ? confirmDelete.id : null })}
+        title="Delete Compatibility Rule"
+        description="Are you sure you want to delete this compatibility rule? This action cannot be undone."
+        onConfirm={handleConfirmDelete}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
+    </div>
+  );
+}
+
+// ============ STACK COMPONENTS (per product version) ============
+/**
+ * "Composants (stack)" sub-list of one product version: current components with
+ * removal, an add flow via product picker then version picker filtered to that
+ * product's versions, persistence through PUT /api/product-versions/:id/components,
+ * and the live-verdict composer modal.
+ */
+function VersionStackSubList({
+  version,
+  products,
+}: {
+  version: ProductVersion & { productName: string };
+  products: (Product & { productVersions?: ProductVersion[] })[];
+}) {
+  const { data: rows } = useProductVersionComponents(version.id);
+  const replaceComponents = useReplaceProductVersionComponents();
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [addProductId, setAddProductId] = useState('');
+  const [addVersionId, setAddVersionId] = useState('');
+
+  const productOptions = useMemo(
+    () => [...products].sort((a, b) => a.name.localeCompare(b.name)),
+    [products]
+  );
+  const usedProductIds = useMemo(
+    () => new Set((rows ?? []).map((r) => r.componentProductId)),
+    [rows]
+  );
+  const addVersionOptions = useMemo(
+    () => productOptions.find((p) => p.id === addProductId)?.productVersions ?? [],
+    [productOptions, addProductId]
+  );
+
+  const persist = async (
+    next: { componentProductId: string; componentVersionId: string }[]
+  ) => {
+    try {
+      await replaceComponents.mutateAsync({ productVersionId: version.id, components: next });
+    } catch { /* 400 findings / missing justification are toasted by the hook */ }
+  };
+
+  const handleRemove = (componentVersionId: string) => {
+    const next = (rows ?? [])
+      .filter((r) => r.componentVersionId !== componentVersionId)
+      .map((r) => ({ componentProductId: r.componentProductId, componentVersionId: r.componentVersionId }));
+    void persist(next);
+  };
+
+  const handleAdd = () => {
+    if (!addProductId || !addVersionId) return;
+    const next = [
+      ...(rows ?? []).map((r) => ({
+        componentProductId: r.componentProductId,
+        componentVersionId: r.componentVersionId,
+      })),
+      { componentProductId: addProductId, componentVersionId: addVersionId },
+    ];
+    setAddProductId('');
+    setAddVersionId('');
+    void persist(next);
+  };
+
+  return (
+    <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+          Composants (stack)
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setComposerOpen(true)}
+          className="border-slate-700 text-slate-300 hover:bg-slate-800 min-h-[36px]"
+        >
+          Composer…
+        </Button>
+      </div>
+
+      {(rows ?? []).length === 0 ? (
+        <p className="text-xs text-slate-500">Aucun composant dans cette version.</p>
+      ) : (
+        <div className="space-y-1">
+          {(rows ?? []).map((row) => (
+            <div key={row.id} className="flex items-center gap-2 text-xs">
+              <span className="text-slate-300">
+                {row.componentProduct?.name ?? row.product?.name ?? row.componentProductId}
+              </span>
+              <span className="text-slate-500">
+                {row.componentVersion?.version ?? row.version?.version ?? '—'}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleRemove(row.componentVersionId)}
+                aria-label="Retirer ce composant"
+                className="ml-auto rounded p-1 text-slate-500 hover:text-red-400 hover:bg-red-500/10"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Add: product picker then version picker filtered to that product's versions */}
+      <div className="flex flex-wrap items-end gap-2">
+        <select
+          aria-label="Component product"
+          value={addProductId}
+          onChange={(e) => { setAddProductId(e.target.value); setAddVersionId(''); }}
+          className="h-9 rounded-md border border-slate-700 bg-slate-950 px-2 text-xs text-white"
+        >
+          <option value="">Produit…</option>
+          {productOptions
+            .filter((p) => p.id !== version.productId && !usedProductIds.has(p.id))
+            .map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+        </select>
+        <select
+          aria-label="Component version"
+          value={addVersionId}
+          onChange={(e) => setAddVersionId(e.target.value)}
+          disabled={!addProductId}
+          className="h-9 rounded-md border border-slate-700 bg-slate-950 px-2 text-xs text-white disabled:opacity-50"
+        >
+          <option value="">{addProductId ? 'Version…' : '—'}</option>
+          {addVersionOptions.map((v) => (
+            <option key={v.id} value={v.id}>{v.version}</option>
+          ))}
+        </select>
+        <Button
+          size="sm"
+          onClick={handleAdd}
+          disabled={!addProductId || !addVersionId}
+          className="bg-blue-600 hover:bg-blue-700 text-white min-h-[36px]"
+        >
+          <Plus className="mr-1 h-3.5 w-3.5" /> Ajouter
+        </Button>
+      </div>
+
+      <StackComposerModal
+        open={composerOpen}
+        onOpenChange={setComposerOpen}
+        productVersionId={version.id}
+        containerProductId={version.productId}
+        containerLabel={`${version.productName} ${version.version}`}
+        products={productOptions
+          .filter((p) => p.id !== version.productId)
+          .map((p) => ({
+            id: p.id,
+            name: p.name,
+            versions: (p.productVersions ?? []).map((v) => ({ id: v.id, version: v.version })),
+          }))}
+        initialComponents={rows ?? []}
+      />
+    </div>
+  );
+}
+
 // ============ PRODUCT VERSIONS SECTION ============
 function ProductVersionsSection() {
   const { data: products, isLoading, isError, refetch } = useAdminProducts();
@@ -3518,6 +3845,7 @@ function ProductVersionsSection() {
   const [editing, setEditing] = useState<ProductVersion | null>(null);
   const [form, setForm] = useState({ productId: '', version: '', releaseDate: '', normalSupportEnd: '', extendedSupportEnd: '', eolDate: '', phase: 'RELEASED' as LifecyclePhase, isActive: true, changelog: '', regionIds: [] as string[], zoneIds: [] as string[], availabilityZoneIds: [] as string[], schedules: [] as (Partial<AvailabilitySchedule> & { deleted?: boolean })[] });
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const [expandedVersionId, setExpandedVersionId] = useState<string | null>(null);
 
   const allVersions = useMemo(() => {
     const list: (ProductVersion & { productName: string })[] = [];
@@ -3627,7 +3955,8 @@ function ProductVersionsSection() {
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable headers={['Product', 'Version', 'Release Date', 'Normal Support End', 'Extended Support End', 'EOL Date', 'Phase', 'Active', 'Regions', 'Zones', 'AZ']} isLoading={isLoading} emptyMessage="No product versions" mobileCards={mobileCards}>
             {allVersions?.map((v) => (
-              <tr key={v.id} className="hover:bg-slate-800/50 transition-colors">
+              <Fragment key={v.id}>
+              <tr className="hover:bg-slate-800/50 transition-colors">
                 <td className="py-3 font-medium text-white">{v.productName}</td>
                 <td className="py-3 text-slate-400">{v.version}</td>
                 <td className="py-3 text-slate-400">{v.releaseDate ? new Date(v.releaseDate).toLocaleDateString() : '—'}</td>
@@ -3667,11 +3996,29 @@ function ProductVersionsSection() {
                 </td>
                 <td className="py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setExpandedVersionId(expandedVersionId === v.id ? null : v.id)}
+                      aria-expanded={expandedVersionId === v.id}
+                      title="Composants (stack)"
+                      className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"
+                    >
+                      <Boxes className="h-4 w-4" />
+                    </Button>
                     <Button size="sm" variant="ghost" onClick={() => openEdit(v)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"><Pencil className="h-4 w-4" /></Button>
                     <Button size="sm" variant="ghost" onClick={() => handleDelete(v.id)} className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></Button>
                   </div>
                 </td>
               </tr>
+              {expandedVersionId === v.id && (
+                <tr>
+                  <td colSpan={12} className="px-2 pb-4">
+                    <VersionStackSubList version={v} products={products ?? []} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </ResponsiveTable>
         </CardContent>
@@ -5749,6 +6096,7 @@ const ADMIN_TAB_GROUPS: AdminTabGroup[] = [
       { value: 'flavor-profiles', label: 'Profiles', icon: Boxes },
       { value: 'performance-profiles', label: 'Performance', icon: BarChart3 },
       { value: 'dependencies', label: 'Dependencies', icon: Link2 },
+      { value: 'compatibility', label: 'Compatibilité', icon: Grid3x3 },
       { value: 'transitions', label: 'Transitions', icon: ArrowRightLeft },
     ],
   },
@@ -5902,6 +6250,7 @@ export default function Admin() {
         <TabsContent value="product-versions" className="animate-fade-in"><ProductVersionsSection /></TabsContent>
         <TabsContent value="infra-versions" className="animate-fade-in"><InfraVersionsSection /></TabsContent>
         <TabsContent value="dependencies" className="animate-fade-in"><DependenciesSection /></TabsContent>
+        <TabsContent value="compatibility" className="animate-fade-in"><CompatibilityRulesSection /></TabsContent>
         <TabsContent value="applications" className="animate-fade-in"><ApplicationsSection /></TabsContent>
         <TabsContent value="continuity-levels" className="animate-fade-in"><ContinuityLevelsSection /></TabsContent>
         <TabsContent value="resiliency" className="animate-fade-in"><ResiliencySection /></TabsContent>

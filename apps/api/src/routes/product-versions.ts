@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
+import { versionTupleFields } from '../lib/version';
 
 const router = Router({ mergeParams: true });
 
@@ -144,6 +145,8 @@ router.post('/', async (req, res, next) => {
     const version = await prisma.productVersion.create({
       data: {
         ...versionData,
+        // Write-time version tuple derivation (spec §1.1) — shared helper.
+        ...versionTupleFields(versionData.version),
         product: { connect: { id: productId } },
         regions: regionIds?.length ? { create: regionIds.map((rid: string) => ({ region: { connect: { id: rid } } })) } : undefined,
         zones: zoneIds?.length ? { create: zoneIds.map((zid: string) => ({ zone: { connect: { id: zid } } })) } : undefined,
@@ -293,6 +296,8 @@ router.patch('/:id', async (req, res, next) => {
       where: { id },
       data: {
         ...versionData,
+        // Re-derive the tuple only when the version string itself changes.
+        ...(versionData.version !== undefined ? versionTupleFields(versionData.version) : {}),
         regions: regionIds?.length ? { create: regionIds.map((rid: string) => ({ region: { connect: { id: rid } } })) } : undefined,
         zones: zoneIds?.length ? { create: zoneIds.map((zid: string) => ({ zone: { connect: { id: zid } } })) } : undefined,
         availabilityZones: availabilityZoneIds?.length ? { create: availabilityZoneIds.map((azId: string) => ({ availabilityZone: { connect: { id: azId } } })) } : undefined,

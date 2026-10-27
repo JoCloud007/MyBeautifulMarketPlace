@@ -18,6 +18,7 @@ import AdminViewBuilder from './pages/AdminViewBuilder';
 import McpStatus from './pages/McpStatus';
 import MarketplaceGeo from './pages/MarketplaceGeo';
 import MarketplaceMatrix from './pages/MarketplaceMatrix';
+import CompatibilityMatrix from './pages/CompatibilityMatrix';
 import NotFound from './pages/NotFound';
 
 function App() {
@@ -30,6 +31,7 @@ function App() {
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/marketplace/geo" element={<MarketplaceGeo />} />
             <Route path="/marketplace/matrix" element={<MarketplaceMatrix />} />
+            <Route path="/compatibility" element={<CompatibilityMatrix />} />
             <Route path="/products/:slug" element={<ProductDetail />} />
             <Route path="/availability-zones" element={<AvailabilityZones />} />
             <Route path="/roadmap" element={<Roadmap />} />

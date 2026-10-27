@@ -547,6 +547,154 @@ async function main() {
     console.log('  ✅ All ProductVariants already have lifecycle dates');
   }
 
+  // ── Product stacks & compatibility (demo, idempotent) ───────────────
+  // Spec: Stacks de produits & matrice de compatibilité §7. A product stack
+  // is a ProductVersion carrying pinned components (ProductVersionComponent);
+  // compatibility verdicts are CALCULATED from CompatibilityRule rows.
+  // Nothing is deleted; rules are upserted by fixed ids, versions by
+  // (productId, version), component links only created when missing.
+  {
+    const { versionTupleFields } = require('../src/lib/version') as typeof import('../src/lib/version');
+
+    // Demo products: a composite (Managed PostgreSQL) and its component (VM).
+    const pgProduct = await prisma.product.upsert({
+      where: { slug: 'managed-postgresql' },
+      update: { description: 'Managed PostgreSQL database service — composed of a General Purpose VM (product stack).' },
+      create: {
+        name: 'Managed PostgreSQL',
+        slug: 'managed-postgresql',
+        description: 'Managed PostgreSQL database service — composed of a General Purpose VM (product stack).',
+        categoryId: data.id,
+        os: 'Linux',
+      },
+    });
+    const gpVmProduct = await prisma.product.upsert({
+      where: { slug: 'general-purpose-vm' },
+      update: {},
+      create: {
+        name: 'General Purpose VM',
+        slug: 'general-purpose-vm',
+        description: 'General purpose virtual machine — atomic product (no stack component).',
+        categoryId: compute.id,
+        computeType: ComputeType.VIRTUAL,
+        os: 'Linux',
+      },
+    });
+
+    // Versions with NUMERIC versions so §2 range constraints apply.
+    const pgVersions: Record<string, { id: string }> = {};
+    for (const spec of [
+      { version: '14.12', release: '2024-02-08', eol: '2026-11-21' },
+      { version: '15.8', release: '2024-08-08', eol: '2027-11-11' },
+      { version: '16.3', release: '2025-02-20', eol: '2028-11-09' },
+      { version: '17.1', release: '2025-09-26', eol: '2029-11-08' },
+    ]) {
+      const rec = await prisma.productVersion.upsert({
+        where: { productId_version: { productId: pgProduct.id, version: spec.version } },
+        update: { ...versionTupleFields(spec.version) },
+        create: {
+          productId: pgProduct.id,
+          version: spec.version,
+          releaseDate: new Date(spec.release),
+          eolDate: new Date(spec.eol),
+          ...versionTupleFields(spec.version),
+        },
+      });
+      pgVersions[spec.version] = { id: rec.id };
+    }
+
+    const vmVersions: Record<string, { id: string }> = {};
+    for (const spec of [
+      { version: 'v2', release: '2022-01-15', eol: '2027-01-15' },
+      { version: 'v3', release: '2024-06-01', eol: '2029-06-01' },
+      { version: 'v4', release: '2026-09-01', eol: '2031-09-01' },
+    ]) {
+      const rec = await prisma.productVersion.upsert({
+        where: { productId_version: { productId: gpVmProduct.id, version: spec.version } },
+        update: { ...versionTupleFields(spec.version) },
+        create: {
+          productId: gpVmProduct.id,
+          version: spec.version,
+          releaseDate: new Date(spec.release),
+          eolDate: new Date(spec.eol),
+          ...versionTupleFields(spec.version),
+        },
+      });
+      vmVersions[spec.version] = { id: rec.id };
+    }
+
+    // Compatibility rules — fixed ids keep this idempotent.
+    const ruleSpecs = [
+      {
+        id: 'seed-rule-pg17-vm4',
+        name: 'PG 17 REQUIRES VM >= v4',
+        description: 'PostgreSQL 17 needs the v4 VM generation (kernel >= 5.14).',
+        fromProductId: pgProduct.id, fromVersionConstraint: '>=17',
+        toProductId: gpVmProduct.id, toVersionConstraint: '>=4',
+        kind: 'REQUIRES', severity: 'HARD', scopeType: 'GLOBAL',
+      },
+      {
+        id: 'seed-rule-pg16-vm3',
+        name: 'PG 16+ REQUIRES VM >= v3',
+        description: 'PostgreSQL 16 and later need NVMe-backed VM generation v3+.',
+        fromProductId: pgProduct.id, fromVersionConstraint: '>=16',
+        toProductId: gpVmProduct.id, toVersionConstraint: '>=3',
+        kind: 'REQUIRES', severity: 'HARD', scopeType: 'GLOBAL',
+      },
+      {
+        id: 'seed-rule-pg14-vm4',
+        name: 'PG 14 FORBIDS VM v4 (untested combination)',
+        description: 'PG 14 was never certified on the v4 generation.',
+        fromProductId: pgProduct.id, fromVersionConstraint: '<15',
+        toProductId: gpVmProduct.id, toVersionConstraint: '>=4',
+        kind: 'FORBIDS', severity: 'SOFT', scopeType: 'GLOBAL',
+      },
+    ];
+    for (const spec of ruleSpecs) {
+      await prisma.compatibilityRule.upsert({
+        where: { id: spec.id },
+        update: { description: spec.description },
+        create: {
+          id: spec.id,
+          name: spec.name,
+          description: spec.description,
+          fromProductId: spec.fromProductId,
+          fromVersionConstraint: spec.fromVersionConstraint,
+          toProductId: spec.toProductId,
+          toVersionConstraint: spec.toVersionConstraint,
+          kind: spec.kind as any,
+          severity: spec.severity as any,
+          scopeType: spec.scopeType as any,
+        },
+      });
+    }
+
+    // Example stacks: each PG version pins one VM version.
+    const stackSpecs = [
+      { pg: '14.12', vm: 'v2' },
+      { pg: '15.8', vm: 'v3' },
+      { pg: '16.3', vm: 'v3' },
+      { pg: '17.1', vm: 'v4' },
+    ];
+    for (const spec of stackSpecs) {
+      const containerVersionId = pgVersions[spec.pg].id;
+      const existing = await prisma.productVersionComponent.findFirst({
+        where: { containerVersionId, componentProductId: gpVmProduct.id },
+      });
+      if (!existing) {
+        await prisma.productVersionComponent.create({
+          data: {
+            containerVersionId,
+            componentProductId: gpVmProduct.id,
+            componentVersionId: vmVersions[spec.vm].id,
+          },
+        });
+      }
+    }
+
+    console.log('  🧩 Product stacks & compatibility rules upserted (Managed PostgreSQL × General Purpose VM)');
+  }
+
   // ── Resiliency levels (idempotent, separate script) ─────────────────
   // Spawned as a child to keep the resiliency seed standalone — it is also
   // runnable on its own. It creates STANDARD/HA/MULTI_AZ if missing.

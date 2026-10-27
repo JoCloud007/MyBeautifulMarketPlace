@@ -33,6 +33,9 @@ import { geoRoutes } from './routes/geo';
 import { infraVersionRoutes } from './routes/infra-versions';
 import { serviceNowRoutes } from './routes/servicenow';
 import { resiliencyLevelRoutes } from './routes/resiliency-levels';
+import { stackComponentRoutes } from './routes/stack-components';
+import { compatibilityRuleRoutes } from './routes/compatibility-rules';
+import { compatibilityMatrixRoutes } from './routes/compatibility-matrix';
 import { startCronJobs } from './cron';
 import { mcpStatusRouter } from './routes/mcp-status';
 import { createMcpRouter } from './mcp/http';
@@ -96,6 +99,13 @@ app.use('/api', geoRoutes);
 app.use('/api/infra-versions', infraVersionRoutes);
 app.use('/api/servicenow', serviceNowRoutes);
 app.use('/api', mcpStatusRouter);
+
+// Product stacks & compatibility (spec: Stacks de produits & matrice de
+// compatibilité). Each router registers canonical paths and falls through on
+// alias mounts, so mounting each at /api is safe.
+app.use('/api', stackComponentRoutes);
+app.use('/api', compatibilityRuleRoutes);
+app.use('/api', compatibilityMatrixRoutes);
 
 // Conditional admin API key protection (fail-closed: requires key if set)
 const adminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {

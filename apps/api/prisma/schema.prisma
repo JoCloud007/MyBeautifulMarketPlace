@@ -80,6 +80,10 @@ model Product {
   regions             ProductRegion[]
   availabilityZones   ProductAvailabilityZone[]
   productVersions     ProductVersion[]
+  stackComponents     ProductVersionComponent[] @relation("StackComponentProduct")
+  rulesAsSource       CompatibilityRule[]       @relation("RuleFromProduct")
+  rulesAsTarget       CompatibilityRule[]       @relation("RuleToProduct")
+  scopedRules         CompatibilityRule[]       @relation("RuleScopeProduct")
   performanceProfiles PerformanceProfile[]
   resiliencyLevels    ProductResiliency[]
   resiliencyScopes    ResiliencyScope[]
@@ -106,12 +110,20 @@ model ProductVersion {
   phase              LifecyclePhase                   @default(RELEASED)
   isActive           Boolean                          @default(true)
   changelog          String?
+  // Normalised version tuple (spec: Stacks de produits §1.1). The `version`
+  // string stays the display source; the tuple powers range comparisons.
+  // Nullable: rows with a non-numeric version keep a null tuple.
+  versionMajor       Int?
+  versionMinor       Int?
+  versionPatch       Int?
   createdAt          DateTime                         @default(now())
   updatedAt          DateTime                         @updatedAt
   regions            ProductVersionRegion[]
   zones              ProductVersionZone[]
   availabilityZones  ProductVersionAvailabilityZone[]
   variants           ProductVariant[]
+  stackComponents    ProductVersionComponent[]        @relation("StackContainer")
+  componentOf        ProductVersionComponent[]        @relation("StackComponentVersion")
 
   @@unique([productId, version])
 }
@@ -143,6 +155,11 @@ model OsVersion {
   isActive           Boolean          @default(true)
   // Per-version availability override; null inherits OperatingSystem.availabilityType.
   availabilityType   AvailabilityType?
+  // Normalised version tuple (spec: Stacks de produits §1.1) — nullable,
+  // non-numeric versions keep a null tuple.
+  versionMajor       Int?
+  versionMinor       Int?
+  versionPatch       Int?
   variants           ProductVariant[]
   transitionsFrom    Transition[]     @relation("TransitionFromOsVersion")
   transitionsTo      Transition[]     @relation("TransitionToOsVersion")
@@ -957,4 +974,64 @@ model MaintenanceWindow {
   @@index([instanceId])
   @@index([applicationId])
   @@index([startTime, endTime])
+}
+
+// §1.2 Stack components — a product version is its own stack, carrying a list
+// of pinned components (product + version). A version without components is an
+// atomic product (e.g. a VM). Additive model; the version/product coherence of
+// (componentProductId, componentVersionId) is enforced by API validation.
+model ProductVersionComponent {
+  id                 String         @id @default(uuid())
+  containerVersionId String
+  containerVersion   ProductVersion @relation("StackContainer", fields: [containerVersionId], references: [id], onDelete: Cascade)
+  componentProductId String
+  componentProduct   Product        @relation("StackComponentProduct", fields: [componentProductId], references: [id], onDelete: Cascade)
+  componentVersionId String
+  componentVersion   ProductVersion @relation("StackComponentVersion", fields: [componentVersionId], references: [id], onDelete: Cascade)
+  createdAt          DateTime       @default(now())
+
+  @@unique([containerVersionId, componentProductId])
+}
+
+// §1.3 Compatibility rules — declared between product versions as operator
+// ranges (constraint grammar §2 of the spec). Never stored results: the matrix
+// and the live composer compute verdicts from these rules.
+model CompatibilityRule {
+  id                    String        @id @default(uuid())
+  name                  String
+  description           String?
+  fromProductId         String
+  fromProduct           Product       @relation("RuleFromProduct", fields: [fromProductId], references: [id], onDelete: Cascade)
+  fromVersionConstraint String?
+  toProductId           String
+  toProduct             Product       @relation("RuleToProduct", fields: [toProductId], references: [id], onDelete: Cascade)
+  toVersionConstraint   String?
+  kind                  RuleKind
+  severity              RuleSeverity
+  scopeType             RuleScope
+  scopeProductId        String?
+  scopeProduct          Product?      @relation("RuleScopeProduct", fields: [scopeProductId], references: [id], onDelete: Cascade)
+  justification         String?
+  isActive              Boolean       @default(true)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@index([fromProductId])
+  @@index([toProductId])
+  @@index([scopeProductId])
+}
+
+enum RuleKind {
+  REQUIRES
+  FORBIDS
+}
+
+enum RuleSeverity {
+  HARD
+  SOFT
+}
+
+enum RuleScope {
+  GLOBAL
+  PRODUCT
 }

@@ -204,21 +204,23 @@ restart-api:
 ## runbook: backup, schema push, recreate, incremental seed.
 ## Safe on a database with existing data: no destructive flags, no deletes.
 update:
-	@echo "==> 1/6 Backing up database to backup_`date +%F_%H%M`.sql"
+	@echo "==> 1/7 Backing up database to backup_`date +%F_%H%M`.sql"
 	@docker compose exec -T db pg_dump -U cloudmarket -d cloudmarket > backup_`date +%F_%H%M`.sql
-	@echo "==> 2/6 Recreating containers with fresh code and dist"
+	@echo "==> 2/7 Recreating containers with fresh code and dist"
 	docker compose up -d --force-recreate --renew-anon-volumes api web
-	@echo "==> 3/6 Pre-converting enum columns db push cannot alter (idempotent, lossless)"
+	@echo "==> 3/7 Pre-converting enum columns db push cannot alter (idempotent, lossless)"
 	@docker compose exec -T db psql -U cloudmarket -d cloudmarket -v ON_ERROR_STOP=1 \
 		< apps/api/prisma/migrations/202610151000_resiliency_enum_to_text/migration.sql
-	@echo "==> 4/6 Pushing Prisma schema (non-destructive db push, from the fresh image)"
+	@echo "==> 4/7 Pushing Prisma schema (non-destructive db push, from the fresh image)"
 	. "$(shell pwd)/.source.prisma" && docker compose exec -T api npx prisma db push
-	@echo "==> 5/6 Running incremental seed"
+	@echo "==> 5/7 Backfilling version tuples (idempotent, spec: product stacks)"
+	@docker compose exec -T api npx tsx prisma/backfill-version-tuples.ts
+	@echo "==> 6/7 Running incremental seed"
 	$(MAKE) seed-incremental
-	@echo "==> 6/6 Classifying PRODUCT/OS transitions (idempotent backfill)"
+	@echo "==> 7/7 Classifying PRODUCT/OS transitions (idempotent backfill)"
 	@docker compose exec -T api npx tsx prisma/backfill-transition-kind.ts
 	@echo ""
-	@echo "✓ Deployment updated — schema, dist, seed and transition backfill are current"
+	@echo "✓ Deployment updated — schema, dist, seed, version-tuple and transition backfills are current"
 
 ## Fix client DB — applies the missing flavor-fields schema (one shot).
 ## For databases provisioned by db push (no _prisma_migrations table),

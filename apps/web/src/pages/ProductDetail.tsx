@@ -4,6 +4,7 @@ import { useParams, Link } from 'react-router-dom';
 import type { Product, Dependency, ProductVariant, Flavor } from '@cloudmarket/shared-types';
 import { formatFlavorAttrs } from '@/lib/utils';
 import { useProduct, useProducts, usePerformanceProfiles, useProductTransitions } from '@/hooks/useApi';
+import { useVersionStack, type VersionStackComponent } from '@/hooks/useCompatibility';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 import QueryError from '@/components/QueryError';
 import PerformanceGauge from '@/components/PerformanceGauge';
@@ -40,6 +41,8 @@ import {
   Search,
   ChevronDown,
   Zap,
+  Boxes,
+  XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -378,6 +381,153 @@ function DependencyGraph({
         })}
       </svg>
     </div>
+  );
+}
+
+/* Verdict badge shared by the Stack tab rows (✓ green / ! orange / ✗ red). */
+const STACK_VERDICT_STYLES: Record<string, { glyph: string; label: string; className: string }> = {
+  VALID: { glyph: '✓', label: 'Compatible', className: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40' },
+  WARNING: { glyph: '!', label: 'Avertissement', className: 'bg-orange-500/20 text-orange-300 border-orange-400/40' },
+  BLOCKED: { glyph: '✗', label: 'Incompatible', className: 'bg-red-500/20 text-red-300 border-red-400/40' },
+};
+
+function StackVerdictBadge({ verdict }: { verdict: string }) {
+  const style = STACK_VERDICT_STYLES[verdict] ?? STACK_VERDICT_STYLES.VALID;
+  return (
+    <span
+      title={style.label}
+      aria-label={style.label}
+      className={`inline-flex h-7 w-7 items-center justify-center rounded border text-sm font-bold leading-none ${style.className}`}
+    >
+      {style.glyph}
+    </span>
+  );
+}
+
+/**
+ * "Stack" tab — the selected version's components with individual verdicts
+ * (per-component findings from the live validation) and a link to the
+ * compatibility matrix. Phase 2 placeholder: "Migrer depuis cette version"
+ * stays disabled.
+ */
+function ProductStackTab({ product }: { product: Product }) {
+  const versions = product.productVersions || [];
+  const [selectedVersionId, setSelectedVersionId] = useState<string>(versions[0]?.id ?? '');
+  const selectedVersion =
+    versions.find((v: any) => v.id === selectedVersionId) ?? versions[0] ?? null;
+  const stack = useVersionStack(selectedVersion?.id ?? null, product.id);
+
+  return (
+    <Card className="bg-slate-900 border-slate-800">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-white">
+          <Boxes className="h-5 w-5 text-blue-500" />
+          Stack
+        </CardTitle>
+        <CardDescription className="text-slate-400">
+          Composants de la version sélectionnée, avec le verdict de compatibilité de chacun.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* Version selector */}
+        {versions.length > 0 && (
+          <div className="space-y-2">
+            <label htmlFor="stack-version" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Version
+            </label>
+            <select
+              id="stack-version"
+              value={selectedVersion?.id ?? ''}
+              onChange={(e) => setSelectedVersionId(e.target.value)}
+              className="w-full h-11 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
+            >
+              {versions.map((v: any) => (
+                <option key={v.id} value={v.id}>
+                  {v.version}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Global verdict + migrate placeholder */}
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2">
+            <StackVerdictBadge verdict={stack.verdict} />
+            <span className="text-sm font-medium text-slate-200">
+              {STACK_VERDICT_STYLES[stack.verdict]?.label ?? 'Compatible'}
+            </span>
+          </span>
+          {/* Phase 2 placeholder — migration planner is out of scope. */}
+          <Button
+            type="button"
+            disabled
+            title="Planificateur de migration — phase 2 (à venir)"
+            className="bg-slate-800 text-slate-500 cursor-not-allowed min-h-[44px]"
+          >
+            Migrer depuis cette version
+          </Button>
+          <Link to="/compatibility">
+            <Button variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800 min-h-[44px]">
+              Voir la matrice de compatibilité
+              <ArrowUpRight className="ml-1 h-3 w-3" />
+            </Button>
+          </Link>
+        </div>
+
+        {/* Component list with individual verdicts */}
+        {stack.isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-12 rounded-lg bg-slate-800" />
+            <Skeleton className="h-12 rounded-lg bg-slate-800" />
+          </div>
+        ) : stack.components.length === 0 ? (
+          <div className="text-center py-10">
+            <Boxes className="mx-auto h-10 w-10 text-slate-700" />
+            <p className="mt-3 text-slate-500">Aucun composant (stack) déclaré pour cette version.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {stack.components.map((component: VersionStackComponent) => (
+              <div
+                key={component.row.id}
+                className="flex items-start gap-4 rounded-lg border border-slate-800 bg-slate-950 px-4 py-3"
+              >
+                <StackVerdictBadge verdict={component.verdict} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-white">{component.productName}</span>
+                    <Badge variant="outline" className="text-xs border-blue-500/20 text-blue-400">
+                      {component.versionLabel}
+                    </Badge>
+                  </div>
+                  {component.findings.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {component.findings.map((finding, i) => (
+                        <li key={`${finding.ruleId}-${i}`} className="flex items-center gap-2 text-xs">
+                          {finding.satisfied ? (
+                            <CheckCircle className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                          ) : (
+                            <XCircle className="h-3.5 w-3.5 shrink-0 text-red-400" />
+                          )}
+                          <span className={finding.satisfied ? 'text-slate-400' : 'text-red-300'}>
+                            {finding.ruleName}
+                          </span>
+                          <span className="text-slate-600">
+                            {finding.fromVersionConstraint || 'toutes versions'} → {finding.toVersionConstraint || 'toutes versions'} ·{' '}
+                            {finding.satisfied ? 'satisfaite' : 'violée'}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1235,6 +1385,7 @@ export default function ProductDetail() {
             <TabsTrigger value="roadmap" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Roadmap</TabsTrigger>
             <TabsTrigger value="upgrade-paths" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Upgrades &amp; Transitions</TabsTrigger>
             <TabsTrigger value="dependencies" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Dependencies</TabsTrigger>
+            <TabsTrigger value="stack" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Stack</TabsTrigger>
             {uniqueAzs.length > 0 && (
               <TabsTrigger value="availability" className="data-[state=active]:bg-slate-800 data-[state=active]:text-blue-400 text-slate-400 min-h-[36px]">Availability</TabsTrigger>
             )}
@@ -1645,6 +1796,11 @@ export default function ProductDetail() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Stack */}
+          <TabsContent value="stack" className="mt-4 space-y-6 animate-fade-in">
+            <ProductStackTab product={product} />
           </TabsContent>
 
           {/* Availability */}
