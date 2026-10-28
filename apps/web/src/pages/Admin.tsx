@@ -6104,7 +6104,7 @@ const ADMIN_TAB_GROUPS: AdminTabGroup[] = [
       { value: 'flavor-profiles', label: 'Profiles', icon: Boxes },
       { value: 'performance-profiles', label: 'Performance', icon: BarChart3 },
       { value: 'dependencies', label: 'Dependencies', icon: Link2 },
-      { value: 'compatibility', label: 'Compatibilité', icon: Grid3x3 },
+      { value: 'compatibility', label: 'Stack', icon: Grid3x3 },
       { value: 'transitions', label: 'Transitions', icon: ArrowRightLeft },
     ],
   },
