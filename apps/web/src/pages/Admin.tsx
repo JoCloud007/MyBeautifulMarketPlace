@@ -3518,6 +3518,12 @@ function VariantsSection() {
 
 // ============ COMPATIBILITY RULES SECTION ============
 /** Short label for a version constraint (any version when empty). */
+// Client vocabulary for compatibility rules (2026-10-28 redesign):
+// Stack (rule source) / Composant (rule target) / exige / interdit /
+// Bloquant (HARD) / Avertissement (SOFT) / Partout (GLOBAL).
+const RULE_KIND_LABEL: Record<string, string> = { REQUIRES: 'exige', FORBIDS: 'interdit' };
+const RULE_SEVERITY_LABEL: Record<string, string> = { HARD: 'Bloquant', SOFT: 'Avertissement' };
+
 function constraintLabel(constraint: string | null | undefined): string {
   const trimmed = (constraint ?? '').trim();
   return trimmed.length > 0 ? trimmed : 'toutes versions';
@@ -3586,10 +3592,10 @@ function CompatibilityRulesSection() {
         {productName(rule.toProductId)} <span className="text-slate-500">{constraintLabel(rule.toVersionConstraint)}</span>
       </p>
       <div className="mt-2 flex flex-wrap gap-1">
-        <Badge variant="outline" className="border-blue-500/20 text-blue-400">{rule.kind}</Badge>
-        <Badge variant="outline" className={rule.severity === 'HARD' ? 'border-red-500/20 text-red-400' : 'border-amber-500/20 text-amber-400'}>{rule.severity}</Badge>
+        <Badge variant="outline" className={rule.kind === 'REQUIRES' ? 'border-emerald-500/20 text-emerald-400' : 'border-red-500/20 text-red-400'}>{RULE_KIND_LABEL[rule.kind] ?? rule.kind}</Badge>
+        <Badge variant="outline" className={rule.severity === 'HARD' ? 'border-red-500/20 text-red-400' : 'border-amber-500/20 text-amber-400'}>{RULE_SEVERITY_LABEL[rule.severity] ?? rule.severity}</Badge>
         <Badge variant="outline" className="border-slate-600 text-slate-400">
-          {rule.scopeType === 'PRODUCT' ? `Scope: ${productName(rule.scopeProductId)}` : 'GLOBAL'}
+          {rule.scopeType === 'PRODUCT' ? `Stack: ${productName(rule.scopeProductId)}` : 'Partout'}
         </Badge>
       </div>
       {rule.justification && <p className="mt-2 text-xs text-slate-500">{rule.justification}</p>}
@@ -3610,7 +3616,7 @@ function CompatibilityRulesSection() {
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable
-            headers={['Produit source', 'Contrainte', 'Produit cible', 'Contrainte', 'Kind', 'Severity', 'Scope', 'Justification']}
+            headers={['Stack', 'Versions', 'Composant', 'Versions', 'Règle', 'Conséquence', 'Portée', 'Justification']}
             isLoading={isLoading}
             emptyMessage="No compatibility rules"
             mobileCards={mobileCards}
@@ -3622,18 +3628,20 @@ function CompatibilityRulesSection() {
                 <td className="py-3 font-medium text-white">{rule.toProduct?.name ?? productName(rule.toProductId)}</td>
                 <td className="py-3 font-mono text-xs text-slate-400">{constraintLabel(rule.toVersionConstraint)}</td>
                 <td className="py-3">
-                  <Badge variant="outline" className="border-blue-500/20 text-blue-400">{rule.kind}</Badge>
+                  <Badge variant="outline" className={rule.kind === 'REQUIRES' ? 'border-emerald-500/20 text-emerald-400' : 'border-red-500/20 text-red-400'}>
+                    {RULE_KIND_LABEL[rule.kind] ?? rule.kind}
+                  </Badge>
                 </td>
                 <td className="py-3">
                   <Badge variant="outline" className={rule.severity === 'HARD' ? 'border-red-500/20 text-red-400' : 'border-amber-500/20 text-amber-400'}>
-                    {rule.severity}
+                    {RULE_SEVERITY_LABEL[rule.severity] ?? rule.severity}
                   </Badge>
                 </td>
                 <td className="py-3">
                   <Badge variant="outline" className="border-slate-600 text-slate-400">
                     {rule.scopeType === 'PRODUCT'
-                      ? `Produit: ${rule.scopeProduct?.name ?? productName(rule.scopeProductId)}`
-                      : 'GLOBAL'}
+                      ? `Stack: ${rule.scopeProduct?.name ?? productName(rule.scopeProductId)}`
+                      : 'Partout'}
                   </Badge>
                 </td>
                 <td className="py-3 text-xs text-slate-500">{rule.justification || '—'}</td>

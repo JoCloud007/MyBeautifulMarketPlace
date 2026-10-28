@@ -1,13 +1,10 @@
 /**
- * CompatibilityRuleModal — create/edit modal for a compatibility rule.
- * Spec "Stacks de produits & matrice de compatibilité"; work unit "admin-ui"
- * (owner of this file only).
- *
- * Product selectors (source / target / scope) + constraint fields validated on
- * input against the §2 grammar (mirrored by isValidConstraintInput): the Save
- * button stays disabled while a field is invalid, and inline helper text marks
- * the offending field. API-side errors (400 findings, mandatory justification
- * on a relaxing override, …) are surfaced through the caller's mutation toast.
+ * CompatibilityRuleModal — rule composer expressed as a sentence.
+ * Redesign (2026-10-28): the client rejected the source/target + kind/severity
+ * form. A rule now reads as: "Quand la STACK est X dans les versions <range>,
+ * elle exige/interdit le COMPOSANT Y dans les versions <range>" — consequence
+ * Bloquant (HARD) or Avertissement (SOFT). The persisted payload and the
+ * RuleFormValues contract are unchanged (Admin.tsx keeps working).
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -50,6 +47,82 @@ export interface ProductOption {
   name: string;
 }
 
+// ---------------------------------------------------------------------------
+// Sentence vocabulary (client wording — maps onto the engine enums)
+// ---------------------------------------------------------------------------
+
+export const CONSTRAINT_OPERATORS = ['>=', '>', '=', '!=', '<=', '<'] as const;
+type ConstraintOperator = (typeof CONSTRAINT_OPERATORS)[number];
+
+/** ">=17" → { op: '>=', version: '17' }; empty → { op: '>=', version: '' }. */
+export function splitConstraint(constraint: string | null | undefined): {
+  op: ConstraintOperator;
+  version: string;
+} {
+  const trimmed = (constraint ?? '').trim();
+  if (trimmed.length === 0) return { op: '>=', version: '' };
+  const match = /^(<=|>=|!=|=|<|>)\s*(\d+(?:\.\d+){0,2})$/.exec(trimmed);
+  if (!match) return { op: '>=', version: '' };
+  return { op: match[1] as ConstraintOperator, version: match[2] };
+}
+
+export function joinConstraint(op: ConstraintOperator, version: string): string {
+  const v = version.trim();
+  return v.length === 0 ? '' : `${op}${v}`;
+}
+
+/** Human constraint rendering: ">= 4", "= 9.4", "toutes versions" when empty. */
+export function constraintLabel(constraint: string | null | undefined): string {
+  const trimmed = (constraint ?? '').trim();
+  if (trimmed.length === 0) return 'toutes versions';
+  const { op, version } = splitConstraint(trimmed);
+  return version ? `${op} ${version}` : trimmed;
+}
+
+// ---------------------------------------------------------------------------
+// RuleSentence — read a rule as a sentence (used by the cell panel too)
+// ---------------------------------------------------------------------------
+
+interface RuleSentenceProps {
+  rule: {
+    name: string;
+    fromProductId?: string;
+    fromVersionConstraint?: string | null;
+    toProductId?: string;
+    toVersionConstraint?: string | null;
+    kind: RuleKind;
+    severity: RuleSeverity;
+    scopeType?: RuleScope;
+    scopeProductId?: string | null;
+  };
+  /** Resolve product ids to display names (stack + component sides). */
+  productName: (id: string) => string;
+}
+
+const CHIP = 'inline-flex items-center rounded-md border border-blue-500/50 bg-blue-500/15 px-2 py-0.5 font-semibold text-blue-300';
+
+/** Reads a rule as one sentence — also used by the cell panel of the designer. */
+export function RuleSentenceText({ rule, productName }: RuleSentenceProps) {
+  const requires = rule.kind === 'REQUIRES';
+  return (
+    <span className="leading-relaxed">
+      Quand la <span className="font-bold text-blue-300">stack</span> est{' '}
+      <span className={CHIP}>{productName(rule.fromProductId ?? '')}</span>{' '}
+      dans les versions <span className={CHIP}>{constraintLabel(rule.fromVersionConstraint)}</span>,
+      elle{' '}
+      <span className={requires ? 'font-bold text-emerald-400' : 'font-bold text-red-400'}>
+        {requires ? 'exige' : 'interdit'}
+      </span>{' '}
+      le composant <span className={CHIP}>{productName(rule.toProductId ?? '')}</span>{' '}
+      dans les versions <span className={CHIP}>{constraintLabel(rule.toVersionConstraint)}</span>.
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Form
+// ---------------------------------------------------------------------------
+
 interface CompatibilityRuleModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -58,9 +131,18 @@ interface CompatibilityRuleModalProps {
   products: ProductOption[];
   onSubmit: (values: RuleFormValues) => void | Promise<void>;
   isSubmitting?: boolean;
+  /** Pre-fill the pair from a clicked matrix cell (stack × component). */
+  defaultPair?: { fromProductId?: string; toProductId?: string } | null;
 }
 
-const CONSTRAINT_HINT = 'Format: =9.4, !=10, >=9.2, >9.2, <=10 or <10 — empty = all versions';
+const OPERATOR_OPTIONS: { value: ConstraintOperator; label: string }[] = [
+  { value: '>=', label: '≥' },
+  { value: '>', label: '>' },
+  { value: '=', label: '=' },
+  { value: '!=', label: '≠' },
+  { value: '<=', label: '≤' },
+  { value: '<', label: '<' },
+];
 
 function emptyForm(): RuleFormValues {
   return {
@@ -96,36 +178,61 @@ function formFromRule(rule: CompatibilityRule): RuleFormValues {
   };
 }
 
-function ConstraintField({
+/** Auto rule name: "PG 17+ exige VM >=4" — enough for findings and lists. */
+function autoName(form: RuleFormValues, nameOf: (id: string) => string): string {
+  const from = nameOf(form.fromProductId) || 'Stack';
+  const to = nameOf(form.toProductId) || 'Composant';
+  const fromC = form.fromVersionConstraint.trim();
+  const toC = form.toVersionConstraint.trim();
+  const verb = form.kind === 'REQUIRES' ? 'exige' : 'interdit';
+  return `${from}${fromC ? ` ${fromC}` : ''} ${verb} ${to}${toC ? ` ${toC}` : ''}`;
+}
+
+function VersionRangePicker({
   id,
+  op,
+  version,
+  onOpChange,
+  onVersionChange,
   label,
-  value,
-  onChange,
 }: {
   id: string;
+  op: ConstraintOperator;
+  version: string;
+  onOpChange: (op: ConstraintOperator) => void;
+  onVersionChange: (version: string) => void;
   label: string;
-  value: string;
-  onChange: (value: string) => void;
 }) {
-  const valid = isValidConstraintInput(value);
   return (
-    <div className="space-y-2">
-      <label htmlFor={id} className="text-sm font-medium text-slate-300">
+    <div className="flex items-center gap-2">
+      <label htmlFor={id} className="text-xs uppercase tracking-wider text-slate-500">
         {label}
       </label>
+      <select
+        aria-label={`${label} — opérateur`}
+        value={op}
+        onChange={(e) => onOpChange(e.target.value as ConstraintOperator)}
+        className="h-10 min-h-[40px] rounded-md border border-slate-700 bg-slate-950 px-2 text-sm font-bold text-blue-300"
+      >
+        {OPERATOR_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
       <Input
         id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder=">=9.2"
-        aria-invalid={!valid}
-        className={`bg-slate-950 border-slate-700 text-white min-h-[44px] ${
-          valid ? '' : 'border-red-500 focus-visible:ring-red-500'
+        value={version}
+        onChange={(e) => onVersionChange(e.target.value)}
+        placeholder="toutes"
+        inputMode="decimal"
+        className={`h-10 min-h-[40px] w-24 bg-slate-950 border-slate-700 text-white ${
+          isValidConstraintInput(joinConstraint(op, version))
+            ? ''
+            : 'border-red-500 focus-visible:ring-red-500'
         }`}
       />
-      <p className={`text-xs ${valid ? 'text-slate-500' : 'text-red-400'}`}>
-        {valid ? CONSTRAINT_HINT : `Invalid constraint — ${CONSTRAINT_HINT}`}
-      </p>
+      <span className="text-xs text-slate-500">— vide = toutes les versions</span>
     </div>
   );
 }
@@ -137,208 +244,301 @@ export default function CompatibilityRuleModal({
   products,
   onSubmit,
   isSubmitting = false,
+  defaultPair,
 }: CompatibilityRuleModalProps) {
   const [form, setForm] = useState<RuleFormValues>(emptyForm);
   const [touched, setTouched] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setForm(rule ? formFromRule(rule) : emptyForm());
+      const base = rule ? formFromRule(rule) : emptyForm();
+      if (!rule && defaultPair) {
+        if (defaultPair.fromProductId) base.fromProductId = defaultPair.fromProductId;
+        if (defaultPair.toProductId) base.toProductId = defaultPair.toProductId;
+      }
+      setForm(base);
       setTouched(false);
     }
-  }, [open, rule]);
+  }, [open, rule, defaultPair]);
 
   const productOptions = useMemo(
     () => [...products].sort((a, b) => a.name.localeCompare(b.name)),
     [products]
   );
+  const nameOf = useMemo(() => {
+    const map = new Map(products.map((p) => [p.id, p.name]));
+    return (id: string) => map.get(id) ?? '';
+  }, [products]);
+
+  const fromRange = splitConstraint(form.fromVersionConstraint);
+  const toRange = splitConstraint(form.toVersionConstraint);
+
+  const draftWithAutoName = useMemo(
+    () => ({ ...form, name: form.name.trim() || autoName(form, nameOf) }),
+    [form, nameOf]
+  );
 
   const constraintsValid =
     isValidConstraintInput(form.fromVersionConstraint) &&
     isValidConstraintInput(form.toVersionConstraint);
-  const valid = isRuleDraftValid(form) && constraintsValid;
+  const valid = isRuleDraftValid(draftWithAutoName) && constraintsValid;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setTouched(true);
     if (!valid) return;
-    await onSubmit(form);
+    await onSubmit(draftWithAutoName);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-white">
-            {rule ? 'Edit compatibility rule' : 'New compatibility rule'}
+            {rule ? 'Modifier la règle' : 'Nouvelle règle'}
           </DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="rule-name" className="text-sm font-medium text-slate-300">
-              Name
-            </label>
-            <Input
-              id="rule-name"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
+
+        {/* Live sentence preview */}
+        <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-[15px] text-slate-100">
+          <RuleSentenceText
+            rule={{
+              name: draftWithAutoName.name,
+              fromProductId: form.fromProductId,
+              fromVersionConstraint: form.fromVersionConstraint,
+              toProductId: form.toProductId,
+              toVersionConstraint: form.toVersionConstraint,
+              kind: form.kind,
+              severity: form.severity,
+            }}
+            productName={nameOf}
+          />
+          {form.scopeType === 'PRODUCT' && form.scopeProductId && (
+            <span className="block pt-1 text-xs text-slate-400">
+              (uniquement pour la stack « {nameOf(form.scopeProductId)} »)
+            </span>
+          )}
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* When */}
+          <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-950/50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Quand la stack
+            </div>
+            <select
+              aria-label="Stack"
+              value={form.fromProductId}
+              onChange={(e) => setForm({ ...form, fromProductId: e.target.value })}
               required
-              className="bg-slate-950 border-slate-700 text-white min-h-[44px]"
+              className="w-full h-11 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm font-semibold text-white"
+            >
+              <option value="">Choisir une stack…</option>
+              {productOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <VersionRangePicker
+              id="rule-from-version"
+              label="dans les versions"
+              op={fromRange.op}
+              version={fromRange.version}
+              onOpChange={(op) =>
+                setForm({ ...form, fromVersionConstraint: joinConstraint(op, fromRange.version) })
+              }
+              onVersionChange={(version) =>
+                setForm({ ...form, fromVersionConstraint: joinConstraint(fromRange.op, version) })
+              }
             />
-            {touched && form.name.trim().length === 0 && (
-              <p className="text-xs text-red-400">A rule name is required.</p>
+          </div>
+
+          {/* Then */}
+          <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/50 p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Elle</span>
+              <div className="flex overflow-hidden rounded-full border border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, kind: 'REQUIRES' })}
+                  aria-pressed={form.kind === 'REQUIRES'}
+                  className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                    form.kind === 'REQUIRES'
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  ● exige
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, kind: 'FORBIDS' })}
+                  aria-pressed={form.kind === 'FORBIDS'}
+                  className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                    form.kind === 'FORBIDS'
+                      ? 'bg-red-500/20 text-red-300'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  ○ interdit
+                </button>
+              </div>
+              <span className="text-xs text-slate-500">le composant</span>
+            </div>
+
+            <select
+              aria-label="Composant"
+              value={form.toProductId}
+              onChange={(e) => setForm({ ...form, toProductId: e.target.value })}
+              required
+              className="w-full h-11 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm font-semibold text-white"
+            >
+              <option value="">Choisir un composant…</option>
+              {productOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            {touched && form.fromProductId && form.fromProductId === form.toProductId && (
+              <p className="text-xs text-red-400">
+                La stack et le composant doivent être deux produits différents.
+              </p>
             )}
-          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label htmlFor="rule-from-product" className="text-sm font-medium text-slate-300">
-                Produit source
-              </label>
-              <select
-                id="rule-from-product"
-                value={form.fromProductId}
-                onChange={(e) => setForm({ ...form, fromProductId: e.target.value })}
-                required
-                className="w-full h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
-              >
-                <option value="">Select product...</option>
-                {productOptions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <ConstraintField
-              id="rule-from-constraint"
-              label="Contrainte (source)"
-              value={form.fromVersionConstraint}
-              onChange={(value) => setForm({ ...form, fromVersionConstraint: value })}
+            <VersionRangePicker
+              id="rule-to-version"
+              label="dans les versions"
+              op={toRange.op}
+              version={toRange.version}
+              onOpChange={(op) =>
+                setForm({ ...form, toVersionConstraint: joinConstraint(op, toRange.version) })
+              }
+              onVersionChange={(version) =>
+                setForm({ ...form, toVersionConstraint: joinConstraint(toRange.op, version) })
+              }
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label htmlFor="rule-to-product" className="text-sm font-medium text-slate-300">
-                Produit cible
-              </label>
-              <select
-                id="rule-to-product"
-                value={form.toProductId}
-                onChange={(e) => setForm({ ...form, toProductId: e.target.value })}
-                required
-                className="w-full h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
+          {/* Consequence */}
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Conséquence
+            </span>
+            <div className="flex overflow-hidden rounded-full border border-slate-700">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, severity: 'HARD' })}
+                aria-pressed={form.severity === 'HARD'}
+                className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                  form.severity === 'HARD'
+                    ? 'bg-red-500/20 text-red-300'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
               >
-                <option value="">Select product...</option>
-                {productOptions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              {touched && form.fromProductId && form.fromProductId === form.toProductId && (
-                <p className="text-xs text-red-400">
-                  Source and target products must be different.
-                </p>
-              )}
+                ● Bloquant
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, severity: 'SOFT' })}
+                aria-pressed={form.severity === 'SOFT'}
+                className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                  form.severity === 'SOFT'
+                    ? 'bg-amber-500/20 text-amber-300'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                ○ Avertissement
+              </button>
             </div>
-            <ConstraintField
-              id="rule-to-constraint"
-              label="Contrainte (cible)"
-              value={form.toVersionConstraint}
-              onChange={(value) => setForm({ ...form, toVersionConstraint: value })}
-            />
+            <span className="text-xs text-slate-500">
+              {form.severity === 'HARD'
+                ? 'empêche d’enregistrer une composition non conforme'
+                : 'signale un risque, sans bloquer'}
+            </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <label htmlFor="rule-kind" className="text-sm font-medium text-slate-300">
-                Kind
-              </label>
-              <select
-                id="rule-kind"
-                value={form.kind}
-                onChange={(e) => setForm({ ...form, kind: e.target.value as RuleKind })}
-                className="w-full h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
+          {/* Scope */}
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Portée
+            </span>
+            <div className="flex overflow-hidden rounded-full border border-slate-700">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, scopeType: 'GLOBAL', scopeProductId: '' })}
+                aria-pressed={form.scopeType === 'GLOBAL'}
+                className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                  form.scopeType === 'GLOBAL'
+                    ? 'bg-blue-500/20 text-blue-300'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
               >
-                <option value="REQUIRES">REQUIRES</option>
-                <option value="FORBIDS">FORBIDS</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="rule-severity" className="text-sm font-medium text-slate-300">
-                Severity
-              </label>
-              <select
-                id="rule-severity"
-                value={form.severity}
-                onChange={(e) => setForm({ ...form, severity: e.target.value as RuleSeverity })}
-                className="w-full h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
+                Partout
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, scopeType: 'PRODUCT' })}
+                aria-pressed={form.scopeType === 'PRODUCT'}
+                className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                  form.scopeType === 'PRODUCT'
+                    ? 'bg-purple-500/20 text-purple-300'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
               >
-                <option value="HARD">HARD</option>
-                <option value="SOFT">SOFT</option>
-              </select>
+                Seulement pour une stack
+              </button>
             </div>
-            <div className="space-y-2">
-              <label htmlFor="rule-scope" className="text-sm font-medium text-slate-300">
-                Scope
-              </label>
+            {form.scopeType === 'PRODUCT' && (
               <select
-                id="rule-scope"
-                value={form.scopeType}
-                onChange={(e) => setForm({ ...form, scopeType: e.target.value as RuleScope })}
-                className="w-full h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
-              >
-                <option value="GLOBAL">GLOBAL</option>
-                <option value="PRODUCT">PRODUCT</option>
-              </select>
-            </div>
-          </div>
-
-          {form.scopeType === 'PRODUCT' && (
-            <div className="space-y-2">
-              <label htmlFor="rule-scope-product" className="text-sm font-medium text-slate-300">
-                Scope product (contexte)
-              </label>
-              <select
-                id="rule-scope-product"
+                aria-label="Stack concernée par la portée"
                 value={form.scopeProductId}
                 onChange={(e) => setForm({ ...form, scopeProductId: e.target.value })}
                 required
-                className="w-full h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
+                className="h-10 min-h-[40px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
               >
-                <option value="">Select product...</option>
+                <option value="">Choisir la stack…</option>
                 {productOptions.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
                   </option>
                 ))}
               </select>
-              {touched && form.scopeProductId.length === 0 && (
-                <p className="text-xs text-red-400">
-                  A PRODUCT-scoped rule requires a scope product.
-                </p>
-              )}
-            </div>
-          )}
+            )}
+          </div>
 
-          <div className="space-y-2">
-            <label htmlFor="rule-justification" className="text-sm font-medium text-slate-300">
-              Justification
-            </label>
-            <Textarea
-              id="rule-justification"
-              value={form.justification}
-              onChange={(e) => setForm({ ...form, justification: e.target.value })}
-              rows={3}
-              placeholder="Required when this PRODUCT-scoped rule relaxes a GLOBAL rule of the same pair"
-              className="bg-slate-950 border-slate-700 text-white"
-            />
-            <p className="text-xs text-slate-500">
-              Mandatory when a PRODUCT-scoped rule relaxes a matching GLOBAL rule (the API
-              rejects otherwise with a 400).
-            </p>
+          {/* Note + justification */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label htmlFor="rule-description" className="text-sm font-medium text-slate-300">
+                Note (facultatif)
+              </label>
+              <Textarea
+                id="rule-description"
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                rows={2}
+                placeholder="« PG 17 a besoin de la génération VM v4 »"
+                className="bg-slate-950 border-slate-700 text-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="rule-justification" className="text-sm font-medium text-slate-300">
+                Justification
+              </label>
+              <Textarea
+                id="rule-justification"
+                value={form.justification}
+                onChange={(e) => setForm({ ...form, justification: e.target.value })}
+                rows={2}
+                placeholder="Obligatoire si cette règle assouplit une règle globale"
+                className="bg-slate-950 border-slate-700 text-white"
+              />
+              <p className="text-xs text-slate-500">
+                Obligatoire quand une règle par stack assouplit une règle globale (l’API refuse sinon).
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -350,7 +550,7 @@ export default function CompatibilityRuleModal({
               className="rounded border-slate-700 bg-slate-950"
             />
             <label htmlFor="rule-active" className="text-sm text-slate-300">
-              Active
+              Règle active
             </label>
           </div>
 
@@ -361,14 +561,14 @@ export default function CompatibilityRuleModal({
               onClick={() => onOpenChange(false)}
               className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]"
             >
-              Cancel
+              Annuler
             </Button>
             <Button
               type="submit"
               disabled={!valid || isSubmitting}
               className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]"
             >
-              {rule ? 'Save' : 'Create'}
+              {rule ? 'Enregistrer' : 'Créer la règle'}
             </Button>
           </DialogFooter>
         </form>

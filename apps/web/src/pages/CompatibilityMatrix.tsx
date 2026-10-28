@@ -1,40 +1,58 @@
 /**
- * CompatibilityMatrix — public /compatibility page.
- * Spec "Stacks de produits & matrice de compatibilité"; work unit "admin-ui"
- * (owner of this file only).
+ * CompatibilityMatrix — matrix DESIGNER (redesign 2026-10-28).
  *
- * Main-product selector + multi-axis selection (other products and/or OS).
- * The table is modeled on MarketplaceMatrix: grouped axis headers (one group
- * per axis product / OS, in selection order) over version columns, rows = the
- * main product's versions. Cells are colored with the same three states as the
- * Availability Matrix — green VALID, orange WARNING (!), red BLOCKED (✗) — and
- * clicking a cell opens a popover listing the motivating rules (name +
- * constraint, satisfied/violated). Phase 2 migration is a disabled
- * "Migrer depuis cette version" placeholder.
+ * The client rejected the read-only matrix + select controls. This page is a
+ * visual designer: a product tray to drag onto "rows" and "columns" shelves
+ * (N products each, keyboard/button fallback included), a live calculated
+ * matrix below (one matrix API call per row product, stacked), and a cell
+ * panel that reads the motivating rules as sentences ("Quand la stack est X
+ * dans les versions ≥ 17, elle exige le composant Y …") and can create a new
+ * rule pre-filled from the clicked cell.
+ *
+ * Client vocabulary: Stack (rule source) / Composant (rule target) /
+ * exige (REQUIRES) / interdit (FORBIDS) / Bloquant (HARD) / Avertissement (SOFT).
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useQueryClient } from '@tanstack/react-query';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import QueryError from '@/components/QueryError';
 import { useProducts, useOperatingSystems } from '@/hooks/useApi';
 import {
-  useCompatibilityMatrix,
+  useCompatibilityMatrixGrid,
   type CompatibilityVerdict,
   type MatrixAxisGroup,
   type MatrixCellResult,
 } from '@/hooks/useCompatibility';
 import {
+  useCreateCompatibilityRule,
+  useUpdateCompatibilityRule,
+} from '@/hooks/useCompatibilityAdmin';
+import CompatibilityRuleModal, {
+  RuleSentenceText,
+  type ProductOption,
+  type RuleFormValues,
+} from '@/components/CompatibilityRuleModal';
+import { useToastStore } from '@/stores/useToastStore';
+import {
   ArrowLeft,
   CheckCircle,
   AlertTriangle,
   XCircle,
-  Grid3x3,
+  GripVertical,
+  Plus,
   X,
+  RotateCcw,
+  Save,
+  ArrowRight,
 } from 'lucide-react';
+
+// ---------------------------------------------------------------------------
+// Verdict visuals — four states (a cell without any rule is NOT "valid")
+// ---------------------------------------------------------------------------
 
 const VERDICT_CELL: Record<
   CompatibilityVerdict,
@@ -43,7 +61,7 @@ const VERDICT_CELL: Record<
   VALID: {
     icon: CheckCircle,
     glyph: '✓',
-    label: 'Compatible',
+    label: 'Valide',
     className: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40',
   },
   WARNING: {
@@ -55,37 +73,252 @@ const VERDICT_CELL: Record<
   BLOCKED: {
     icon: XCircle,
     glyph: '✗',
-    label: 'Incompatible',
+    label: 'Bloqué',
     className: 'bg-red-500/20 text-red-300 border-red-400/40',
   },
 };
 
-function VerdictGlyph({ verdict, compact = false }: { verdict: CompatibilityVerdict; compact?: boolean }) {
-  const config = VERDICT_CELL[verdict];
+const NO_RULE = {
+  glyph: '—',
+  label: 'Aucune règle',
+  className: 'bg-slate-900 text-slate-600 border-dashed border-slate-800',
+};
+
+function cellState(cell: MatrixCellResult | undefined): {
+  glyph: string;
+  label: string;
+  className: string;
+  verdict: CompatibilityVerdict | 'NONE';
+} {
+  if (!cell || cell.findings.length === 0) return { ...NO_RULE, verdict: 'NONE' };
+  return { ...VERDICT_CELL[cell.verdict], verdict: cell.verdict };
+}
+
+// ---------------------------------------------------------------------------
+// Designer state (localStorage-persisted view)
+// ---------------------------------------------------------------------------
+
+interface DesignerState {
+  rowProductIds: string[];
+  axisProductIds: string[];
+  axisOsIds: string[];
+}
+
+const STORAGE_KEY = 'cloudmarket.matrix-designer.v1';
+
+function loadDesignerState(): DesignerState {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { rowProductIds: [], axisProductIds: [], axisOsIds: [] };
+    const parsed = JSON.parse(raw) as Partial<DesignerState>;
+    return {
+      rowProductIds: Array.isArray(parsed.rowProductIds) ? parsed.rowProductIds : [],
+      axisProductIds: Array.isArray(parsed.axisProductIds) ? parsed.axisProductIds : [],
+      axisOsIds: Array.isArray(parsed.axisOsIds) ? parsed.axisOsIds : [],
+    };
+  } catch {
+    return { rowProductIds: [], axisProductIds: [], axisOsIds: [] };
+  }
+}
+
+type DropKind = 'product' | 'os';
+const DND_MIME = 'application/x-cloudmarket-chip';
+
+// ---------------------------------------------------------------------------
+// Chips
+// ---------------------------------------------------------------------------
+
+function TrayChip({
+  kind,
+  id,
+  label,
+  onAddRow,
+  onAddColumn,
+}: {
+  kind: DropKind;
+  id: string;
+  label: string;
+  onAddRow?: () => void;
+  onAddColumn: () => void;
+}) {
+  return (
+    <span
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData(DND_MIME, JSON.stringify({ kind, id }));
+        e.dataTransfer.effectAllowed = 'copy';
+      }}
+      className="inline-flex cursor-grab items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 hover:border-slate-600 active:cursor-grabbing"
+    >
+      <GripVertical className="h-4 w-4 text-slate-500" aria-hidden />
+      {label}
+      {onAddRow && (
+        <button
+          type="button"
+          onClick={onAddRow}
+          title="Ajouter aux lignes"
+          aria-label={`Ajouter ${label} aux lignes`}
+          className="rounded px-1.5 py-0.5 text-xs text-slate-400 hover:bg-blue-500/15 hover:text-blue-300"
+        >
+          +lignes
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onAddColumn}
+        title="Ajouter aux colonnes"
+        aria-label={`Ajouter ${label} aux colonnes`}
+        className="rounded px-1.5 py-0.5 text-xs text-slate-400 hover:bg-blue-500/15 hover:text-blue-300"
+      >
+        +colonnes
+      </button>
+    </span>
+  );
+}
+
+function ShelfChip({
+  label,
+  onRemove,
+  onMoveLeft,
+  onMoveRight,
+}: {
+  label: string;
+  onRemove: () => void;
+  onMoveLeft?: () => void;
+  onMoveRight?: () => void;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/50 bg-blue-500/15 px-3 py-2 text-sm font-semibold text-blue-300">
+      {label}
+      {onMoveLeft && (
+        <button
+          type="button"
+          onClick={onMoveLeft}
+          title="Déplacer vers la gauche"
+          aria-label={`Déplacer ${label} vers la gauche`}
+          className="rounded p-0.5 text-blue-300/70 hover:bg-blue-500/20 hover:text-blue-200"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {onMoveRight && (
+        <button
+          type="button"
+          onClick={onMoveRight}
+          title="Déplacer vers la droite"
+          aria-label={`Déplacer ${label} vers la droite`}
+          className="rounded p-0.5 text-blue-300/70 hover:bg-blue-500/20 hover:text-blue-200"
+        >
+          <ArrowRight className="h-3.5 w-3.5" />
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        title="Retirer"
+        aria-label={`Retirer ${label}`}
+        className="rounded p-0.5 text-blue-300/70 hover:bg-red-500/20 hover:text-red-300"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </span>
+  );
+}
+
+/** Drop shelf for rows or columns, with drag & drop + button fallback. */
+function Shelf({
+  title,
+  hint,
+  accent,
+  acceptKinds,
+  children,
+  onDropChip,
+  emptyLabel,
+}: {
+  title: string;
+  hint: string;
+  accent: 'blue' | 'purple';
+  acceptKinds: DropKind[];
+  children: React.ReactNode;
+  onDropChip: (kind: DropKind, id: string) => void;
+  emptyLabel: string;
+}) {
+  const [over, setOver] = useState(false);
   return (
     <div
-      className={`inline-flex items-center justify-center rounded border ${config.className} ${
-        compact
-          ? 'h-7 w-7 text-sm font-bold leading-none'
-          : 'h-8 w-8 text-base font-bold leading-none'
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes(DND_MIME)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        setOver(false);
+        const raw = e.dataTransfer.getData(DND_MIME);
+        if (!raw) return;
+        e.preventDefault();
+        try {
+          const chip = JSON.parse(raw) as { kind: DropKind; id: string };
+          if (acceptKinds.includes(chip.kind)) onDropChip(chip.kind, chip.id);
+        } catch {
+          /* foreign payload — ignore */
+        }
+      }}
+      className={`rounded-xl border-2 border-dashed p-4 transition-colors ${
+        over
+          ? accent === 'blue'
+            ? 'border-blue-400 bg-blue-500/10'
+            : 'border-purple-400 bg-purple-500/10'
+          : accent === 'blue'
+            ? 'border-slate-700 bg-slate-900/60'
+            : 'border-slate-700 bg-slate-900/60'
       }`}
-      title={config.label}
-      aria-label={config.label}
     >
-      {config.glyph}
+      <div className="flex items-baseline justify-between gap-2">
+        <p
+          className={`text-xs font-semibold uppercase tracking-wider ${
+            accent === 'blue' ? 'text-blue-300' : 'text-purple-300'
+          }`}
+        >
+          {title}
+        </p>
+        <p className="text-xs text-slate-500">{hint}</p>
+      </div>
+      <div className="mt-3 flex min-h-[44px] flex-wrap items-center gap-2">
+        {children}
+        <span
+          className={`rounded-lg border border-dashed px-4 py-2 text-xs ${
+            over ? 'border-blue-400 text-blue-300' : 'border-slate-700 text-slate-500'
+          }`}
+        >
+          {emptyLabel}
+        </span>
+      </div>
     </div>
   );
 }
 
-/** Popover listing the motivating rules of one cell (name + constraint). */
-function RulesPopover({
-  anchorLabel,
+// ---------------------------------------------------------------------------
+// Cell panel — motivating rules as sentences + rule creation
+// ---------------------------------------------------------------------------
+
+function CellPanel({
+  rowLabel,
+  columnLabel,
   cell,
+  nameOf,
   onClose,
+  onCreateRule,
+  onDeactivateRule,
 }: {
-  anchorLabel: string;
+  rowLabel: string;
+  columnLabel: string;
   cell: MatrixCellResult;
+  nameOf: (id: string) => string;
   onClose: () => void;
+  onCreateRule: () => void;
+  onDeactivateRule: (ruleId: string) => void;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -95,382 +328,588 @@ function RulesPopover({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const state = cellState(cell);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
       <div
         role="dialog"
-        aria-label={`Règles de compatibilité — ${anchorLabel}`}
-        className="relative z-10 w-full max-w-md rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl"
+        aria-label={`Règles — ${rowLabel} × ${columnLabel}`}
+        className="relative z-10 max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-base font-semibold text-white">Règles motivantes</h3>
-            <p className="mt-1 text-sm text-slate-400">{anchorLabel}</p>
+            <p className="text-xs uppercase tracking-wider text-slate-500">Cellule</p>
+            <p className="mt-1 text-base font-semibold text-white">
+              {rowLabel} <span className="text-slate-500">×</span> {columnLabel}
+            </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Fermer"
-            className="rounded p-1 text-slate-400 hover:text-white hover:bg-slate-800"
+            className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <div className="mt-3 flex items-center gap-2">
-          <VerdictGlyph verdict={cell.verdict} compact />
-          <span className="text-sm font-medium text-slate-200">{VERDICT_CELL[cell.verdict].label}</span>
+          <span
+            className={`inline-flex h-8 w-8 items-center justify-center rounded border text-base font-bold leading-none ${state.className}`}
+            title={state.label}
+            aria-label={state.label}
+          >
+            {state.glyph}
+          </span>
+          <span className="text-sm font-medium text-slate-200">{state.label}</span>
         </div>
 
         {cell.findings.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">
-            Aucune règle de compatibilité déclarée pour cette paire.
-          </p>
+          <div className="mt-5 rounded-lg border border-dashed border-slate-700 bg-slate-950/50 p-4">
+            <p className="text-sm text-slate-400">
+              Aucune règle pour cette paire. Créez-en une pour dire ce qui est attendu.
+            </p>
+          </div>
         ) : (
-          <ul className="mt-4 space-y-3">
-            {cell.findings.map((finding, i) => {
-              const from = finding.fromVersionConstraint || 'toutes versions';
-              const to = finding.toVersionConstraint || 'toutes versions';
-              return (
-                <li key={`${finding.ruleId}-${i}`} className="flex items-start gap-2">
-                  {finding.satisfied ? (
-                    <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
-                  ) : (
-                    <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-                  )}
-                  <div className="min-w-0">
-                    <p className={`text-sm ${finding.satisfied ? 'text-slate-300' : 'text-red-300'}`}>
-                      {finding.ruleName}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {finding.kind} · {finding.severity} · {from} → {to} ·{' '}
-                      {finding.satisfied ? 'satisfaite' : 'violée'}
-                    </p>
-                  </div>
-                </li>
-              );
-            })}
+          <ul className="mt-5 space-y-3">
+            {cell.findings.map((finding, i) => (
+              <li
+                key={`${finding.ruleId}-${i}`}
+                className={`rounded-lg border p-3 ${
+                  finding.satisfied
+                    ? 'border-slate-800 bg-slate-950/40'
+                    : finding.severity === 'HARD'
+                      ? 'border-red-500/40 bg-red-500/5'
+                      : 'border-orange-500/40 bg-orange-500/5'
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                      finding.severity === 'HARD'
+                        ? 'bg-red-500/15 text-red-300'
+                        : 'bg-orange-500/15 text-orange-300'
+                    }`}
+                  >
+                    {finding.severity === 'HARD' ? 'Bloquant' : 'Avertissement'}
+                  </span>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-[10px] ${
+                      finding.satisfied
+                        ? 'bg-emerald-500/15 text-emerald-300'
+                        : 'bg-red-500/15 text-red-300'
+                    }`}
+                  >
+                    {finding.satisfied ? '✓ satisfaite' : '✗ violée'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onDeactivateRule(finding.ruleId)}
+                    className="ml-auto rounded border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:border-slate-600 hover:text-slate-200"
+                  >
+                    Désactiver
+                  </button>
+                </div>
+                <p className="mt-2 text-sm text-slate-200">
+                  <RuleSentenceText
+                    rule={{
+                      name: finding.ruleName,
+                      fromProductId: finding.fromProductId,
+                      fromVersionConstraint: finding.fromVersionConstraint,
+                      toProductId: finding.toProductId,
+                      toVersionConstraint: finding.toVersionConstraint,
+                      kind: finding.kind,
+                      severity: finding.severity,
+                    }}
+                    productName={nameOf}
+                  />
+                </p>
+              </li>
+            ))}
           </ul>
         )}
+
+        <div className="mt-5">
+          <Button
+            type="button"
+            onClick={onCreateRule}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"
+          >
+            <Plus className="mr-1 h-4 w-4" />
+            Créer une règle sur cette paire
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
 
-/** Multi-select chip list for the axis products. */
-function AxisPicker({
-  title,
-  options,
-  selected,
-  onChange,
-}: {
-  title: string;
-  options: { id: string; label: string }[];
-  selected: string[];
-  onChange: (ids: string[]) => void;
-}) {
-  const toggle = (id: string) => {
-    onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
-  };
-  return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{title}</p>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {options.length === 0 ? (
-          <span className="text-sm text-slate-500">Aucune option</span>
-        ) : (
-          options.map((option) => {
-            const active = selected.includes(option.id);
-            return (
-              <button
-                key={option.id}
-                type="button"
-                aria-pressed={active}
-                onClick={() => toggle(option.id)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors min-h-[36px] ${
-                  active
-                    ? 'border-blue-500/60 bg-blue-500/15 text-blue-300'
-                    : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200 hover:border-slate-600'
-                }`}
-              >
-                {option.label}
-              </button>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
+// ---------------------------------------------------------------------------
+// Page — the designer
+// ---------------------------------------------------------------------------
+
+interface SelectedCell {
+  rowProductId: string;
+  rowLabel: string;
+  columnProductId: string | null;
+  columnLabel: string;
+  cell: MatrixCellResult;
 }
 
 export default function CompatibilityMatrix() {
   const { data: products, isLoading: productsLoading, isError: productsError, refetch: refetchProducts } =
     useProducts();
   const { data: osList } = useOperatingSystems();
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
 
-  const [mainProductId, setMainProductId] = useState('');
-  const [axisProductIds, setAxisProductIds] = useState<string[]>([]);
-  const [axisOsIds, setAxisOsIds] = useState<string[]>([]);
-  const [selectedCell, setSelectedCell] = useState<{
-    rowLabel: string;
-    colLabel: string;
-    cell: MatrixCellResult;
-  } | null>(null);
+  const [design, setDesign] = useState<DesignerState>(loadDesignerState);
+  const [selected, setSelected] = useState<SelectedCell | null>(null);
+  const [ruleModalOpen, setRuleModalOpen] = useState(false);
+  const [ruleDefaultPair, setRuleDefaultPair] = useState<{ fromProductId: string; toProductId: string } | null>(null);
 
-  const productOptions = useMemo(
+  const createRule = useCreateCompatibilityRule();
+  const updateRule = useUpdateCompatibilityRule();
+
+  // Persist the design silently on every change (the Save button confirms it).
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(design));
+    } catch {
+      /* private mode — design stays session-local */
+    }
+  }, [design]);
+
+  const productOptions = useMemo<ProductOption[]>(
     () =>
-      (products ?? [])
-        .map((p) => ({ id: p.id, label: p.name }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
+      ((products ?? []) as { id: string; name: string }[])
+        .map((p) => ({ id: p.id, name: p.name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     [products]
   );
+  const nameOf = useMemo(() => {
+    const map = new Map(productOptions.map((p) => [p.id, p.name]));
+    for (const os of (osList ?? []) as { id: string; name: string }[]) map.set(os.id, os.name);
+    return (id: string) => map.get(id) ?? id;
+  }, [productOptions, osList]);
 
   const osOptions = useMemo(
     () =>
-      (osList ?? [])
-        .filter((os) => os.isActive !== false)
-        .map((os) => ({ id: os.id, label: os.name }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
+      ((osList ?? []) as { id: string; name: string }[])
+        .map((os) => ({ id: os.id, name: os.name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     [osList]
   );
 
-  // Default the main product once the catalog is loaded.
-  useEffect(() => {
-    if (!mainProductId && productOptions.length > 0) setMainProductId(productOptions[0].id);
-  }, [productOptions, mainProductId]);
+  const grid = useCompatibilityMatrixGrid(
+    design.rowProductIds,
+    design.axisProductIds,
+    design.axisOsIds,
+    Object.fromEntries(productOptions.map((p) => [p.id, p.name]))
+  );
 
-  const axisIdsSelected = axisProductIds.length + axisOsIds.length > 0;
-
-  const {
-    data: matrix,
-    isLoading: matrixLoading,
-    isError: matrixError,
-    refetch: refetchMatrix,
-  } = useCompatibilityMatrix(mainProductId, axisProductIds, axisOsIds);
-
-  const mainProduct = products?.find((p) => p.id === mainProductId);
-
-  if (productsError) {
-    return (
-      <div className="space-y-6">
-        <QueryError message="Unable to load the product catalog." onRetry={refetchProducts} />
-      </div>
+  // ---- shelf mutations ----
+  const addToRows = useCallback((id: string) => {
+    setDesign((d) =>
+      d.rowProductIds.includes(id) ? d : { ...d, rowProductIds: [...d.rowProductIds, id] }
     );
-  }
+  }, []);
+  const addToColumns = useCallback((kind: DropKind, id: string) => {
+    setDesign((d) => {
+      if (kind === 'os') {
+        return d.axisOsIds.includes(id) ? d : { ...d, axisOsIds: [...d.axisOsIds, id] };
+      }
+      return d.axisProductIds.includes(id) ? d : { ...d, axisProductIds: [...d.axisProductIds, id] };
+    });
+  }, []);
+  const removeFromRows = useCallback((id: string) => {
+    setDesign((d) => ({ ...d, rowProductIds: d.rowProductIds.filter((x) => x !== id) }));
+  }, []);
+  const removeFromColumns = useCallback((kind: DropKind, id: string) => {
+    setDesign((d) =>
+      kind === 'os'
+        ? { ...d, axisOsIds: d.axisOsIds.filter((x) => x !== id) }
+        : { ...d, axisProductIds: d.axisProductIds.filter((x) => x !== id) }
+    );
+  }, []);
+  const moveInList = useCallback(
+    (list: 'rows' | 'columns', index: number, delta: number) => {
+      setDesign((d) => {
+        const arr = list === 'rows' ? [...d.rowProductIds] : [...d.axisProductIds];
+        const target = index + delta;
+        if (target < 0 || target >= arr.length) return d;
+        [arr[index], arr[target]] = [arr[target], arr[index]];
+        return list === 'rows' ? { ...d, rowProductIds: arr } : { ...d, axisProductIds: arr };
+      });
+    },
+    []
+  );
+
+  const reset = () => {
+    setDesign({ rowProductIds: [], axisProductIds: [], axisOsIds: [] });
+    setSelected(null);
+    addToast('Concepteur réinitialisé', 'success');
+  };
+  const saveView = () => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(design));
+      addToast('Vue enregistrée', 'success');
+    } catch {
+      addToast('Impossible d’enregistrer la vue dans ce navigateur', 'error');
+    }
+  };
+
+  // ---- cell click → panel → rule creation ----
+  const handleCreateRuleFromCell = (cell: SelectedCell) => {
+    if (cell.columnProductId) {
+      setRuleDefaultPair({ fromProductId: cell.rowProductId, toProductId: cell.columnProductId });
+    } else {
+      setRuleDefaultPair(null);
+    }
+    setRuleModalOpen(true);
+  };
+
+  const submitRule = async (values: RuleFormValues) => {
+    const payload = {
+      name: values.name,
+      description: values.description || null,
+      fromProductId: values.fromProductId,
+      fromVersionConstraint: values.fromVersionConstraint || null,
+      toProductId: values.toProductId,
+      toVersionConstraint: values.toVersionConstraint || null,
+      kind: values.kind,
+      severity: values.severity,
+      scopeType: values.scopeType,
+      scopeProductId: values.scopeType === 'PRODUCT' ? values.scopeProductId : null,
+      justification: values.justification || null,
+      isActive: values.isActive,
+    };
+    await createRule.mutateAsync(payload);
+    queryClient.invalidateQueries({ queryKey: ['compatibility-matrix'] });
+    setRuleModalOpen(false);
+  };
+
+  const deactivateRule = async (ruleId: string) => {
+    await updateRule.mutateAsync({ id: ruleId, isActive: false });
+    queryClient.invalidateQueries({ queryKey: ['compatibility-matrix'] });
+    setSelected((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        cell: {
+          ...current.cell,
+          findings: current.cell.findings.map((f) =>
+            f.ruleId === ruleId ? { ...f, satisfied: true } : f
+          ),
+        },
+      };
+    });
+  };
+
+  // ---- render ----
+  const trayProducts = productOptions.filter(
+    (p) => !design.rowProductIds.includes(p.id) && !design.axisProductIds.includes(p.id)
+  );
+  const trayOs = osOptions.filter((os) => !design.axisOsIds.includes(os.id));
+  const hasAnyAxis = design.axisProductIds.length + design.axisOsIds.length > 0;
+  const hasRows = design.rowProductIds.length > 0;
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div>
-        <Link
-          to="/marketplace"
-          className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-blue-400 transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to marketplace
-        </Link>
-        <h1 className="mt-2 flex items-center gap-3 text-2xl font-bold text-white">
-          <Grid3x3 className="h-7 w-7 text-blue-500" />
-          Matrice de compatibilité
-        </h1>
-        <p className="mt-1 text-slate-400">
-          Versions du produit principal (lignes) × produits et OS comparés (colonnes groupées).
-          Chaque cellule évalue la paire selon les règles de compatibilité déclarées.
-        </p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <Link to="/marketplace" className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-slate-200">
+            <ArrowLeft className="h-4 w-4" />
+            Retour au marketplace
+          </Link>
+          <h1 className="mt-2 text-2xl font-bold text-white">Concepteur de matrice</h1>
+          <p className="mt-1 text-sm text-slate-400">
+            Glissez des produits sur les étagères — la matrice de compatibilité se calcule en direct,
+            pour N stacks et N composants.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={reset}
+            className="border-slate-700 text-slate-300 hover:bg-slate-800 min-h-[44px]"
+          >
+            <RotateCcw className="mr-1 h-4 w-4" />
+            Réinitialiser
+          </Button>
+          <Button onClick={saveView} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]">
+            <Save className="mr-1 h-4 w-4" />
+            Enregistrer la vue
+          </Button>
+        </div>
       </div>
 
-      {/* Selectors */}
-      <Card className="bg-slate-900 border-slate-800">
-        <CardHeader>
-          <CardTitle className="text-white">Sélection</CardTitle>
-          <CardDescription className="text-slate-400">
-            Choisissez le produit principal, puis les axes de comparaison (plusieurs produits et/ou OS).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="space-y-2">
-            <label htmlFor="main-product" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Produit principal
-            </label>
-            <select
-              id="main-product"
-              value={mainProductId}
-              onChange={(e) => setMainProductId(e.target.value)}
-              disabled={productsLoading}
-              className="w-full h-11 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
-            >
-              {productOptions.length === 0 && <option value="">Aucun produit</option>}
-              {productOptions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
+      {productsError ? (
+        <QueryError message="Impossible de charger les produits." onRetry={refetchProducts} />
+      ) : productsLoading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-24 rounded-xl bg-slate-800" />
+          <Skeleton className="h-64 rounded-xl bg-slate-800" />
+        </div>
+      ) : (
+        <>
+          {/* Product tray */}
+          <Card className="border-slate-800 bg-slate-900">
+            <CardContent className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Bac à produits — à glisser
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {trayProducts.map((p) => (
+                  <TrayChip
+                    key={p.id}
+                    kind="product"
+                    id={p.id}
+                    label={p.name}
+                    onAddRow={() => addToRows(p.id)}
+                    onAddColumn={() => addToColumns('product', p.id)}
+                  />
+                ))}
+                {trayOs.map((os) => (
+                  <TrayChip
+                    key={os.id}
+                    kind="os"
+                    id={os.id}
+                    label={os.name}
+                    onAddColumn={() => addToColumns('os', os.id)}
+                  />
+                ))}
+                {trayProducts.length === 0 && trayOs.length === 0 && (
+                  <span className="text-sm text-slate-500">Tous les produits sont sur les étagères.</span>
+                )}
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                Les systèmes d’exploitation se posent uniquement sur l’étagère des colonnes.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Shelves */}
+          <div className="grid gap-3 lg:grid-cols-5">
+            <div className="lg:col-span-2">
+              <Shelf
+                title="En lignes — les stacks"
+                hint={`${design.rowProductIds.length} produit(s)`}
+                accent="blue"
+                acceptKinds={['product']}
+                onDropChip={(_kind, id) => addToRows(id)}
+                emptyLabel="glissez une stack ici"
+              >
+                {design.rowProductIds.map((id, index) => (
+                  <ShelfChip
+                    key={id}
+                    label={nameOf(id)}
+                    onRemove={() => removeFromRows(id)}
+                    onMoveLeft={index > 0 ? () => moveInList('rows', index, -1) : undefined}
+                    onMoveRight={
+                      index < design.rowProductIds.length - 1
+                        ? () => moveInList('rows', index, 1)
+                        : undefined
+                    }
+                  />
+                ))}
+              </Shelf>
+            </div>
+            <div className="lg:col-span-3">
+              <Shelf
+                title="En colonnes — les composants"
+                hint={`${design.axisProductIds.length + design.axisOsIds.length} produit(s)`}
+                accent="purple"
+                acceptKinds={['product', 'os']}
+                onDropChip={(kind, id) => addToColumns(kind, id)}
+                emptyLabel="glissez un composant ici"
+              >
+                {[
+                  ...design.axisProductIds.map((id) => ({ kind: 'product' as DropKind, id })),
+                  ...design.axisOsIds.map((id) => ({ kind: 'os' as DropKind, id })),
+                ].map((entry, index) => (
+                  <ShelfChip
+                    key={`${entry.kind}-${entry.id}`}
+                    label={nameOf(entry.id)}
+                    onRemove={() => removeFromColumns(entry.kind, entry.id)}
+                    onMoveLeft={index > 0 ? () => moveInList('columns', index, -1) : undefined}
+                    onMoveRight={
+                      index < design.axisProductIds.length + design.axisOsIds.length - 1
+                        ? () => moveInList('columns', index, 1)
+                        : undefined
+                    }
+                  />
+                ))}
+              </Shelf>
+            </div>
           </div>
 
-          <AxisPicker
-            title="Produits comparés"
-            options={productOptions.filter((p) => p.id !== mainProductId)}
-            selected={axisProductIds}
-            onChange={setAxisProductIds}
-          />
-          <AxisPicker title="Systèmes d’exploitation comparés" options={osOptions} selected={axisOsIds} onChange={setAxisOsIds} />
-        </CardContent>
-      </Card>
-
-      {/* Matrix */}
-      <Card className="bg-slate-900 border-slate-800">
-        <CardContent className="p-4 sm:p-6">
-          {!mainProductId || !axisIdsSelected ? (
-            <div className="text-center py-12">
-              <Grid3x3 className="mx-auto h-10 w-10 text-slate-700" />
-              <p className="mt-3 text-slate-400">
-                Sélectionnez un produit principal et au moins un axe de comparaison.
-              </p>
-            </div>
-          ) : matrixLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 rounded-lg bg-slate-800" />
-              ))}
-            </div>
-          ) : matrixError ? (
-            <QueryError message="Unable to load the compatibility matrix." onRetry={refetchMatrix} />
-          ) : matrix && matrix.axisGroups.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  {/* Grouped header: one group per axis (product or OS), in selection order */}
-                  <tr className="border-b border-slate-800">
-                    <th className="sticky left-0 z-10 bg-slate-900 px-3 py-2 text-left font-medium text-slate-400">
-                      {mainProduct?.name ?? 'Produit'}
-                    </th>
-                    {matrix.axisGroups.map((group: MatrixAxisGroup) => (
-                      <th
-                        key={group.key}
-                        colSpan={Math.max(group.columns.length, 1)}
-                        className="px-3 py-2 text-center font-semibold text-blue-300 border-l border-slate-800"
-                      >
-                        {group.label}
-                        <span className="ml-2 text-[10px] font-normal uppercase text-slate-500">
-                          {group.type === 'product' ? 'produit' : 'os'}
-                        </span>
-                      </th>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-slate-800">
-                    <th className="sticky left-0 z-10 bg-slate-900 px-3 py-2 text-left text-xs text-slate-500">
-                      Version
-                    </th>
-                    {matrix.axisGroups.map((group) =>
-                      group.columns.length === 0 ? (
-                        <th key={`${group.key}-empty`} className="border-l border-slate-800 px-3 py-2 text-xs text-slate-600">
-                          —
-                        </th>
-                      ) : (
-                        group.columns.map((column) => (
-                          <th
-                            key={column.id}
-                            className="border-l border-slate-800 px-2 py-2 text-center text-xs font-medium text-slate-400"
-                          >
-                            {column.version}
-                          </th>
-                        ))
-                      )
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {matrix.rows.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="sticky left-0 z-10 bg-slate-900 px-3 py-2 font-medium text-white">
-                        {row.version}
-                      </td>
-                      {matrix.axisGroups.map((group) =>
-                        group.columns.length === 0 ? (
-                          <td key={`${group.key}-empty`} className="border-l border-slate-800 px-3 py-2 text-center text-slate-600">
-                            —
-                          </td>
-                        ) : (
-                          group.columns.map((column) => {
-                            const cell = matrix.cells[row.id]?.[column.id] ?? {
-                              verdict: 'VALID' as CompatibilityVerdict,
-                              findings: [],
-                            };
-                            return (
-                              <td
-                                key={column.id}
-                                className="border-l border-slate-800/50 p-2 text-center"
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setSelectedCell({
-                                      rowLabel: `${mainProduct?.name ?? ''} ${row.version}`.trim(),
-                                      colLabel: `${group.label} ${column.version}`.trim(),
-                                      cell,
-                                    })
-                                  }
-                                  aria-label={`${VERDICT_CELL[cell.verdict].label} — ${row.version} / ${group.label} ${column.version}`}
-                                  className="mx-auto block cursor-pointer"
-                                >
-                                  <VerdictGlyph verdict={cell.verdict} />
-                                </button>
-                              </td>
-                            );
-                          })
-                        )
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {/* Legend — same three states as the Availability Matrix */}
-              <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-slate-400">
-                <span className="inline-flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400" /> Compatible (✓)
-                </span>
-                <span className="inline-flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-orange-400" /> Avertissement (!)
-                </span>
-                <span className="inline-flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-red-400" /> Incompatible (✗)
-                </span>
-                <span className="ml-auto">Cliquez sur une cellule pour voir les règles motivantes.</span>
-              </div>
-            </div>
+          {/* Live matrix */}
+          {!hasRows || !hasAnyAxis ? (
+            <Card className="border-slate-800 bg-slate-900">
+              <CardContent className="p-10 text-center">
+                <p className="text-slate-400">
+                  Déposez au moins une stack en lignes et un composant en colonnes pour voir la matrice.
+                </p>
+              </CardContent>
+            </Card>
+          ) : grid.isError ? (
+            <QueryError message="Impossible de calculer la matrice." onRetry={grid.refetch} />
           ) : (
-            <div className="text-center py-12">
-              <Grid3x3 className="mx-auto h-10 w-10 text-slate-700" />
-              <p className="mt-3 text-slate-400">Aucune colonne d’axe disponible pour cette sélection.</p>
-            </div>
+            <Card className="border-slate-800 bg-slate-900">
+              <CardContent className="p-0 overflow-x-auto">
+                {grid.isLoading ? (
+                  <div className="space-y-2 p-6">
+                    <Skeleton className="h-10 rounded bg-slate-800" />
+                    <Skeleton className="h-10 rounded bg-slate-800" />
+                    <Skeleton className="h-10 rounded bg-slate-800" />
+                  </div>
+                ) : (
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      {/* Column group headers (one per axis product / OS) */}
+                      <tr>
+                        <th className="sticky left-0 z-10 bg-slate-900 p-3" />
+                        {grid.axisGroups.map((group: MatrixAxisGroup) => (
+                          <th
+                            key={group.key}
+                            colSpan={Math.max(group.columns.length, 1)}
+                            className={`border-b p-2 text-xs font-semibold uppercase tracking-wider ${
+                              group.type === 'product'
+                                ? 'border-blue-800/60 text-blue-300'
+                                : 'border-purple-800/60 text-purple-300'
+                            }`}
+                          >
+                            {group.label}
+                            {group.columns.length === 0 && (
+                              <span className="block text-[10px] text-slate-600">aucune version</span>
+                            )}
+                          </th>
+                        ))}
+                      </tr>
+                      {/* Column versions */}
+                      <tr>
+                        <th className="sticky left-0 z-10 bg-slate-900 p-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
+                          Stacks ↓ / Composants →
+                        </th>
+                        {grid.axisGroups.map((group: MatrixAxisGroup) =>
+                          group.columns.map((column) => (
+                            <th key={column.id} className="border-b border-slate-800 p-2 text-xs font-medium text-slate-400">
+                              {column.version}
+                            </th>
+                          ))
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grid.rowGroups.map((rowGroup) => (
+                        <>
+                          {/* Row group header: the stack product */}
+                          <tr key={`group-${rowGroup.productId}`}>
+                            <td
+                              colSpan={1 + grid.axisGroups.reduce((n, g) => n + Math.max(g.columns.length, 1), 0)}
+                              className="sticky left-0 bg-slate-950/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-blue-300"
+                            >
+                              {rowGroup.productName}
+                            </td>
+                          </tr>
+                          {rowGroup.rows.map((row) => (
+                            <tr key={row.id} className="hover:bg-slate-800/30">
+                              <th className="sticky left-0 z-10 whitespace-nowrap bg-slate-900 p-3 text-left font-medium text-slate-200">
+                                {row.version}
+                              </th>
+                              {grid.axisGroups.map((group: MatrixAxisGroup) =>
+                                group.columns.map((column) => {
+                                  const cell = grid.cells[row.id]?.[column.id];
+                                  const state = cellState(cell);
+                                  return (
+                                    <td key={column.id} className="border-t border-slate-800/60 p-1 text-center">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setSelected({
+                                            rowProductId: rowGroup.productId,
+                                            rowLabel: `${rowGroup.productName} ${row.version}`,
+                                            columnProductId: group.type === 'product' ? group.productId : null,
+                                            columnLabel: `${group.label} ${column.version}`,
+                                            cell: cell ?? { verdict: 'VALID', findings: [] },
+                                          })
+                                        }
+                                        title={`${state.label} — voir les règles`}
+                                        aria-label={`${rowGroup.productName} ${row.version} × ${group.label} ${column.version} : ${state.label}`}
+                                        className={`inline-flex h-9 w-full min-w-[44px] items-center justify-center rounded-md border text-sm font-bold leading-none transition-transform hover:scale-105 ${state.className}`}
+                                      >
+                                        {state.glyph}
+                                      </button>
+                                    </td>
+                                  );
+                                })
+                              )}
+                            </tr>
+                          ))}
+                        </>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
 
-      {/* Phase 2 placeholder — migration planner is out of scope. */}
-      <div className="flex items-center gap-3">
-        <Button
-          type="button"
-          disabled
-          title="Planificateur de migration — phase 2 (à venir)"
-          className="bg-slate-800 text-slate-500 cursor-not-allowed min-h-[44px]"
-        >
-          Migrer depuis cette version
-        </Button>
-        <Badge variant="outline" className="border-slate-700 text-slate-500">
-          Phase 2 — bientôt disponible
-        </Badge>
-      </div>
+          {/* Legend */}
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-500">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-emerald-400/40 bg-emerald-500/20 font-bold text-emerald-300">✓</span>
+              valide
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-orange-400/40 bg-orange-500/20 font-bold text-orange-300">!</span>
+              avertissement
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-red-400/40 bg-red-500/20 font-bold text-red-300">✗</span>
+              bloqué
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-dashed border-slate-800 bg-slate-900 font-bold text-slate-600">—</span>
+              aucune règle (à vous d’en créer)
+            </span>
+            <span className="ml-auto">
+              Repli clavier/tactile : boutons « +lignes / +colonnes » sur chaque produit du bac.
+            </span>
+          </div>
+        </>
+      )}
 
-      {selectedCell && (
-        <RulesPopover
-          anchorLabel={`${selectedCell.rowLabel} × ${selectedCell.colLabel}`}
-          cell={selectedCell.cell}
-          onClose={() => setSelectedCell(null)}
+      {/* Cell panel */}
+      {selected && (
+        <CellPanel
+          rowLabel={selected.rowLabel}
+          columnLabel={selected.columnLabel}
+          cell={selected.cell}
+          nameOf={nameOf}
+          onClose={() => setSelected(null)}
+          onCreateRule={() => handleCreateRuleFromCell(selected)}
+          onDeactivateRule={deactivateRule}
         />
       )}
+
+      {/* Sentence-based rule composer */}
+      <CompatibilityRuleModal
+        open={ruleModalOpen}
+        onOpenChange={(open) => {
+          setRuleModalOpen(open);
+          if (!open) setRuleDefaultPair(null);
+        }}
+        rule={null}
+        products={productOptions}
+        defaultPair={ruleDefaultPair}
+        onSubmit={submitRule}
+        isSubmitting={createRule.isPending}
+      />
     </div>
   );
 }

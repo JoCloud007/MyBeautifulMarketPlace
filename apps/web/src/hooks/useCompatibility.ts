@@ -11,7 +11,7 @@
  */
 
 import axios from 'axios';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueries } from '@tanstack/react-query';
 import {
   useProductVersionComponents,
   type CompatibilityEvaluation,
@@ -111,6 +111,87 @@ export function useCompatibilityMatrix(
     enabled: !!productId && axisProductIds.length + axisOsIds.length > 0,
     retry: 1,
   });
+}
+
+// ---------------------------------------------------------------------------
+// N-product grid (matrix designer): one matrix call per row product, stacked.
+// ---------------------------------------------------------------------------
+
+export interface MatrixGridRowGroup {
+  /** The row product this group of version-rows belongs to. */
+  productId: string;
+  productName: string;
+  rows: CompatibilityMatrix['rows'];
+}
+
+export interface CompatibilityMatrixGrid {
+  rowGroups: MatrixGridRowGroup[];
+  axisGroups: MatrixAxisGroup[];
+  /** cells[rowId][columnId] — same shape as the single matrix call. */
+  cells: Record<string, Record<string, MatrixCellResult>>;
+  /** Per-row-product context (rules are resolved in the row product's context). */
+  rowProductById: Record<string, { id: string; name: string; slug?: string }>;
+  isLoading: boolean;
+  isError: boolean;
+  refetch: () => void;
+}
+
+/**
+ * Stack several matrix calls vertically: one per row product (the designer's
+ * "N products in rows"). Column axis groups are the same for every call.
+ */
+export function useCompatibilityMatrixGrid(
+  rowProductIds: string[],
+  axisProductIds: string[] = [],
+  axisOsIds: string[] = [],
+  productNames: Record<string, string> = {}
+): CompatibilityMatrixGrid {
+  const enabled = rowProductIds.length > 0 && axisProductIds.length + axisOsIds.length > 0;
+  const queries = useQueries({
+    queries: rowProductIds.map((rowProductId) => ({
+      queryKey: ['compatibility-matrix', rowProductId, axisProductIds, axisOsIds],
+      queryFn: async () => {
+        const params: Record<string, string> = { productId: String(rowProductId) };
+        if (axisProductIds.length > 0) params.axisProductIds = axisProductIds.join(',');
+        if (axisOsIds.length > 0) params.axisOsIds = axisOsIds.join(',');
+        const { data } = await api.get('/compatibility/matrix', { params });
+        return data as CompatibilityMatrix;
+      },
+      enabled,
+      retry: 1,
+    })),
+  });
+
+  const rowGroups: MatrixGridRowGroup[] = [];
+  const cells: Record<string, Record<string, MatrixCellResult>> = {};
+  const rowProductById: Record<string, { id: string; name: string; slug?: string }> = {};
+  let axisGroups: MatrixAxisGroup[] = [];
+
+  queries.forEach((query: { data?: CompatibilityMatrix | undefined }, index: number) => {
+    const rowProductId = rowProductIds[index];
+    const data = query.data;
+    if (!data) return;
+    if (axisGroups.length === 0) axisGroups = data.axisGroups ?? [];
+    rowProductById[rowProductId] = data.product;
+    rowGroups.push({
+      productId: rowProductId,
+      productName: data.product?.name ?? productNames[rowProductId] ?? rowProductId,
+      rows: data.rows ?? [],
+    });
+    Object.assign(cells, data.cells ?? {});
+  });
+
+  return {
+    rowGroups,
+    axisGroups,
+    cells,
+    rowProductById,
+    isLoading: queries.some((q: { isLoading: boolean }) => q.isLoading),
+    isError: queries.some((q: { isError: boolean }) => q.isError),
+    refetch: () => {
+      queries.forEach((q: { refetch: () => void }) => q.refetch());
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
