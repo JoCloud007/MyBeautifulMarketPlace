@@ -5,12 +5,12 @@
  * visual designer: a product tray to drag onto "rows" and "columns" shelves
  * (N products each, keyboard/button fallback included), a live calculated
  * matrix below (one matrix API call per row product, stacked), and a cell
- * panel that reads the motivating rules as sentences ("Quand la stack est X
- * dans les versions ≥ 17, elle exige le composant Y …") and can create a new
+ * panel that reads the motivating rules as sentences ("When the stack is X
+ * in versions ≥ 17, it requires the component Y …") and can create a new
  * rule pre-filled from the clicked cell.
  *
  * Client vocabulary: Stack (rule source) / Composant (rule target) /
- * exige (REQUIRES) / interdit (FORBIDS) / Bloquant (HARD) / Avertissement (SOFT).
+ * requires (REQUIRES) / forbids (FORBIDS) / Blocking (HARD) / Warning (SOFT).
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -67,20 +67,20 @@ const VERDICT_CELL: Record<
   WARNING: {
     icon: AlertTriangle,
     glyph: '!',
-    label: 'Avertissement',
+    label: 'Warning',
     className: 'bg-orange-500/20 text-orange-300 border-orange-400/40',
   },
   BLOCKED: {
     icon: XCircle,
     glyph: '✗',
-    label: 'Bloqué',
+    label: 'Blocked',
     className: 'bg-red-500/20 text-red-300 border-red-400/40',
   },
 };
 
 const NO_RULE = {
   glyph: '—',
-  label: 'Aucune règle',
+  label: 'No rule',
   className: 'bg-slate-900 text-slate-600 border-dashed border-slate-800',
 };
 
@@ -156,21 +156,21 @@ function TrayChip({
         <button
           type="button"
           onClick={onAddRow}
-          title="Ajouter aux lignes"
-          aria-label={`Ajouter ${label} aux lignes`}
+          title="Add to rows"
+          aria-label={`Add ${label} to rows`}
           className="rounded px-1.5 py-0.5 text-xs text-slate-400 hover:bg-blue-500/15 hover:text-blue-300"
         >
-          +lignes
+          +rows
         </button>
       )}
       <button
         type="button"
         onClick={onAddColumn}
-        title="Ajouter aux colonnes"
-        aria-label={`Ajouter ${label} aux colonnes`}
+        title="Add to columns"
+        aria-label={`Add ${label} to columns`}
         className="rounded px-1.5 py-0.5 text-xs text-slate-400 hover:bg-blue-500/15 hover:text-blue-300"
       >
-        +colonnes
+        +columns
       </button>
     </span>
   );
@@ -194,8 +194,8 @@ function ShelfChip({
         <button
           type="button"
           onClick={onMoveLeft}
-          title="Déplacer vers la gauche"
-          aria-label={`Déplacer ${label} vers la gauche`}
+          title="Move left"
+          aria-label={`Move ${label} left`}
           className="rounded p-0.5 text-blue-300/70 hover:bg-blue-500/20 hover:text-blue-200"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
@@ -205,8 +205,8 @@ function ShelfChip({
         <button
           type="button"
           onClick={onMoveRight}
-          title="Déplacer vers la droite"
-          aria-label={`Déplacer ${label} vers la droite`}
+          title="Move right"
+          aria-label={`Move ${label} right`}
           className="rounded p-0.5 text-blue-300/70 hover:bg-blue-500/20 hover:text-blue-200"
         >
           <ArrowRight className="h-3.5 w-3.5" />
@@ -215,8 +215,8 @@ function ShelfChip({
       <button
         type="button"
         onClick={onRemove}
-        title="Retirer"
-        aria-label={`Retirer ${label}`}
+        title="Remove"
+        aria-label={`Remove ${label}`}
         className="rounded p-0.5 text-blue-300/70 hover:bg-red-500/20 hover:text-red-300"
       >
         <X className="h-3.5 w-3.5" />
@@ -335,12 +335,12 @@ function CellPanel({
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
       <div
         role="dialog"
-        aria-label={`Règles — ${rowLabel} × ${columnLabel}`}
+        aria-label={`Rules — ${rowLabel} × ${columnLabel}`}
         className="relative z-10 max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-slate-700 bg-slate-900 p-5 shadow-xl"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-wider text-slate-500">Cellule</p>
+            <p className="text-xs uppercase tracking-wider text-slate-500">Cell</p>
             <p className="mt-1 text-base font-semibold text-white">
               {rowLabel} <span className="text-slate-500">×</span> {columnLabel}
             </p>
@@ -348,7 +348,7 @@ function CellPanel({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Fermer"
+            aria-label="Close"
             className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
           >
             <X className="h-4 w-4" />
@@ -369,7 +369,7 @@ function CellPanel({
         {cell.findings.length === 0 ? (
           <div className="mt-5 rounded-lg border border-dashed border-slate-700 bg-slate-950/50 p-4">
             <p className="text-sm text-slate-400">
-              Aucune règle pour cette paire. Créez-en une pour dire ce qui est attendu.
+              No rule for this pair. Create one to state what is expected.
             </p>
           </div>
         ) : (
@@ -393,7 +393,7 @@ function CellPanel({
                         : 'bg-orange-500/15 text-orange-300'
                     }`}
                   >
-                    {finding.severity === 'HARD' ? 'Bloquant' : 'Avertissement'}
+                    {finding.severity === 'HARD' ? 'Blocking' : 'Warning'}
                   </span>
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-[10px] ${
@@ -402,14 +402,14 @@ function CellPanel({
                         : 'bg-red-500/15 text-red-300'
                     }`}
                   >
-                    {finding.satisfied ? '✓ satisfaite' : '✗ violée'}
+                    {finding.satisfied ? '✓ satisfied' : '✗ violated'}
                   </span>
                   <button
                     type="button"
                     onClick={() => onDeactivateRule(finding.ruleId)}
                     className="ml-auto rounded border border-slate-700 px-2 py-1 text-xs text-slate-400 hover:border-slate-600 hover:text-slate-200"
                   >
-                    Désactiver
+                    Deactivate
                   </button>
                 </div>
                 <p className="mt-2 text-sm text-slate-200">
@@ -438,7 +438,7 @@ function CellPanel({
             className="w-full bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]"
           >
             <Plus className="mr-1 h-4 w-4" />
-            Créer une règle sur cette paire
+            Create a rule for this pair
           </Button>
         </div>
       </div>
@@ -550,14 +550,14 @@ export default function CompatibilityMatrix() {
   const reset = () => {
     setDesign({ rowProductIds: [], axisProductIds: [], axisOsIds: [] });
     setSelected(null);
-    addToast('Concepteur réinitialisé', 'success');
+    addToast('Designer reset', 'success');
   };
   const saveView = () => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(design));
-      addToast('Vue enregistrée', 'success');
+      addToast('View saved', 'success');
     } catch {
-      addToast('Impossible d’enregistrer la vue dans ce navigateur', 'error');
+      addToast('Unable to save the view in this browser', 'error');
     }
   };
 
@@ -623,12 +623,12 @@ export default function CompatibilityMatrix() {
         <div>
           <Link to="/marketplace" className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-slate-200">
             <ArrowLeft className="h-4 w-4" />
-            Retour au marketplace
+            Back to marketplace
           </Link>
-          <h1 className="mt-2 text-2xl font-bold text-white">Concepteur de matrice</h1>
+          <h1 className="mt-2 text-2xl font-bold text-white">Matrix designer</h1>
           <p className="mt-1 text-sm text-slate-400">
-            Glissez des produits sur les étagères — la matrice de compatibilité se calcule en direct,
-            pour N stacks et N composants.
+            Drag products onto the shelves — the compatibility matrix is calculated live,
+            for N stacks and N components.
           </p>
         </div>
         <div className="flex gap-2">
@@ -638,17 +638,17 @@ export default function CompatibilityMatrix() {
             className="border-slate-700 text-slate-300 hover:bg-slate-800 min-h-[44px]"
           >
             <RotateCcw className="mr-1 h-4 w-4" />
-            Réinitialiser
+            Reset
           </Button>
           <Button onClick={saveView} className="bg-blue-600 hover:bg-blue-700 text-white min-h-[44px]">
             <Save className="mr-1 h-4 w-4" />
-            Enregistrer la vue
+            Save view
           </Button>
         </div>
       </div>
 
       {productsError ? (
-        <QueryError message="Impossible de charger les produits." onRetry={refetchProducts} />
+        <QueryError message="Unable to load the products." onRetry={refetchProducts} />
       ) : productsLoading ? (
         <div className="space-y-3">
           <Skeleton className="h-24 rounded-xl bg-slate-800" />
@@ -660,7 +660,7 @@ export default function CompatibilityMatrix() {
           <Card className="border-slate-800 bg-slate-900">
             <CardContent className="p-4">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Bac à produits — à glisser
+                Product tray — drag these
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {trayProducts.map((p) => (
@@ -683,11 +683,11 @@ export default function CompatibilityMatrix() {
                   />
                 ))}
                 {trayProducts.length === 0 && trayOs.length === 0 && (
-                  <span className="text-sm text-slate-500">Tous les produits sont sur les étagères.</span>
+                  <span className="text-sm text-slate-500">All products are on the shelves.</span>
                 )}
               </div>
               <p className="mt-2 text-xs text-slate-500">
-                Les systèmes d’exploitation se posent uniquement sur l’étagère des colonnes.
+                Operating systems can only be dropped on the columns shelf.
               </p>
             </CardContent>
           </Card>
@@ -696,12 +696,12 @@ export default function CompatibilityMatrix() {
           <div className="grid gap-3 lg:grid-cols-5">
             <div className="lg:col-span-2">
               <Shelf
-                title="En lignes — les stacks"
-                hint={`${design.rowProductIds.length} produit(s)`}
+                title="In rows — the stacks"
+                hint={`${design.rowProductIds.length} product(s)`}
                 accent="blue"
                 acceptKinds={['product']}
                 onDropChip={(_kind, id) => addToRows(id)}
-                emptyLabel="glissez une stack ici"
+                emptyLabel="drop a stack here"
               >
                 {design.rowProductIds.map((id, index) => (
                   <ShelfChip
@@ -720,12 +720,12 @@ export default function CompatibilityMatrix() {
             </div>
             <div className="lg:col-span-3">
               <Shelf
-                title="En colonnes — les composants"
-                hint={`${design.axisProductIds.length + design.axisOsIds.length} produit(s)`}
+                title="In columns — the components"
+                hint={`${design.axisProductIds.length + design.axisOsIds.length} product(s)`}
                 accent="purple"
                 acceptKinds={['product', 'os']}
                 onDropChip={(kind, id) => addToColumns(kind, id)}
-                emptyLabel="glissez un composant ici"
+                emptyLabel="drop a component here"
               >
                 {[
                   ...design.axisProductIds.map((id) => ({ kind: 'product' as DropKind, id })),
@@ -752,12 +752,12 @@ export default function CompatibilityMatrix() {
             <Card className="border-slate-800 bg-slate-900">
               <CardContent className="p-10 text-center">
                 <p className="text-slate-400">
-                  Déposez au moins une stack en lignes et un composant en colonnes pour voir la matrice.
+                  Drop at least one stack in rows and one component in columns to see the matrix.
                 </p>
               </CardContent>
             </Card>
           ) : grid.isError ? (
-            <QueryError message="Impossible de calculer la matrice." onRetry={grid.refetch} />
+            <QueryError message="Unable to compute the matrix." onRetry={grid.refetch} />
           ) : (
             <Card className="border-slate-800 bg-slate-900">
               <CardContent className="p-0 overflow-x-auto">
@@ -793,7 +793,7 @@ export default function CompatibilityMatrix() {
                       {/* Column versions */}
                       <tr>
                         <th className="sticky left-0 z-10 bg-slate-900 p-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
-                          Stacks ↓ / Composants →
+                          Stacks ↓ / Components →
                         </th>
                         {grid.axisGroups.map((group: MatrixAxisGroup) =>
                           group.columns.map((column) => (
@@ -838,7 +838,7 @@ export default function CompatibilityMatrix() {
                                             cell: cell ?? { verdict: 'VALID', findings: [] },
                                           })
                                         }
-                                        title={`${state.label} — voir les règles`}
+                                        title={`${state.label} — see the rules`}
                                         aria-label={`${rowGroup.productName} ${row.version} × ${group.label} ${column.version} : ${state.label}`}
                                         className={`inline-flex h-9 w-full min-w-[44px] items-center justify-center rounded-md border text-sm font-bold leading-none transition-transform hover:scale-105 ${state.className}`}
                                       >
@@ -863,22 +863,22 @@ export default function CompatibilityMatrix() {
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-500">
             <span className="inline-flex items-center gap-1.5">
               <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-emerald-400/40 bg-emerald-500/20 font-bold text-emerald-300">✓</span>
-              valide
+              valid
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-orange-400/40 bg-orange-500/20 font-bold text-orange-300">!</span>
-              avertissement
+              warning
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-red-400/40 bg-red-500/20 font-bold text-red-300">✗</span>
-              bloqué
+              blocked
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-dashed border-slate-800 bg-slate-900 font-bold text-slate-600">—</span>
-              aucune règle (à vous d’en créer)
+              no rule (yours to create)
             </span>
             <span className="ml-auto">
-              Repli clavier/tactile : boutons « +lignes / +colonnes » sur chaque produit du bac.
+              Keyboard/touch fallback: use the “+rows / +columns” buttons on each tray product.
             </span>
           </div>
         </>

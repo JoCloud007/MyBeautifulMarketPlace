@@ -1,5 +1,5 @@
 /**
- * StackComposerModal — per-version "Composants (stack)" editor.
+ * StackComposerModal — per-version "Components (stack)" editor.
  * Spec "Stacks de produits & matrice de compatibilité"; work unit "admin-ui"
  * (owner of this file only).
  *
@@ -68,7 +68,7 @@ const VERDICT_BADGE: Record<
   },
   WARNING: {
     icon: AlertTriangle,
-    label: '! Avertissement',
+    label: '! Warning',
     className: 'border-amber-500/30 text-amber-400 bg-amber-500/10',
   },
   BLOCKED: {
@@ -80,8 +80,8 @@ const VERDICT_BADGE: Record<
 
 /** Rule display line: name + constraint(s) + satisfied/violated state. */
 export function FindingRuleLine({ finding }: { finding: CompatibilityFinding }) {
-  const from = finding.fromVersionConstraint || 'toutes versions';
-  const to = finding.toVersionConstraint || 'toutes versions';
+  const from = finding.fromVersionConstraint || 'all versions';
+  const to = finding.toVersionConstraint || 'all versions';
   return (
     <li className="flex items-start gap-2 text-sm">
       {finding.satisfied ? (
@@ -97,8 +97,8 @@ export function FindingRuleLine({ finding }: { finding: CompatibilityFinding }) 
           </span>
         </p>
         <p className="text-xs text-slate-500">
-          {finding.satisfied ? 'satisfaite' : 'violée'}
-          {finding.overridden ? ' · surchargée (SOFT)' : ''}
+          {finding.satisfied ? 'satisfied' : 'violated'}
+          {finding.overridden ? ' · overridden (SOFT)' : ''}
           {finding.reason !== 'ok' ? ` · ${finding.reason}` : ''}
         </p>
       </div>
@@ -227,7 +227,7 @@ export default function StackComposerModal({
       <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-white">
-            Composants (stack) — {containerLabel}
+            Components (stack) — {containerLabel}
           </DialogTitle>
         </DialogHeader>
 
@@ -246,7 +246,7 @@ export default function StackComposerModal({
         {/* Add component: product picker then version picker */}
         <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3 space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Ajouter un composant
+            Add a component
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <select
@@ -258,7 +258,7 @@ export default function StackComposerModal({
               }}
               className="h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
             >
-              <option value="">Produit…</option>
+              <option value="">Product…</option>
               {productOptions
                 .filter((p) => !usedProductIds.has(p.id))
                 .map((p) => (
@@ -275,7 +275,7 @@ export default function StackComposerModal({
               className="h-10 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white disabled:opacity-50"
             >
               <option value="">
-                {selectedProductId ? 'Version…' : 'Choisissez d’abord un produit'}
+                {selectedProductId ? 'Version…' : 'Choose a product first'}
               </option>
               {versionOptions.map((v) => (
                 <option key={v.id} value={v.id}>
@@ -292,14 +292,14 @@ export default function StackComposerModal({
             className="border-slate-700 text-slate-300 hover:bg-slate-800 min-h-[44px]"
           >
             <Plus className="mr-2 h-4 w-4" />
-            Ajouter
+            Add
           </Button>
         </div>
 
         {/* Draft component list */}
         <div className="space-y-2">
           {draft.length === 0 ? (
-            <p className="text-sm text-slate-500">Aucun composant dans cette version.</p>
+            <p className="text-sm text-slate-500">No component in this version.</p>
           ) : (
             draft.map((component, index) => {
               const product = productOptions.find((p) => p.id === component.productId);
@@ -320,7 +320,7 @@ export default function StackComposerModal({
                     size="sm"
                     variant="ghost"
                     onClick={() => removeComponent(index)}
-                    aria-label="Retirer ce composant"
+                    aria-label="Remove this component"
                     className="h-8 w-8 p-0 text-slate-400 hover:text-red-400 hover:bg-red-500/10"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -334,11 +334,11 @@ export default function StackComposerModal({
         {/* Findings list with the motivating rules */}
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Règles motivantes
+            Motivating rules
           </p>
           {findings.length === 0 ? (
             <p className="text-sm text-slate-500">
-              Aucune règle de compatibilité applicable à cette composition.
+              No compatibility rule applies to this composition.
             </p>
           ) : (
             <ul className="space-y-2 rounded-lg border border-slate-800 bg-slate-950/50 p-3">
@@ -349,8 +349,8 @@ export default function StackComposerModal({
           )}
           {unsatisfied.length > 0 && (
             <p className="text-xs text-amber-400">
-              {unsatisfied.length} règle(s) non satisfaite(s) — une règle HARD bloque
-              l’enregistrement (surcharge possible avec justification).
+              {unsatisfied.length} unsatisfied rule(s) — a HARD rule blocks
+              saving (override possible with a justification).
             </p>
           )}
         </div>
@@ -359,7 +359,7 @@ export default function StackComposerModal({
         {hasBlocked && (
           <div className="space-y-2 rounded-lg border border-red-500/30 bg-red-500/5 p-3">
             <p className="text-sm text-red-300">
-              Cette composition viole une règle HARD. Enregistrement bloqué.
+              This composition violates a HARD rule. Saving is blocked.
             </p>
             {!showOverride ? (
               <Button
@@ -368,7 +368,7 @@ export default function StackComposerModal({
                 onClick={() => setShowOverride(true)}
                 className="border-red-500/40 text-red-300 hover:bg-red-500/10 min-h-[44px]"
               >
-                Forcer (surcharge SOFT)…
+                Force (SOFT override)…
               </Button>
             ) : (
               <div className="space-y-2">
@@ -376,7 +376,7 @@ export default function StackComposerModal({
                   value={justification}
                   onChange={(e) => setJustification(e.target.value)}
                   rows={3}
-                  placeholder="Justification obligatoire pour forcer une règle HARD"
+                  placeholder="Justification required to force a HARD rule"
                   className="bg-slate-950 border-slate-700 text-white"
                 />
                 <Button
@@ -385,7 +385,7 @@ export default function StackComposerModal({
                   disabled={justification.trim().length === 0}
                   className="bg-amber-600 hover:bg-amber-700 text-white min-h-[44px]"
                 >
-                  Enregistrer avec surcharge
+                  Save with override
                 </Button>
                 {justification.trim().length === 0 && (
                   <p className="text-xs text-red-400">
@@ -404,7 +404,7 @@ export default function StackComposerModal({
             onClick={() => onOpenChange(false)}
             className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]"
           >
-            Annuler
+            Cancel
           </Button>
           <Button
             type="button"
@@ -412,7 +412,7 @@ export default function StackComposerModal({
             disabled={saveComponents.isPending || hasBlocked}
             className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]"
           >
-            Enregistrer
+            Save
           </Button>
         </DialogFooter>
       </DialogContent>

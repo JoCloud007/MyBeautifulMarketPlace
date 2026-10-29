@@ -1,9 +1,9 @@
 /**
  * CompatibilityRuleModal — rule composer expressed as a sentence.
  * Redesign (2026-10-28): the client rejected the source/target + kind/severity
- * form. A rule now reads as: "Quand la STACK est X dans les versions <range>,
- * elle exige/interdit le COMPOSANT Y dans les versions <range>" — consequence
- * Bloquant (HARD) or Avertissement (SOFT). The persisted payload and the
+ * form. A rule now reads as: "When the STACK is X in versions <range>, it
+ * requires/forbids the COMPONENT Y in versions <range>" — consequence
+ * Blocking (HARD) or Warning (SOFT). The persisted payload and the
  * RuleFormValues contract are unchanged (Admin.tsx keeps working).
  */
 
@@ -71,10 +71,10 @@ export function joinConstraint(op: ConstraintOperator, version: string): string 
   return v.length === 0 ? '' : `${op}${v}`;
 }
 
-/** Human constraint rendering: ">= 4", "= 9.4", "toutes versions" when empty. */
+/** Human constraint rendering: ">= 4", "= 9.4", "all versions" when empty. */
 export function constraintLabel(constraint: string | null | undefined): string {
   const trimmed = (constraint ?? '').trim();
-  if (trimmed.length === 0) return 'toutes versions';
+  if (trimmed.length === 0) return 'all versions';
   const { op, version } = splitConstraint(trimmed);
   return version ? `${op} ${version}` : trimmed;
 }
@@ -106,15 +106,15 @@ export function RuleSentenceText({ rule, productName }: RuleSentenceProps) {
   const requires = rule.kind === 'REQUIRES';
   return (
     <span className="leading-relaxed">
-      Quand la <span className="font-bold text-blue-300">stack</span> est{' '}
+      When the <span className="font-bold text-blue-300">stack</span> is{' '}
       <span className={CHIP}>{productName(rule.fromProductId ?? '')}</span>{' '}
-      dans les versions <span className={CHIP}>{constraintLabel(rule.fromVersionConstraint)}</span>,
-      elle{' '}
+      in versions <span className={CHIP}>{constraintLabel(rule.fromVersionConstraint)}</span>,
+      it{' '}
       <span className={requires ? 'font-bold text-emerald-400' : 'font-bold text-red-400'}>
-        {requires ? 'exige' : 'interdit'}
+        {requires ? 'requires' : 'forbids'}
       </span>{' '}
-      le composant <span className={CHIP}>{productName(rule.toProductId ?? '')}</span>{' '}
-      dans les versions <span className={CHIP}>{constraintLabel(rule.toVersionConstraint)}</span>.
+      the component <span className={CHIP}>{productName(rule.toProductId ?? '')}</span>{' '}
+      in versions <span className={CHIP}>{constraintLabel(rule.toVersionConstraint)}</span>.
     </span>
   );
 }
@@ -178,13 +178,13 @@ function formFromRule(rule: CompatibilityRule): RuleFormValues {
   };
 }
 
-/** Auto rule name: "PG 17+ exige VM >=4" — enough for findings and lists. */
+/** Auto rule name: "PG 17+ requires VM >=4" — enough for findings and lists. */
 function autoName(form: RuleFormValues, nameOf: (id: string) => string): string {
   const from = nameOf(form.fromProductId) || 'Stack';
-  const to = nameOf(form.toProductId) || 'Composant';
+  const to = nameOf(form.toProductId) || 'Component';
   const fromC = form.fromVersionConstraint.trim();
   const toC = form.toVersionConstraint.trim();
-  const verb = form.kind === 'REQUIRES' ? 'exige' : 'interdit';
+  const verb = form.kind === 'REQUIRES' ? 'requires' : 'forbids';
   return `${from}${fromC ? ` ${fromC}` : ''} ${verb} ${to}${toC ? ` ${toC}` : ''}`;
 }
 
@@ -209,7 +209,7 @@ function VersionRangePicker({
         {label}
       </label>
       <select
-        aria-label={`${label} — opérateur`}
+        aria-label={`${label} — operator`}
         value={op}
         onChange={(e) => onOpChange(e.target.value as ConstraintOperator)}
         className="h-10 min-h-[40px] rounded-md border border-slate-700 bg-slate-950 px-2 text-sm font-bold text-blue-300"
@@ -232,7 +232,7 @@ function VersionRangePicker({
             : 'border-red-500 focus-visible:ring-red-500'
         }`}
       />
-      <span className="text-xs text-slate-500">— vide = toutes les versions</span>
+      <span className="text-xs text-slate-500">— empty = all versions</span>
     </div>
   );
 }
@@ -295,7 +295,7 @@ export default function CompatibilityRuleModal({
       <DialogContent className="bg-slate-900 border-slate-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-white">
-            {rule ? 'Modifier la règle' : 'Nouvelle règle'}
+            {rule ? 'Edit rule' : 'New rule'}
           </DialogTitle>
         </DialogHeader>
 
@@ -315,7 +315,7 @@ export default function CompatibilityRuleModal({
           />
           {form.scopeType === 'PRODUCT' && form.scopeProductId && (
             <span className="block pt-1 text-xs text-slate-400">
-              (uniquement pour la stack « {nameOf(form.scopeProductId)} »)
+              (only for the “{nameOf(form.scopeProductId)}” stack)
             </span>
           )}
         </div>
@@ -324,7 +324,7 @@ export default function CompatibilityRuleModal({
           {/* When */}
           <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-950/50 p-4">
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Quand la stack
+              When the stack
             </div>
             <select
               aria-label="Stack"
@@ -333,7 +333,7 @@ export default function CompatibilityRuleModal({
               required
               className="w-full h-11 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm font-semibold text-white"
             >
-              <option value="">Choisir une stack…</option>
+              <option value="">Choose a stack…</option>
               {productOptions.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -342,7 +342,7 @@ export default function CompatibilityRuleModal({
             </select>
             <VersionRangePicker
               id="rule-from-version"
-              label="dans les versions"
+              label="in versions"
               op={fromRange.op}
               version={fromRange.version}
               onOpChange={(op) =>
@@ -369,7 +369,7 @@ export default function CompatibilityRuleModal({
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  ● exige
+                  ● requires
                 </button>
                 <button
                   type="button"
@@ -381,20 +381,20 @@ export default function CompatibilityRuleModal({
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  ○ interdit
+                  ○ forbids
                 </button>
               </div>
-              <span className="text-xs text-slate-500">le composant</span>
+              <span className="text-xs text-slate-500">the component</span>
             </div>
 
             <select
-              aria-label="Composant"
+              aria-label="Component"
               value={form.toProductId}
               onChange={(e) => setForm({ ...form, toProductId: e.target.value })}
               required
               className="w-full h-11 min-h-[44px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm font-semibold text-white"
             >
-              <option value="">Choisir un composant…</option>
+              <option value="">Choose a component…</option>
               {productOptions.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -403,13 +403,13 @@ export default function CompatibilityRuleModal({
             </select>
             {touched && form.fromProductId && form.fromProductId === form.toProductId && (
               <p className="text-xs text-red-400">
-                La stack et le composant doivent être deux produits différents.
+                The stack and the component must be two different products.
               </p>
             )}
 
             <VersionRangePicker
               id="rule-to-version"
-              label="dans les versions"
+              label="in versions"
               op={toRange.op}
               version={toRange.version}
               onOpChange={(op) =>
@@ -424,7 +424,7 @@ export default function CompatibilityRuleModal({
           {/* Consequence */}
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Conséquence
+              Consequence
             </span>
             <div className="flex overflow-hidden rounded-full border border-slate-700">
               <button
@@ -437,7 +437,7 @@ export default function CompatibilityRuleModal({
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                ● Bloquant
+                ● Blocking
               </button>
               <button
                 type="button"
@@ -449,20 +449,20 @@ export default function CompatibilityRuleModal({
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                ○ Avertissement
+                ○ Warning
               </button>
             </div>
             <span className="text-xs text-slate-500">
               {form.severity === 'HARD'
-                ? 'empêche d’enregistrer une composition non conforme'
-                : 'signale un risque, sans bloquer'}
+                ? 'prevents saving a non-compliant composition'
+                : 'flags a risk without blocking'}
             </span>
           </div>
 
           {/* Scope */}
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Portée
+              Scope
             </span>
             <div className="flex overflow-hidden rounded-full border border-slate-700">
               <button
@@ -475,7 +475,7 @@ export default function CompatibilityRuleModal({
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Partout
+                Everywhere
               </button>
               <button
                 type="button"
@@ -487,18 +487,18 @@ export default function CompatibilityRuleModal({
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Seulement pour une stack
+                Only for one stack
               </button>
             </div>
             {form.scopeType === 'PRODUCT' && (
               <select
-                aria-label="Stack concernée par la portée"
+                aria-label="Stack for the scope"
                 value={form.scopeProductId}
                 onChange={(e) => setForm({ ...form, scopeProductId: e.target.value })}
                 required
                 className="h-10 min-h-[40px] rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-white"
               >
-                <option value="">Choisir la stack…</option>
+                <option value="">Choose the stack…</option>
                 {productOptions.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -512,14 +512,14 @@ export default function CompatibilityRuleModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label htmlFor="rule-description" className="text-sm font-medium text-slate-300">
-                Note (facultatif)
+                Note (optional)
               </label>
               <Textarea
                 id="rule-description"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 rows={2}
-                placeholder="« PG 17 a besoin de la génération VM v4 »"
+                placeholder="e.g. “PG 17 needs the v4 VM generation”"
                 className="bg-slate-950 border-slate-700 text-white"
               />
             </div>
@@ -532,11 +532,11 @@ export default function CompatibilityRuleModal({
                 value={form.justification}
                 onChange={(e) => setForm({ ...form, justification: e.target.value })}
                 rows={2}
-                placeholder="Obligatoire si cette règle assouplit une règle globale"
+                placeholder="Required when this rule relaxes a global rule"
                 className="bg-slate-950 border-slate-700 text-white"
               />
               <p className="text-xs text-slate-500">
-                Obligatoire quand une règle par stack assouplit une règle globale (l’API refuse sinon).
+                Mandatory when a stack-scoped rule relaxes a global rule (the API rejects it otherwise).
               </p>
             </div>
           </div>
@@ -550,7 +550,7 @@ export default function CompatibilityRuleModal({
               className="rounded border-slate-700 bg-slate-950"
             />
             <label htmlFor="rule-active" className="text-sm text-slate-300">
-              Règle active
+              Rule active
             </label>
           </div>
 
@@ -561,14 +561,14 @@ export default function CompatibilityRuleModal({
               onClick={() => onOpenChange(false)}
               className="border-slate-700 text-slate-300 hover:bg-slate-800 w-full sm:w-auto min-h-[44px]"
             >
-              Annuler
+              Cancel
             </Button>
             <Button
               type="submit"
               disabled={!valid || isSubmitting}
               className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto min-h-[44px]"
             >
-              {rule ? 'Enregistrer' : 'Créer la règle'}
+              {rule ? 'Save' : 'Create rule'}
             </Button>
           </DialogFooter>
         </form>

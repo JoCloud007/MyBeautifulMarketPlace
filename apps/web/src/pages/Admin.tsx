@@ -3519,14 +3519,14 @@ function VariantsSection() {
 // ============ COMPATIBILITY RULES SECTION ============
 /** Short label for a version constraint (any version when empty). */
 // Client vocabulary for compatibility rules (2026-10-28 redesign):
-// Stack (rule source) / Composant (rule target) / exige / interdit /
-// Bloquant (HARD) / Avertissement (SOFT) / Partout (GLOBAL).
-const RULE_KIND_LABEL: Record<string, string> = { REQUIRES: 'exige', FORBIDS: 'interdit' };
-const RULE_SEVERITY_LABEL: Record<string, string> = { HARD: 'Bloquant', SOFT: 'Avertissement' };
+// Stack (rule source) / Component (rule target) / requires / forbids /
+// Blocking (HARD) / Warning (SOFT) / Everywhere (GLOBAL).
+const RULE_KIND_LABEL: Record<string, string> = { REQUIRES: 'requires', FORBIDS: 'forbids' };
+const RULE_SEVERITY_LABEL: Record<string, string> = { HARD: 'Blocking', SOFT: 'Warning' };
 
 function constraintLabel(constraint: string | null | undefined): string {
   const trimmed = (constraint ?? '').trim();
-  return trimmed.length > 0 ? trimmed : 'toutes versions';
+  return trimmed.length > 0 ? trimmed : 'all versions';
 }
 
 function CompatibilityRulesSection() {
@@ -3595,7 +3595,7 @@ function CompatibilityRulesSection() {
         <Badge variant="outline" className={rule.kind === 'REQUIRES' ? 'border-emerald-500/20 text-emerald-400' : 'border-red-500/20 text-red-400'}>{RULE_KIND_LABEL[rule.kind] ?? rule.kind}</Badge>
         <Badge variant="outline" className={rule.severity === 'HARD' ? 'border-red-500/20 text-red-400' : 'border-amber-500/20 text-amber-400'}>{RULE_SEVERITY_LABEL[rule.severity] ?? rule.severity}</Badge>
         <Badge variant="outline" className="border-slate-600 text-slate-400">
-          {rule.scopeType === 'PRODUCT' ? `Stack: ${productName(rule.scopeProductId)}` : 'Partout'}
+          {rule.scopeType === 'PRODUCT' ? `Stack: ${productName(rule.scopeProductId)}` : 'Everywhere'}
         </Badge>
       </div>
       {rule.justification && <p className="mt-2 text-xs text-slate-500">{rule.justification}</p>}
@@ -3616,7 +3616,7 @@ function CompatibilityRulesSection() {
       <Card className="bg-slate-900 border-slate-800">
         <CardContent className="p-4 sm:p-6">
           <ResponsiveTable
-            headers={['Stack', 'Versions', 'Composant', 'Versions', 'Règle', 'Conséquence', 'Portée', 'Justification']}
+            headers={['Stack', 'Versions', 'Component', 'Versions', 'Rule', 'Consequence', 'Scope', 'Justification']}
             isLoading={isLoading}
             emptyMessage="No compatibility rules"
             mobileCards={mobileCards}
@@ -3641,7 +3641,7 @@ function CompatibilityRulesSection() {
                   <Badge variant="outline" className="border-slate-600 text-slate-400">
                     {rule.scopeType === 'PRODUCT'
                       ? `Stack: ${rule.scopeProduct?.name ?? productName(rule.scopeProductId)}`
-                      : 'Partout'}
+                      : 'Everywhere'}
                   </Badge>
                 </td>
                 <td className="py-3 text-xs text-slate-500">{rule.justification || '—'}</td>
@@ -3682,7 +3682,7 @@ function CompatibilityRulesSection() {
 
 // ============ STACK COMPONENTS (per product version) ============
 /**
- * "Composants (stack)" sub-list of one product version: current components with
+ * "Components (stack)" sub-list of one product version: current components with
  * removal, an add flow via product picker then version picker filtered to that
  * product's versions, persistence through PUT /api/product-versions/:id/components,
  * and the live-verdict composer modal.
@@ -3746,7 +3746,7 @@ function VersionStackSubList({
     <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-          Composants (stack)
+          Components (stack)
         </p>
         <Button
           size="sm"
@@ -3759,7 +3759,7 @@ function VersionStackSubList({
       </div>
 
       {(rows ?? []).length === 0 ? (
-        <p className="text-xs text-slate-500">Aucun composant dans cette version.</p>
+        <p className="text-xs text-slate-500">No component in this version.</p>
       ) : (
         <div className="space-y-1">
           {(rows ?? []).map((row) => (
@@ -3773,7 +3773,7 @@ function VersionStackSubList({
               <button
                 type="button"
                 onClick={() => handleRemove(row.componentVersionId)}
-                aria-label="Retirer ce composant"
+                aria-label="Remove this component"
                 className="ml-auto rounded p-1 text-slate-500 hover:text-red-400 hover:bg-red-500/10"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -3816,7 +3816,7 @@ function VersionStackSubList({
           disabled={!addProductId || !addVersionId}
           className="bg-blue-600 hover:bg-blue-700 text-white min-h-[36px]"
         >
-          <Plus className="mr-1 h-3.5 w-3.5" /> Ajouter
+          <Plus className="mr-1 h-3.5 w-3.5" /> Add
         </Button>
       </div>
 
@@ -4009,7 +4009,7 @@ function ProductVersionsSection() {
                       variant="ghost"
                       onClick={() => setExpandedVersionId(expandedVersionId === v.id ? null : v.id)}
                       aria-expanded={expandedVersionId === v.id}
-                      title="Composants (stack)"
+                      title="Components (stack)"
                       className="h-8 w-8 p-0 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10"
                     >
                       <Boxes className="h-4 w-4" />

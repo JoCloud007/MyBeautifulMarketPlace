@@ -387,7 +387,7 @@ function DependencyGraph({
 /* Verdict badge shared by the Stack tab rows (✓ green / ! orange / ✗ red). */
 const STACK_VERDICT_STYLES: Record<string, { glyph: string; label: string; className: string }> = {
   VALID: { glyph: '✓', label: 'Compatible', className: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40' },
-  WARNING: { glyph: '!', label: 'Avertissement', className: 'bg-orange-500/20 text-orange-300 border-orange-400/40' },
+  WARNING: { glyph: '!', label: 'Warning', className: 'bg-orange-500/20 text-orange-300 border-orange-400/40' },
   BLOCKED: { glyph: '✗', label: 'Incompatible', className: 'bg-red-500/20 text-red-300 border-red-400/40' },
 };
 
@@ -407,7 +407,7 @@ function StackVerdictBadge({ verdict }: { verdict: string }) {
 /**
  * "Stack" tab — the selected version's components with individual verdicts
  * (per-component findings from the live validation) and a link to the
- * compatibility matrix. Phase 2 placeholder: "Migrer depuis cette version"
+ * compatibility matrix. Phase 2 placeholder: "Migrate from this version"
  * stays disabled.
  */
 function ProductStackTab({ product }: { product: Product }) {
@@ -425,7 +425,7 @@ function ProductStackTab({ product }: { product: Product }) {
           Stack
         </CardTitle>
         <CardDescription className="text-slate-400">
-          Composants de la version sélectionnée, avec le verdict de compatibilité de chacun.
+          Components of the selected version, with each one's compatibility verdict.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -462,14 +462,14 @@ function ProductStackTab({ product }: { product: Product }) {
           <Button
             type="button"
             disabled
-            title="Planificateur de migration — phase 2 (à venir)"
+            title="Migration planner — phase 2 (coming soon)"
             className="bg-slate-800 text-slate-500 cursor-not-allowed min-h-[44px]"
           >
-            Migrer depuis cette version
+            Migrate from this version
           </Button>
           <Link to="/compatibility">
             <Button variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800 min-h-[44px]">
-              Voir la matrice de compatibilité
+              View the compatibility matrix
               <ArrowUpRight className="ml-1 h-3 w-3" />
             </Button>
           </Link>
@@ -484,7 +484,7 @@ function ProductStackTab({ product }: { product: Product }) {
         ) : stack.components.length === 0 ? (
           <div className="text-center py-10">
             <Boxes className="mx-auto h-10 w-10 text-slate-700" />
-            <p className="mt-3 text-slate-500">Aucun composant (stack) déclaré pour cette version.</p>
+            <p className="mt-3 text-slate-500">No stack component declared for this version.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -514,8 +514,8 @@ function ProductStackTab({ product }: { product: Product }) {
                             {finding.ruleName}
                           </span>
                           <span className="text-slate-600">
-                            {finding.fromVersionConstraint || 'toutes versions'} → {finding.toVersionConstraint || 'toutes versions'} ·{' '}
-                            {finding.satisfied ? 'satisfaite' : 'violée'}
+                            {finding.fromVersionConstraint || 'all versions'} → {finding.toVersionConstraint || 'all versions'} ·{' '}
+                            {finding.satisfied ? 'satisfied' : 'violated'}
                           </span>
                         </li>
                       ))}
@@ -1162,14 +1162,14 @@ export default function ProductDetail() {
 
   const related = relatedProducts?.filter((p: Product) => p.id !== product.id).slice(0, 3) ?? [];
 
-  // Phase color segments shared by both Gantt views (blue = normal, amber = extended, rose = no support)
+  // Phase color segments shared by both Gantt views (blue = normal, amber = extended, orange = no support)
   const phaseSegments = (dates: { normalSupportEnd?: string | null; extendedSupportEnd?: string | null; eolDate?: string | null }) => {
     const segs: GanttBarData['segments'] = [];
     if (dates.normalSupportEnd && dates.extendedSupportEnd) {
       segs.push({ end: new Date(dates.normalSupportEnd), className: 'bg-blue-500', label: 'Normal support' });
       segs.push({ end: new Date(dates.extendedSupportEnd), className: 'bg-amber-500', label: 'Extended support' });
       if (dates.eolDate) {
-        segs.push({ end: new Date(dates.eolDate), className: 'bg-rose-500', label: 'No support' });
+        segs.push({ end: new Date(dates.eolDate), className: 'bg-orange-500', label: 'No support' });
       }
     }
     return segs;
