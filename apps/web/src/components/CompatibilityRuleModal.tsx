@@ -224,7 +224,7 @@ function VersionRangePicker({
         id={id}
         value={version}
         onChange={(e) => onVersionChange(e.target.value)}
-        placeholder="toutes"
+        placeholder="all"
         inputMode="decimal"
         className={`h-10 min-h-[40px] w-24 bg-slate-950 border-slate-700 text-white ${
           isValidConstraintInput(joinConstraint(op, version))
@@ -357,7 +357,7 @@ export default function CompatibilityRuleModal({
           {/* Then */}
           <div className="space-y-3 rounded-lg border border-slate-800 bg-slate-950/50 p-4">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Elle</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">It</span>
               <div className="flex overflow-hidden rounded-full border border-slate-700">
                 <button
                   type="button"

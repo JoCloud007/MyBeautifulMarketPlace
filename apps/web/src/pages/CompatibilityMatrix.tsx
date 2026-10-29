@@ -61,7 +61,7 @@ const VERDICT_CELL: Record<
   VALID: {
     icon: CheckCircle,
     glyph: '✓',
-    label: 'Valide',
+    label: 'Valid',
     className: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40',
   },
   WARNING: {
