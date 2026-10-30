@@ -135,7 +135,7 @@ function LifecycleBar({
       {/* No support */}
       {eol > extended && (
         <div
-          className="absolute top-0 bottom-0 bg-rose-500"
+          className="absolute top-0 bottom-0 bg-orange-500"
           style={{ left: pct(extended), width: `calc(${pct(eol)} - ${pct(extended)})` }}
         />
       )}
@@ -248,7 +248,7 @@ export default function OsLifecycleTab({
           <div className="flex flex-wrap gap-4 pt-1 text-[10px] text-slate-500">
             <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-blue-500" />Normal support</span>
             <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-amber-500" />Extended support</span>
-            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-rose-500" />No support</span>
+            <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-orange-500" />No support</span>
           </div>
         </CardContent>
       </Card>

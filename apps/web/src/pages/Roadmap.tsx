@@ -513,23 +513,52 @@ function GanttBar({ version, timelineStart, timelineEnd, showTodayBar }: { versi
   const totalMs = timelineEnd.getTime() - timelineStart.getTime();
   const toPct = (d: Date) => Math.max(0, Math.min(100, ((d.getTime() - timelineStart.getTime()) / totalMs) * 100));
 
-  const releaseDate = new Date(version.releaseDate);
-  const normalEnd = new Date(version.normalSupportEnd);
-  const extendedEnd = new Date(version.extendedSupportEnd);
-  const eolDate = new Date(version.eolDate);
+  // Date anchors; an invalid/missing date stays null so its segment is skipped
+  // instead of painting a NaN width.
+  const t = (s: string) => { const x = new Date(s).getTime(); return isNaN(x) ? null : x; };
+  const release = t(version.releaseDate);
+  const normalEnd = t(version.normalSupportEnd);
+  const extendedEnd = t(version.extendedSupportEnd);
+  const eol = t(version.eolDate);
 
-  const releasePct = toPct(releaseDate);
-  const normalPct = toPct(normalEnd);
-  const extendedPct = toPct(extendedEnd);
-  const eolPct = toPct(eolDate);
-  const phaseCfg = getPhaseConfig(version.phase);
+  // Phase segments per the legend (phaseConfig): Normal Support (blue) = release →
+  // normal end, Extended Support (amber) = normal end → extended end, No Support
+  // (orange) = extended end → EOL. EOL itself is the red milestone at the bar end.
+  const seg = (from: number | null, to: number | null, className: string, label: string) => {
+    if (from === null || to === null || to <= from) return null;
+    const left = toPct(new Date(from));
+    const width = toPct(new Date(to)) - left;
+    if (width <= 0) return null;
+    return (
+      <div
+        key={label}
+        className={`absolute top-0 h-full ${className}`}
+        style={{ left: `${left}%`, width: `${width}%` }}
+        title={`${label}: ${new Date(from).getFullYear()} → ${new Date(to).getFullYear()}`}
+      />
+    );
+  };
 
   return (
     <div className="flex-1 h-4 relative rounded overflow-hidden bg-slate-800">
-      <div className="absolute top-0 h-full bg-emerald-500/60" style={{ left: `${releasePct}%`, width: `${Math.max(0, normalPct - releasePct)}%` }} />
-      <div className="absolute top-0 h-full bg-blue-500/60" style={{ left: `${normalPct}%`, width: `${Math.max(0, extendedPct - normalPct)}%` }} />
-      <div className="absolute top-0 h-full bg-amber-500/60" style={{ left: `${extendedPct}%`, width: `${Math.max(0, eolPct - extendedPct)}%` }} />
-      <div className={`absolute top-0 h-full ${phaseCfg.bg} opacity-80`} style={{ left: `${releasePct}%`, width: `${Math.max(0, eolPct - releasePct)}%` }} />
+      {seg(release, normalEnd, 'bg-blue-500/80', 'Normal Support')}
+      {seg(normalEnd, extendedEnd, 'bg-amber-500/80', 'Extended Support')}
+      {seg(extendedEnd, eol, 'bg-orange-500/80', 'No Support')}
+      {/* Release milestone at the bar start — symmetric with the EOL marker */}
+      {release !== null && (
+        <div
+          className="absolute top-[-2px] h-[calc(100%+4px)] w-[4px] rounded-sm bg-emerald-500 ring-1 ring-slate-950"
+          title={`Released: ${new Date(release).getFullYear()}`}
+          style={{ left: `calc(${toPct(new Date(release))}% - 2px)` }}
+        />
+      )}
+      {/* EOL milestone at the bar end — same marker as the Cards view */}
+      {eol !== null && (
+        <div
+          className="absolute top-[-2px] h-[calc(100%+4px)] w-[4px] rounded-sm bg-red-500 ring-1 ring-slate-950"
+          style={{ left: `calc(${toPct(new Date(eol))}% - 2px)` }}
+        />
+      )}
       {showTodayBar && (
         <div className="absolute top-0 h-full w-0.5 bg-white/80 z-10" style={{ left: `${toPct(new Date())}%` }} />
       )}
@@ -1567,7 +1596,7 @@ function CardsTimelineHeader({ timelineStart, timelineEnd }: { timelineStart: Da
 }
 
 /* Lifecycle timeline of ONE version, aligned on the real timeline:
-   blue = release → normal support end, amber = → extended end, red = → EOL.
+   blue = release → normal support end, amber = → extended end, orange = → EOL.
    Computed in absolute timeline % so it stays aligned with the year bands
    when the timeline is dragged or rescaled. */
 function LifecycleBar({ dates, toPct, cardStartPct, cardWidthPct }: {
@@ -1621,6 +1650,11 @@ function LifecycleBar({ dates, toPct, cardStartPct, cardWidthPct }: {
           <div className="absolute top-0 h-full bg-orange-500/80" style={{ left: `${Math.max(startRel, supportEnd ?? startRel)}%`, width: `${Math.max(0, endRel - Math.max(startRel, supportEnd ?? startRel))}%` }} />
         </>
       )}
+      {/* Release milestone: symmetric green marker at the bar start */}
+      <div
+        className="absolute top-[-2px] h-[calc(100%+4px)] w-[4px] rounded-sm bg-emerald-500 ring-1 ring-slate-950"
+        style={{ left: `calc(${Math.max(0, Math.min(100, startRel))}% - 2px)` }}
+      />
       {/* EOL milestone: thick marker with dark outline so it reads clearly
           even on top of the orange No-Support segment. */}
       <div
