@@ -233,6 +233,28 @@ function buildExtraTools(): McpToolDefinition[] {
         return toToolResult(await apiPost(`/api/products/${productId}/transitions`, body ?? {}));
       },
     },
+    {
+      name: 'authoring_update_product_transition',
+      description:
+        'Update a lifecycle transition — PATCH /api/products/transitions/:id. ' +
+        'Can switch kind between PRODUCT and OS: kind=OS requires fromOsVersionId and toOsVersionId ' +
+        '(fromVersion/toVersion are auto-filled from the OsVersion rows), kind=PRODUCT clears the OS ' +
+        'references and uses the free-text fromVersion/toVersion.',
+      inputSchema: updateBody,
+      handler: async (args) => {
+        const { id, fields } = (args ?? {}) as { id: string; fields?: Record<string, unknown> };
+        return toToolResult(await apiPatch(`/api/products/transitions/${id}`, fields ?? {}));
+      },
+    },
+    {
+      name: 'authoring_delete_product_transition',
+      description: 'Delete a lifecycle transition — DELETE /api/products/transitions/:id.',
+      inputSchema: z.object({ id: uuidSchema.describe('Transition UUID') }),
+      handler: async (args) => {
+        const { id } = (args ?? {}) as { id: string };
+        return toToolResult(await apiDelete(`/api/products/transitions/${id}`));
+      },
+    },
 
     // OS versions (nested under /api/os).
     {
