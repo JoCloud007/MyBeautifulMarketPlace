@@ -292,10 +292,26 @@ router.get('/:id/browse', async (req, res, next) => {
       }
 
       case 'PRODUCT': {
+        // Availability truth is variant-level (the same source the
+        // Marketplace Matrix renders): show a product in a zone when at
+        // least one active variant is deployed there — linked either to the
+        // zone itself or to an AZ belonging to it. `ProductZone` is
+        // declarative admin positioning that drifts from reality, so it must
+        // not drive this filter.
         const whereProduct: any = { isActive: true };
         if (zone) {
-          whereProduct.zones = {
-            some: { zoneId: zone },
+          whereProduct.variants = {
+            some: {
+              isActive: true,
+              OR: [
+                { zones: { some: { zoneId: zone } } },
+                {
+                  availabilityZones: {
+                    some: { availabilityZone: { zones: { some: { zoneId: zone } } } },
+                  },
+                },
+              ],
+            },
           };
         }
         const products = await prisma.product.findMany({
