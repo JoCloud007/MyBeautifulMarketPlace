@@ -1,6 +1,7 @@
 services:
   db:
-    image: postgres:16-alpine
+    # Pulled through the same optional corporate mirror as the build images.
+    image: ${REPO_URL:+${REPO_URL}/}${DB_IMAGE:-postgres}:${DB_TAG:-16-alpine}
     env_file:
       - .env
     environment:

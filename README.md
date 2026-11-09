@@ -179,11 +179,13 @@ Key variables in `.env` to review before running:
 | `MCP_ENABLE_SSE` | `0` | Legacy SSE MCP fallback (`GET /sse`) — off by default; Streamable HTTP on `POST /mcp` is always available |
 | `ADMIN_API_KEY` | *(empty)* | When set, `/api/admin` requires the `x-admin-api-key` header — also needed by the MCP admin tools |
 | `PRISMA_CLI_BINARY_TARGETS` | `linux-arm64-openssl-3.0.x` | Prisma engine target platform (see `.env.example` for options) |
-| `REPO_URL` | *(empty)* | Corporate Docker registry mirror (optional) |
+| `REPO_URL` | *(empty)* | Corporate Docker registry mirror — prefixes every pulled image: api/web build base images **and** the postgres db image (optional) |
 | `API_IMAGE` | `node` | API container base image name (optional) |
 | `API_TAG` | `20-bookworm` | API container base image tag (optional) |
 | `WEB_IMAGE` | `node` | Web container base image name (optional) |
 | `WEB_TAG` | `20-alpine` | Web container base image tag (optional) |
+| `DB_IMAGE` | `postgres` | Database container image name (optional) |
+| `DB_TAG` | `16-alpine` | Database container image tag (optional) |
 | `COMPOSE_HTTP_PROXY` | *(empty)* | HTTP proxy for Docker Compose (optional) |
 | `COMPOSE_HTTPS_PROXY` | *(empty)* | HTTPS proxy for Docker Compose (optional) |
 | `COMPOSE_NO_PROXY` | *(empty)* | Comma-separated list of hosts to exclude from proxy (optional) |
@@ -778,19 +780,30 @@ docker compose build web --no-cache
 
 **Custom Docker registry / air-gapped environment**
 
-Both Dockerfiles support custom base images via `REPO_URL`, `API_IMAGE` / `WEB_IMAGE` and `API_TAG` / `WEB_TAG`:
+`REPO_URL` is prefixed to EVERY image Docker pulls, not just the build base images:
+
+| Pulled image | Resolved reference with `REPO_URL` set |
+| --- | --- |
+| api base | `${REPO_URL}/node:20-bookworm` |
+| web base | `${REPO_URL}/node:20-alpine` |
+| db service | `${REPO_URL}/postgres:16-alpine` |
 
 ```bash
-# Set in .env
+# Set in .env (uncommented — a commented line is simply ignored)
 REPO_URL=registry.company.com
 API_IMAGE=node
 API_TAG=20-bookworm
 WEB_IMAGE=node
 WEB_TAG=20-alpine
+DB_IMAGE=postgres
+DB_TAG=16-alpine
 
-# Then build normally
+# Then build and run normally
 docker compose build
+docker compose up -d
 ```
+
+If a single pull still reports `failed to do request: Head "https://registry-1.docker.io/v2/..."`, the mirror is not being consulted for that image: check that `REPO_URL` is set in the `.env` of the directory `docker compose` runs from (`docker compose config` shows the resolved `image:` lines), and that the mirror actually serves that repository path — a Docker Hub proxy often requires the `library/` namespace, i.e. `registry.company.com/library/postgres:16-alpine` rather than `registry.company.com/postgres:16-alpine`. The alternative to per-image prefixes is a daemon-level mirror (`registry-mirrors` in the Docker engine's `daemon.json`), which applies to every client pull.
 
 **Private npm registry (air-gapped environment)**
 
